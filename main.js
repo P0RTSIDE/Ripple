@@ -61,15 +61,27 @@ const CONFIG = {
     whaleChance: 0.004,     // rare whale visit chance (checked every whaleInterval)
     whaleInterval: 10,      // seconds between whale chance rolls
     petsForRainbow: 15,     // hidden: pet this many times with no throws to force rainbow food
-    petsToRedeem: 8,        // pets needed to turn an evil fish good again for good
+    petsToRedeem: 5,        // discrete pets that help soothe an evil fish
+    evilSootheTime: 2.6,    // seconds of continuous petting to fully redeem an evil fish
     reptileInterval: 300,   // seconds between crocodile/alligator chance rolls
     reptileChance: 0.12,    // small chance a reptile arrives on each roll
     reptileSize: [88, 112], // croc/alligator body length range
+    exoticInterval: 48,     // seconds between exotic visitor rolls (medium-rare)
+    exoticChance: 0.32,     // much more common than crocs; still not every roll
+    exoticEdgeChance: 0.14, // chance a repopulating fish is an exotic
 };
 
 // Hidden streak: consecutive pets with no food thrown unlock a guaranteed rainbow pellet.
 let petStreak = 0;
 let guaranteeRainbow = false;
+
+// Hats unlock: hold right-click on a settled gold fish for 5 seconds to collect it.
+const HATS_GOLD_COST = 5;
+const GOLD_HOLD_TIME = 5;
+let goldCollected = 0;
+let hatsUnlocked = false;
+let hatsOn = false;
+let liftState = null; // { fish, originY, originX, holdTime, holding }
 
 // Scales: fish bites walk up these for melodic runs.
 const PENTATONIC = [1, 9 / 8, 5 / 4, 3 / 2, 5 / 3];
@@ -92,6 +104,15 @@ const FISH_TYPES = [
     { name: "catfish",  shape: "oval",    body: "#6b5a4a", belly: "#cbb8a0", pattern: null,       patternColor: null,      size: [20, 28], speed: [16, 26], wave: "sawtooth", register: 0.65, bite: 8, dur: 0.55, turn: 2.1, wiggle: 0.7,  whiskers: true, scale: MINOR_PENT, petWave: "triangle", petFreq: 160, petDur: 0.6,  bitePartial: 0.1,  biteBright: 0.6 },
     { name: "sunfish",  shape: "round",   body: "#d4a23a", belly: "#fff2c4", pattern: "spots",    patternColor: "#6a4a18", size: [15, 22], speed: [24, 36], wave: "sine",     register: 1.05, bite: 5, dur: 0.4,  turn: 3.0, wiggle: 1.0,  scale: PENTATONIC, petWave: "triangle", petFreq: 330, petDur: 0.36, bitePartial: 0.25, biteBright: 1.05 },
     { name: "pike",     shape: "slim",    body: "#5a7a55", belly: "#d6e0c8", pattern: "bands",    patternColor: "#3a4e35", size: [24, 34], speed: [28, 44], wave: "triangle", register: 0.7,  bite: 8, dur: 0.5,  turn: 2.5, wiggle: 1.1,  slim: 0.58, scale: MINOR_PENT, petWave: "sawtooth", petFreq: 240, petDur: 0.4,  bitePartial: 0.15, biteBright: 0.8 },
+];
+
+// Medium-rare exotic visitors: odd swim habits, rarer than commons, commoner than crocs.
+const EXOTIC_TYPES = [
+    { name: "discus",   exotic: true, odd: "spiral", shape: "round",   body: "#c45a8c", belly: "#f0c8dc", pattern: "bands",  patternColor: "#7a2850", size: [16, 22], speed: [16, 26], wave: "triangle", register: 1.4,  bite: 4, dur: 0.42, turn: 4.2, wiggle: 1.3, scale: PENTATONIC, petWave: "sine",     petFreq: 430, petDur: 0.45, bitePartial: 0.3,  biteBright: 1.2 },
+    { name: "dragonet", exotic: true, odd: "zigzag", shape: "slim",    body: "#2f8f7a", belly: "#b8f0dc", pattern: "spots",  patternColor: "#f0d060", size: [12, 17], speed: [30, 48], wave: "square",   register: 1.6,  bite: 3, dur: 0.28, turn: 5.5, wiggle: 1.7, slim: 0.52, scale: PENTATONIC, petWave: "square",   petFreq: 480, petDur: 0.28, bitePartial: 0.4,  biteBright: 1.35 },
+    { name: "glass",    exotic: true, odd: "jitter", shape: "slim",    body: "#a8d4e8", belly: "#e8f6ff", pattern: null,     patternColor: null,      size: [10, 15], speed: [38, 58], wave: "sine",     register: 1.9,  bite: 3, dur: 0.2,  turn: 6.5, wiggle: 1.9, slim: 0.48, scale: PENTATONIC, petWave: "sine",     petFreq: 560, petDur: 0.22, bitePartial: 0.5,  biteBright: 1.55, ghost: 0.55 },
+    { name: "mandarin", exotic: true, odd: "drift",  shape: "round",   body: "#3a6ec4", belly: "#f0a040", pattern: "blotches", patternColor: "#e8d050", size: [13, 18], speed: [14, 24], wave: "triangle", register: 1.3,  bite: 4, dur: 0.48, turn: 3.8, wiggle: 1.4, scale: MINOR_PENT, petWave: "triangle", petFreq: 390, petDur: 0.5,  bitePartial: 0.28, biteBright: 1.15 },
+    { name: "arowana",  exotic: true, odd: "glide",  shape: "slim",    body: "#c9a24b", belly: "#fff0c8", pattern: "scales", patternColor: "#8a6a28", size: [28, 40], speed: [22, 36], wave: "sawtooth", register: 0.55, bite: 8, dur: 0.65, turn: 1.8, wiggle: 0.85, slim: 0.5, scale: MINOR_PENT, petWave: "triangle", petFreq: 200, petDur: 0.6,  bitePartial: 0.12, biteBright: 0.75 },
 ];
 
 // ---------------------------------------------------------------------------
@@ -1011,10 +1032,11 @@ let sceneryItems = {
     stones: [], sticks: [], reeds: [], lilies: [],
     cattails: [], duckweed: [], leaves: [],
 };
-// Solid props fish cannot swim through. Right-click drag moves them.
+// Solid props fish cannot swim through. Right-click drag moves them (with water drag).
 let obstacles = [];
 let grabbedObstacle = null;
 let grabOffset = { x: 0, y: 0 };
+let grabAim = null; // lethargic follow target while dragging
 
 function seeded(n) {
     // Tiny deterministic hash so scenery stays stable until resize.
@@ -1139,6 +1161,7 @@ function rebuildObstacles() {
                 r: 18 + seeded(i + 730) * 16,
                 rot: seeded(i + 740) * Math.PI,
                 tone: 0.4 + seeded(i + 750) * 0.3,
+                vx: 0, vy: 0,
             });
         } else if (kind === "log") {
             next.push({
@@ -1147,6 +1170,7 @@ function rebuildObstacles() {
                 thick: 9 + seeded(i + 740) * 7,
                 rot: seeded(i + 750) * Math.PI,
                 tone: 0.35 + seeded(i + 760) * 0.3,
+                vx: 0, vy: 0,
             });
         } else {
             next.push({
@@ -1154,11 +1178,189 @@ function rebuildObstacles() {
                 r: 14 + seeded(i + 730) * 10,
                 rot: seeded(i + 740) * Math.PI,
                 tone: 0.3 + seeded(i + 750) * 0.35,
+                vx: 0, vy: 0,
             });
         }
     }
     obstacles = next;
     grabbedObstacle = null;
+    grabAim = null;
+}
+
+function obstacleMass(o) {
+    return o.kind === "boulder" ? 1.55 : o.kind === "log" ? 1.2 : 1;
+}
+
+// Heavy water resistance: debris lags behind a fast cursor, coasts, and yaws in the flow.
+function updateObstacles(dt) {
+    const pad = 24;
+    for (const o of obstacles) {
+        if (!o.vx) o.vx = 0;
+        if (!o.vy) o.vy = 0;
+        if (o.spin == null) o.spin = 0;
+        const mass = obstacleMass(o);
+
+        if (o === grabbedObstacle && grabAim) {
+            const dx = grabAim.x - o.x;
+            const dy = grabAim.y - o.y;
+            const dist = Math.hypot(dx, dy);
+            // Soft spring + strong damping: feels like dragging through water.
+            const pull = 2.1 / mass;
+            o.vx += dx * pull * dt;
+            o.vy += dy * pull * dt;
+            const damp = Math.exp(-3.8 * dt);
+            o.vx *= damp;
+            o.vy *= damp;
+            // Cap so a whip of the mouse still trails behind.
+            const maxSpd = 150 / mass;
+            const spd = Math.hypot(o.vx, o.vy);
+            if (spd > maxSpd) {
+                o.vx *= maxSpd / spd;
+                o.vy *= maxSpd / spd;
+            }
+            // Extra lag when the cursor is far ahead.
+            if (dist > 90) {
+                o.vx *= 0.92;
+                o.vy *= 0.92;
+            }
+            // Torque from the pull direction so it twists while being hauled.
+            if (dist > 4) {
+                const pullAng = Math.atan2(dy, dx);
+                const align = o.kind === "log" ? pullAng : pullAng + Math.PI * 0.35;
+                o.spin += normAngle(align - o.rot) * (2.8 / mass) * dt;
+            }
+        } else if (o.vx * o.vx + o.vy * o.vy > 4) {
+            // Coast and settle after release.
+            const coast = Math.exp(-2.6 * dt);
+            o.vx *= coast;
+            o.vy *= coast;
+            o.spin *= Math.exp(-1.8 * dt);
+        } else {
+            o.vx = 0;
+            o.vy = 0;
+            o.spin *= Math.exp(-4 * dt);
+            if (Math.abs(o.spin) < 0.02) o.spin = 0;
+        }
+
+        if (o.vx || o.vy || o.spin) {
+            o.x = Math.max(pad, Math.min(viewW - pad, o.x + o.vx * dt));
+            o.y = Math.max(pad, Math.min(viewH - pad, o.y + o.vy * dt));
+
+            const spd = Math.hypot(o.vx, o.vy);
+            if (spd > 6) {
+                const travelAng = Math.atan2(o.vy, o.vx);
+                if (o.kind === "log") {
+                    // Long axis lines up with the current through the water.
+                    const diff = normAngle(travelAng - o.rot);
+                    o.rot += diff * Math.min(1, dt * 3.4);
+                    o.spin += diff * 0.8 * dt;
+                } else {
+                    // Boulders and stumps tumble with the flow.
+                    o.spin += (o.vx * 0.015 + o.vy * 0.01) * dt * 40;
+                    const diff = normAngle(travelAng - o.rot);
+                    o.rot += diff * Math.min(1, dt * 1.4);
+                }
+            }
+            o.spin = Math.max(-6, Math.min(6, o.spin));
+            o.rot += o.spin * dt;
+            o.spin *= Math.exp(-1.2 * dt);
+
+            if (spd > 18) {
+                const wake = Math.min(1, spd / 120);
+                if (Math.random() < 0.35 + wake * 0.5) {
+                    water.disturb(o.x, o.y, obstacleRadius(o) * (0.4 + wake * 0.5), 40 + wake * 90);
+                }
+                scareFishFromDebris(o, spd);
+            }
+        }
+    }
+
+    // Debris can smack into each other and bounce.
+    resolveObstacleCollisions();
+    resolveObstacleCollisions();
+}
+
+function resolveObstacleCollisions() {
+    const pad = 24;
+    for (let i = 0; i < obstacles.length; i++) {
+        for (let j = i + 1; j < obstacles.length; j++) {
+            const a = obstacles[i];
+            const b = obstacles[j];
+            const ra = obstacleRadius(a);
+            const rb = obstacleRadius(b);
+            let dx = b.x - a.x;
+            let dy = b.y - a.y;
+            let dist = Math.hypot(dx, dy);
+            const minDist = ra + rb;
+            if (dist >= minDist) continue;
+            if (dist < 0.001) {
+                dx = 1;
+                dy = 0;
+                dist = 1;
+            }
+            const nx = dx / dist;
+            const ny = dy / dist;
+            const overlap = minDist - dist;
+            const ma = obstacleMass(a);
+            const mb = obstacleMass(b);
+            const invSum = 1 / (ma + mb);
+            a.x -= nx * overlap * mb * invSum;
+            a.y -= ny * overlap * mb * invSum;
+            b.x += nx * overlap * ma * invSum;
+            b.y += ny * overlap * ma * invSum;
+            a.x = Math.max(pad, Math.min(viewW - pad, a.x));
+            a.y = Math.max(pad, Math.min(viewH - pad, a.y));
+            b.x = Math.max(pad, Math.min(viewW - pad, b.x));
+            b.y = Math.max(pad, Math.min(viewH - pad, b.y));
+
+            const rvx = (b.vx || 0) - (a.vx || 0);
+            const rvy = (b.vy || 0) - (a.vy || 0);
+            const velAlong = rvx * nx + rvy * ny;
+            if (velAlong >= 0) continue; // already separating
+
+            const restitution = 0.48;
+            const impulse = -(1 + restitution) * velAlong / (1 / ma + 1 / mb);
+            a.vx = (a.vx || 0) - (impulse / ma) * nx;
+            a.vy = (a.vy || 0) - (impulse / ma) * ny;
+            b.vx = (b.vx || 0) + (impulse / mb) * nx;
+            b.vy = (b.vy || 0) + (impulse / mb) * ny;
+
+            // Glancing hits add tumble.
+            const tangent = rvx * (-ny) + rvy * nx;
+            a.spin = (a.spin || 0) - tangent * 0.035 / ma;
+            b.spin = (b.spin || 0) + tangent * 0.035 / mb;
+
+            const impact = Math.abs(impulse);
+            if (impact > 18) {
+                const mx = (a.x + b.x) * 0.5;
+                const my = (a.y + b.y) * 0.5;
+                water.disturb(mx, my, 10 + impact * 0.12, 50 + impact * 1.2);
+                if (impact > 32) {
+                    scareFishFromDebris({ x: mx, y: my, kind: "boulder", r: (ra + rb) * 0.45 }, impact * 2.2);
+                }
+            }
+        }
+    }
+}
+
+// Nearby fish flinch and swim away from a hauled boulder or log.
+function scareFishFromDebris(o, spd) {
+    const reach = obstacleRadius(o) + 55 + spd * 0.35;
+    for (const f of fishes) {
+        if (f.dead || f.golden || f.rainbowLeaving) continue;
+        const d = Math.hypot(f.x - o.x, f.y - o.y);
+        if (d >= reach || d < 1) continue;
+        const force = (1 - d / reach) * Math.min(1.4, spd / 90);
+        f.debrisFlee = {
+            x: o.x,
+            y: o.y,
+            t: 0.35 + force * 0.45,
+            force,
+        };
+        // Small positional shove so the reaction is immediate.
+        f.x += ((f.x - o.x) / d) * force * 2.2;
+        f.y += ((f.y - o.y) / d) * force * 2.2;
+    }
 }
 
 function obstacleRadius(o) {
@@ -1938,69 +2140,129 @@ function nearestFood(x, y, range) {
 // Rainbow trail that spells the exit message, then fades after the fish leaves.
 const rainbowScriptTrail = [];
 
-function letterStrokes(ch) {
+// Continuous cursive-friendly letterforms (each letter is one flowing polyline).
+function letterCursive(ch) {
     switch (ch) {
-        case "E": return [[[0, 0], [0, 1]], [[0, 0], [0.9, 0]], [[0, 0.5], [0.72, 0.5]], [[0, 1], [0.9, 1]]];
-        case "A": return [[[0, 1], [0.5, 0], [1, 1]], [[0.22, 0.58], [0.78, 0.58]]];
-        case "S": return [[[0.88, 0.18], [0.55, 0], [0.15, 0.22], [0.18, 0.42], [0.82, 0.58], [0.85, 0.8], [0.5, 1], [0.12, 0.82]]];
-        case "T": return [[[0, 0], [1, 0]], [[0.5, 0], [0.5, 1]]];
-        case "R": return [[[0, 0], [0, 1]], [[0, 0], [0.72, 0], [0.92, 0.18], [0.72, 0.45], [0, 0.45]], [[0.48, 0.45], [0.95, 1]]];
-        case "G": return [[[0.88, 0.22], [0.55, 0], [0.15, 0.25], [0.08, 0.5], [0.15, 0.78], [0.55, 1], [0.92, 0.78], [0.92, 0.55], [0.55, 0.55]]];
-        case "a": return [[[0.85, 0.45], [0.85, 1]], [[0.85, 0.62], [0.45, 0.45], [0.15, 0.65], [0.2, 0.9], [0.55, 1], [0.85, 0.82]]];
-        case "e": return [[[0.15, 0.68], [0.85, 0.62], [0.7, 0.42], [0.35, 0.42], [0.12, 0.65], [0.2, 0.9], [0.55, 1], [0.88, 0.85]]];
-        case "s": return [[[0.82, 0.52], [0.5, 0.4], [0.18, 0.52], [0.22, 0.68], [0.78, 0.78], [0.82, 0.92], [0.5, 1.05], [0.15, 0.92]]];
-        case "t": return [[[0.45, 0.3], [0.45, 1]], [[0.2, 0.48], [0.75, 0.48]]];
-        case "r": return [[[0.2, 0.4], [0.2, 1]], [[0.2, 0.55], [0.45, 0.4], [0.75, 0.42]]];
-        case "g": return [[[0.82, 0.55], [0.5, 0.4], [0.18, 0.55], [0.18, 0.78], [0.5, 0.95], [0.82, 0.78], [0.82, 0.4], [0.82, 1.15], [0.45, 1.25], [0.15, 1.1]]];
-        case " ": return [];
-        default: return [[[0.2, 0.5], [0.8, 0.5]]];
+        case "E": return [[0.15, 0.95], [0.1, 0.5], [0.12, 0.08], [0.85, 0.08], [0.2, 0.1], [0.18, 0.5], [0.7, 0.5], [0.2, 0.52], [0.18, 0.95], [0.88, 0.95]];
+        case "A": return [[0.08, 0.98], [0.22, 0.55], [0.5, 0.05], [0.78, 0.55], [0.25, 0.58], [0.75, 0.58], [0.78, 0.55], [0.92, 0.98]];
+        case "S": return [[0.85, 0.22], [0.55, 0.05], [0.18, 0.22], [0.2, 0.42], [0.78, 0.58], [0.82, 0.78], [0.5, 0.98], [0.15, 0.82]];
+        case "T": return [[0.08, 0.1], [0.5, 0.08], [0.92, 0.1], [0.5, 0.1], [0.5, 0.98]];
+        case "R": return [[0.12, 0.98], [0.12, 0.08], [0.7, 0.08], [0.88, 0.22], [0.7, 0.42], [0.12, 0.42], [0.48, 0.45], [0.92, 0.98]];
+        case "G": return [[0.85, 0.25], [0.55, 0.05], [0.18, 0.28], [0.1, 0.55], [0.2, 0.85], [0.55, 0.98], [0.9, 0.78], [0.9, 0.55], [0.55, 0.55]];
+        case "a": return [[0.2, 0.62], [0.45, 0.42], [0.78, 0.55], [0.82, 0.85], [0.55, 1.0], [0.22, 0.85], [0.25, 0.6], [0.78, 0.55], [0.85, 0.42], [0.85, 1.02]];
+        case "e": return [[0.2, 0.7], [0.55, 0.55], [0.82, 0.65], [0.7, 0.42], [0.35, 0.42], [0.15, 0.65], [0.25, 0.92], [0.55, 1.02], [0.88, 0.88]];
+        case "s": return [[0.8, 0.52], [0.5, 0.4], [0.2, 0.52], [0.25, 0.7], [0.75, 0.8], [0.78, 0.95], [0.45, 1.08], [0.18, 0.95]];
+        case "t": return [[0.42, 0.15], [0.45, 0.55], [0.18, 0.5], [0.78, 0.5], [0.48, 0.52], [0.5, 1.05], [0.7, 0.95]];
+        case "r": return [[0.2, 1.02], [0.22, 0.45], [0.25, 0.55], [0.5, 0.4], [0.78, 0.48]];
+        case "g": return [[0.25, 0.62], [0.5, 0.42], [0.8, 0.55], [0.82, 0.82], [0.55, 0.98], [0.25, 0.82], [0.28, 0.58], [0.8, 0.55], [0.85, 0.4], [0.85, 1.15], [0.55, 1.28], [0.22, 1.12]];
+        case " ": return [[0.15, 0.75], [0.5, 0.55], [0.85, 0.75]];
+        default: return [[0.2, 0.7], [0.8, 0.7]];
     }
 }
 
-function buildEasterEggPath() {
+function quadBezier(p0, p1, p2, t) {
+    const u = 1 - t;
+    return {
+        x: u * u * p0.x + 2 * u * t * p1.x + t * t * p2.x,
+        y: u * u * p0.y + 2 * u * t * p1.y + t * t * p2.y,
+    };
+}
+
+function catmullRom(p0, p1, p2, p3, t) {
+    const t2 = t * t;
+    const t3 = t2 * t;
+    return {
+        x: 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3),
+        y: 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3),
+    };
+}
+
+function smoothPolyline(points, samplesPerSeg) {
+    if (points.length < 2) return points.slice();
+    const out = [];
+    const n = samplesPerSeg || 6;
+    for (let i = 0; i < points.length - 1; i++) {
+        const p0 = points[Math.max(0, i - 1)];
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        const p3 = points[Math.min(points.length - 1, i + 2)];
+        for (let k = 0; k < n; k++) {
+            const p = catmullRom(p0, p1, p2, p3, k / n);
+            out.push({ x: p.x, y: p.y, strokeId: 1 });
+        }
+    }
+    const last = points[points.length - 1];
+    out.push({ x: last.x, y: last.y, strokeId: 1 });
+    return out;
+}
+
+function cursiveConnector(from, to, samples) {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    // Handwriting arc: rise a little between letters, like ink staying on the page.
+    const mid = {
+        x: (from.x + to.x) * 0.5 + (-dy / dist) * dist * 0.12,
+        y: (from.y + to.y) * 0.5 - Math.abs(dx) * 0.22 - 8,
+    };
+    const pts = [];
+    const n = samples || 12;
+    for (let k = 1; k <= n; k++) {
+        const p = quadBezier(from, mid, to, k / (n + 1));
+        pts.push({ x: p.x, y: p.y, strokeId: 1 });
+    }
+    return pts;
+}
+
+function buildEasterEggPath(fromX, fromY) {
     const text = "Easter Egg";
     const padX = viewW * 0.07;
-    const padY = viewH * 0.18;
+    const padY = viewH * 0.2;
     const usableW = Math.max(160, viewW - padX * 2);
     const usableH = Math.max(100, viewH - padY * 2);
     const letterW = usableW / text.length;
-    const letterH = Math.min(usableH * 0.7, letterW * 1.7);
-    const path = [];
-    let strokeId = 0;
-    const samples = 10;
+    const letterH = Math.min(usableH * 0.62, letterW * 1.55);
+    const anchors = [];
+
     for (let i = 0; i < text.length; i++) {
-        const strokes = letterStrokes(text[i]);
-        const ox = padX + i * letterW + letterW * 0.1;
-        const oy = padY + (usableH - letterH) * 0.25;
-        const sx = letterW * 0.78;
+        const poly = letterCursive(text[i]);
+        const ox = padX + i * letterW + letterW * 0.08;
+        const oy = padY + (usableH - letterH) * 0.3;
+        const sx = letterW * 0.82;
         const sy = letterH;
-        for (const stroke of strokes) {
-            strokeId++;
-            for (let s = 0; s < stroke.length - 1; s++) {
-                const [x0, y0] = stroke[s];
-                const [x1, y1] = stroke[s + 1];
-                for (let k = 0; k <= samples; k++) {
-                    const t = k / samples;
-                    path.push({
-                        x: ox + (x0 + (x1 - x0) * t) * sx,
-                        y: oy + (y0 + (y1 - y0) * t) * sy,
-                        strokeId,
-                    });
-                }
-            }
+        const letterPts = poly.map(([u, v]) => ({
+            x: ox + u * sx,
+            y: oy + v * sy,
+            strokeId: 1,
+        }));
+        if (!anchors.length) {
+            anchors.push(...letterPts);
+        } else {
+            const prev = anchors[anchors.length - 1];
+            const next = letterPts[0];
+            anchors.push(...cursiveConnector(prev, next, text[i] === " " ? 10 : 14));
+            anchors.push(...letterPts);
         }
     }
-    return path;
+
+    // Swim in from the fish's current spot with a cursive approach curve.
+    if (fromX != null && fromY != null && anchors.length) {
+        const start = { x: fromX, y: fromY, strokeId: 1 };
+        const approach = cursiveConnector(start, anchors[0], 18);
+        anchors.unshift(start, ...approach);
+    }
+
+    return smoothPolyline(anchors, 7);
 }
 
-function pushRainbowTrail(x, y, life, strokeId) {
+function pushRainbowTrail(x, y, life, pathIndex) {
     rainbowScriptTrail.push({
         x, y,
         age: 0,
         life: life == null ? 6 : life,
-        hue: (performance.now() * 0.28 + (strokeId || 0) * 18) % 360,
+        hue: ((pathIndex || 0) * 2.4 + performance.now() * 0.12) % 360,
         r: 4.5 + Math.random() * 2.8,
-        strokeId: strokeId || 0,
+        strokeId: 1, // one continuous cursive ribbon
     });
 }
 
@@ -2092,11 +2354,15 @@ class Fish {
         this.golden = false;  // turned to gold and resting on the lakebed
         this.sinkTimer = 0;
         this.sinkDepth = 0;
+        this.lifting = false; // being slowly lifted out for the hats unlock
         this.petTimer = 0;    // >0 means being petted: closed eyes, calm
-        this.evilPetCount = 0; // pets while evil; enough redeems the fish
+        this.evilPetCount = 0; // discrete pets while evil
+        this.evilPetProgress = 0; // continuous soothe time while being petted
         this.redeemed = false; // once good again, never turns evil from eating
+        this.debrisFlee = null; // flinch away from hauled debris
         this.dead = false;
         this._chaseBoost = 1;
+        this.hatSeed = Math.random();
     }
 
     // Stable chase: slow near the target and when turning hard so rainbow fish do not softlock.
@@ -2132,10 +2398,14 @@ class Fish {
         // Tiny affectionate ripple.
         water.disturb(this.x, this.y, this.size * 0.4, 40);
 
-        // Enough affection turns an evil fish good again, permanently.
+        // Affection soothes evil fish (discrete pets plus continuous stroke time).
         if (this.isPredator && !this.isMonster && !this.isRainbow && !this.redeemed) {
             this.evilPetCount++;
-            if (this.evilPetCount >= CONFIG.petsToRedeem) this.redeem();
+            this.evilPetProgress += 0.55;
+            if (this.evilPetCount >= CONFIG.petsToRedeem
+                || this.evilPetProgress >= CONFIG.evilSootheTime) {
+                this.redeem();
+            }
         }
 
         // Hidden streak: enough pets with no throws guarantees rainbow food next.
@@ -2150,12 +2420,14 @@ class Fish {
 
     // Soften an evil fish: stop hunting, and never turn predator from food again.
     redeem() {
-        if (this.redeemed || this.isMonster || this.isRainbow) return;
+        if (this.redeemed || this.isMonster || this.isRainbow || !this.isPredator) return;
         this.redeemed = true;
         this.isPredator = false;
         this.prey = null;
         this.evilPetCount = 0;
+        this.evilPetProgress = 0;
         this.baseSpeed = Math.max(this.type.speed[0], this.baseSpeed / 1.12);
+        this.petTimer = Math.max(this.petTimer, 1.8);
         const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
         Audio.fishNote({
             freq: (this.type.petFreq || 320) * 1.15,
@@ -2167,7 +2439,17 @@ class Fish {
             partialRatio: 2.5,
             bright: 1.3,
         });
+        Audio.fishNote({
+            freq: (this.type.petFreq || 320) * 1.6,
+            wave: "triangle",
+            pan,
+            dur: 0.4,
+            level: 0.07,
+            partialAmt: 0.25,
+            bright: 1.4,
+        });
         water.disturb(this.x, this.y, this.size * 0.7, 120);
+        spawnSplash(this.x, this.y, this.size * 0.35, 0.35);
     }
 
     // Green food: the fish becomes a lasting pond plant at this spot.
@@ -2197,6 +2479,7 @@ class Fish {
             // Species habits (dart, turn, wiggle) stay with the type.
             this.baseSpeed *= 1.12;
             this.evilPetCount = 0;
+            this.evilPetProgress = 0;
         }
     }
 
@@ -2251,12 +2534,12 @@ class Fish {
         spawnSplash(this.x, this.y, this.size * 0.7, 0.8);
     }
 
-    // Victory lap: script a rainbow trail that spells "Easter Egg", then glide away.
+    // Victory lap: swim a smooth cursive "Easter Egg" trail, then glide away.
     beginRainbowExit() {
         this.rainbowLeaving = true;
         this.rainbowPhase = "write";
         rainbowScriptTrail.length = 0;
-        this.eggPath = buildEasterEggPath();
+        this.eggPath = buildEasterEggPath(this.x, this.y);
         this.eggIndex = 0;
         this.trailDrop = 0;
         this.erraticTimer = 0;
@@ -2264,16 +2547,12 @@ class Fish {
         this.target = null;
         this.petTimer = 0;
         this._exitDir = undefined;
-        this._lastStrokeId = -1;
-        if (this.eggPath.length) {
-            const first = this.eggPath[0];
-            // Start near the first letter so writing begins immediately.
-            this.x = first.x;
-            this.y = first.y;
-            this.dir = 0;
-            pushRainbowTrail(this.x, this.y, 8, first.strokeId);
-            this._lastStrokeId = first.strokeId;
+        this._writePathI = 0;
+        if (this.eggPath.length > 1) {
+            const n = this.eggPath[1];
+            this.dir = Math.atan2(n.y - this.y, n.x - this.x);
         }
+        pushRainbowTrail(this.x, this.y, 8, 0);
     }
 
     // Nearest threat: whale, shark, reptiles (if bigger), larger predators, rainbow/monster.
@@ -2362,8 +2641,20 @@ class Fish {
         this.age += dt;
         if (this.petTimer > 0) this.petTimer = Math.max(0, this.petTimer - dt);
 
+        // Continuous stroking soothes evil fish even when quiet pet refreshes skip notes.
+        if (this.petTimer > 0 && this.isPredator && !this.isMonster
+            && !this.isRainbow && !this.redeemed) {
+            this.evilPetProgress += dt;
+            if (this.evilPetProgress >= CONFIG.evilSootheTime) this.redeem();
+        }
+        if (this.debrisFlee) {
+            this.debrisFlee.t -= dt;
+            if (this.debrisFlee.t <= 0) this.debrisFlee = null;
+        }
+
         // Golden fish sink to the lakebed and stay there until the page refreshes.
         if (this.golden) {
+            if (this.lifting) return; // position driven by the slow lift gesture
             this.sinkTimer += dt;
             this.sinkDepth = Math.min(1, this.sinkTimer / CONFIG.goldSinkTime);
             if (this.sinkDepth < 1 && Math.random() < 0.08) {
@@ -2377,50 +2668,49 @@ class Fish {
         let freeRoam = false; // when leaving, ignore bank steering
         let hardChase = false;
 
-        // Rainbow victory lap: scripted "Easter Egg" writing, then exit with afterglow.
+        // Rainbow victory lap: smooth cursive "Easter Egg", then exit with afterglow.
         if (this.rainbowLeaving) {
             freeRoam = true;
             if (this.rainbowPhase === "write" && this.eggPath && this.eggIndex < this.eggPath.length) {
-                // Direct path follow (not chase AI) so the letters actually form.
-                let budget = 340 * dt;
                 this.trailDrop -= dt;
-                while (budget > 0 && this.eggIndex < this.eggPath.length) {
-                    const wp = this.eggPath[this.eggIndex];
-                    const dx = wp.x - this.x;
-                    const dy = wp.y - this.y;
-                    const dist = Math.hypot(dx, dy);
-                    if (dist < 3.5) {
-                        this.eggIndex++;
-                        continue;
-                    }
-                    if (wp.strokeId !== this._lastStrokeId) {
-                        // Pen-up between strokes: hop without connecting the trail.
-                        this.x = wp.x;
-                        this.y = wp.y;
-                        this._lastStrokeId = wp.strokeId;
-                        this.eggIndex++;
-                        pushRainbowTrail(this.x, this.y, 8, wp.strokeId);
-                        continue;
-                    }
-                    const step = Math.min(budget, dist);
-                    this.x += (dx / dist) * step;
-                    this.y += (dy / dist) * step;
-                    this.dir = Math.atan2(dy, dx);
-                    budget -= step;
-                    if (this.trailDrop <= 0) {
-                        this.trailDrop = 0.014;
-                        pushRainbowTrail(this.x, this.y, 8, wp.strokeId);
-                    }
-                    if (step >= dist - 0.01) this.eggIndex++;
+                // Look ahead a little so turns stay rounded instead of corner-snapping.
+                const look = Math.min(this.eggPath.length - 1, this.eggIndex + 3);
+                const wp = this.eggPath[look];
+                const desiredWrite = Math.atan2(wp.y - this.y, wp.x - this.x);
+                const turnRate = 5.5;
+                const diff = normAngle(desiredWrite - this.dir);
+                this.dir += Math.max(-turnRate * dt, Math.min(turnRate * dt, diff));
+                // Ease speed in corners; keep a steady ink flow on straights.
+                const align = 1 - Math.min(1, Math.abs(diff) / Math.PI);
+                const writeSpeed = 175 + 55 * align;
+                this.x += Math.cos(this.dir) * writeSpeed * dt;
+                this.y += Math.sin(this.dir) * writeSpeed * dt;
+                // Advance along the ribbon when close enough to the current knot.
+                while (this.eggIndex < this.eggPath.length) {
+                    const p = this.eggPath[this.eggIndex];
+                    if (Math.hypot(p.x - this.x, p.y - this.y) > 14) break;
+                    this.eggIndex++;
                 }
-                this.tailPhase += dt * 10;
-                if (Math.random() < 0.25) {
-                    water.disturb(this.x, this.y, 6, 28);
+                // Also advance if we have mostly passed the waypoint along our heading.
+                if (this.eggIndex < this.eggPath.length) {
+                    const p = this.eggPath[this.eggIndex];
+                    const tox = p.x - this.x, toy = p.y - this.y;
+                    if (tox * Math.cos(this.dir) + toy * Math.sin(this.dir) < -2) {
+                        this.eggIndex++;
+                    }
+                }
+                if (this.trailDrop <= 0) {
+                    this.trailDrop = 0.018;
+                    this._writePathI = (this._writePathI || 0) + 1;
+                    pushRainbowTrail(this.x, this.y, 8, this._writePathI);
+                }
+                this.tailPhase += dt * 9;
+                if (Math.random() < 0.2) {
+                    water.disturb(this.x, this.y, 6, 24);
                 }
                 if (this.eggIndex >= this.eggPath.length) {
                     this.rainbowPhase = "exit";
                     this._exitDir = undefined;
-                    // Afterglow: keep the finished letters for a few seconds, then fade.
                     for (const p of rainbowScriptTrail) {
                         p.life = Math.max(p.life, p.age + 4.5);
                     }
@@ -2439,16 +2729,21 @@ class Fish {
                 else this._exitDir = Math.PI / 2;
             }
             desired = this._exitDir;
-            speed = this.baseSpeed * CONFIG.rainbowSpeed * 1.2;
+            speed = this.baseSpeed * CONFIG.rainbowSpeed * 1.15;
             this.trailDrop -= dt;
             if (this.trailDrop <= 0) {
                 this.trailDrop = 0.04;
-                pushRainbowTrail(this.x, this.y, 2.8, 999);
+                this._writePathI = (this._writePathI || 0) + 1;
+                pushRainbowTrail(this.x, this.y, 2.8, this._writePathI);
             }
             const m = this.size * 2;
             if (this.x < -m || this.x > viewW + m || this.y < -m || this.y > viewH + m) {
                 this.dead = true;
             }
+        } else if (this.debrisFlee && !this.isRainbow && !this.isMonster) {
+            // Flinch away from hauled lake debris.
+            desired = Math.atan2(this.y - this.debrisFlee.y, this.x - this.debrisFlee.x);
+            speed = this.baseSpeed * (1.6 + (this.debrisFlee.force || 0.5));
         } else if (this.petTimer > 0 && !this.isRainbow && !this.isMonster) {
             desired = this.wander(dt);
             speed = this.baseSpeed * 0.25;
@@ -2571,6 +2866,21 @@ class Fish {
         if (this.type.dart && this.petTimer <= 0 && !this.rainbowLeaving && !this.isRainbow) {
             speed *= 1 + 0.5 * Math.max(0, Math.sin(this.age * 6));
         }
+        // Exotic odd swims also shape cruising speed.
+        if (this.type.odd && this.petTimer <= 0 && !this.rainbowLeaving && !this.isRainbow) {
+            if (this.type.odd === "spiral") speed *= 0.78 + 0.22 * Math.sin(this.age * 1.7);
+            else if (this.type.odd === "jitter") speed *= 0.7 + 0.9 * Math.random();
+            else if (this.type.odd === "glide") {
+                if (this._glideBurst > 0) {
+                    this._glideBurst -= dt;
+                    speed *= 1.55;
+                } else {
+                    speed *= 0.55;
+                }
+            } else if (this.type.odd === "drift") {
+                speed *= 0.65;
+            }
+        }
 
         // Steer away from the banks (unless exiting or locked on a chase).
         if (!freeRoam && !hardChase) {
@@ -2612,6 +2922,39 @@ class Fish {
     }
 
     wander(dt) {
+        const odd = this.type.odd;
+        if (odd === "spiral") {
+            this._spiral = (this._spiral || 0) + dt * 2.4;
+            return this.dir + 0.55 + Math.sin(this._spiral) * 1.35;
+        }
+        if (odd === "zigzag") {
+            this._zigT = (this._zigT || 0) - dt;
+            if (this._zigT <= 0) {
+                this._zigT = 0.28 + Math.random() * 0.42;
+                this._wanderDir = this.dir + (Math.random() < 0.5 ? -1 : 1) * (0.85 + Math.random() * 0.9);
+            }
+            return this._wanderDir !== undefined ? this._wanderDir : this.dir;
+        }
+        if (odd === "jitter") {
+            return this.dir + (Math.random() - 0.5) * 2.8;
+        }
+        if (odd === "drift") {
+            this.wanderTimer -= dt;
+            if (this.wanderTimer <= 0) {
+                this.wanderTimer = 1.4 + Math.random() * 1.8;
+                this._wanderDir = Math.random() * Math.PI * 2;
+            }
+            return this._wanderDir !== undefined ? this._wanderDir : this.dir;
+        }
+        if (odd === "glide") {
+            this._glideT = (this._glideT || 0) - dt;
+            if (this._glideT <= 0) {
+                this._glideT = 1.6 + Math.random() * 2.2;
+                this._wanderDir = this.dir + (Math.random() - 0.5) * 2.2;
+                this._glideBurst = 0.55;
+            }
+            return this._wanderDir !== undefined ? this._wanderDir : this.dir;
+        }
         this.wanderTimer -= dt;
         if (this.wanderTimer <= 0) {
             this.wanderTimer = 1 + Math.random() * 2;
@@ -2814,9 +3157,10 @@ class Fish {
         ctx.scale(s, s);
         ctx.rotate(this.dir);
         // Golden fish settle on the lakebed and stay visible (dimmer) until refresh.
+        const ghost = this.type.ghost || 1;
         ctx.globalAlpha = this.golden
             ? (0.42 + 0.38 * (1 - sink))
-            : 0.9;
+            : 0.9 * ghost;
 
         if (this.golden) {
             ctx.shadowColor = `rgba(255,215,90,${0.55 * (1 - sink * 0.7)})`;
@@ -2830,6 +3174,9 @@ class Fish {
         } else if (this.isPredator) {
             ctx.shadowColor = "rgba(160,20,30,0.75)";
             ctx.shadowBlur = 14;
+        } else if (this.type.exotic) {
+            ctx.shadowColor = "rgba(120,180,200,0.55)";
+            ctx.shadowBlur = 12;
         } else {
             ctx.shadowColor = "rgba(20,50,70,0.6)";
             ctx.shadowBlur = 8;
@@ -2913,7 +3260,10 @@ class Fish {
             ctx.ellipse(0, 0, L * 0.55, W, 0, 0, Math.PI * 2);
             ctx.fill();
         } else if (this.isPredator && !this.isRainbow && !this.golden) {
-            ctx.fillStyle = "rgba(120,10,20,0.22)";
+            // Red menace fades as the fish is soothed toward redemption.
+            const soothe = Math.min(1, (this.evilPetProgress || 0) / CONFIG.evilSootheTime);
+            const menace = 0.22 * (1 - soothe * 0.85);
+            ctx.fillStyle = `rgba(120,10,20,${menace})`;
             ctx.beginPath();
             ctx.ellipse(0, 0, L * 0.55, W, 0, 0, Math.PI * 2);
             ctx.fill();
@@ -2953,8 +3303,52 @@ class Fish {
                 ctx.fill();
             }
         }
+        drawCreatureHat(ctx, L, W, this.hatSeed);
         ctx.restore();
     }
+}
+
+// Tiny festive hats for pond life once the gold-fish unlock is earned.
+function drawCreatureHat(ctx, L, W, seed) {
+    if (!hatsOn) return;
+    const kind = Math.floor((seed || 0) * 3) % 3;
+    const hx = L * 0.02;
+    const hy = -W * (1.05 + (kind === 1 ? 0.05 : 0));
+    ctx.save();
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = Math.min(1, (ctx.globalAlpha || 1) * 1.05);
+    if (kind === 0) {
+        // Little top hat.
+        ctx.fillStyle = "#2a2430";
+        ctx.fillRect(hx - L * 0.11, hy - L * 0.2, L * 0.22, L * 0.16);
+        ctx.fillStyle = "#c9a24b";
+        ctx.fillRect(hx - L * 0.11, hy - L * 0.08, L * 0.22, L * 0.03);
+        ctx.fillStyle = "#2a2430";
+        ctx.fillRect(hx - L * 0.17, hy - L * 0.05, L * 0.34, L * 0.05);
+    } else if (kind === 1) {
+        // Party cone.
+        ctx.fillStyle = "#d45a6a";
+        ctx.beginPath();
+        ctx.moveTo(hx, hy - L * 0.28);
+        ctx.lineTo(hx - L * 0.13, hy);
+        ctx.lineTo(hx + L * 0.13, hy);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#f0d060";
+        ctx.beginPath();
+        ctx.arc(hx, hy - L * 0.28, Math.max(1.2, L * 0.035), 0, Math.PI * 2);
+        ctx.fill();
+    } else {
+        // Soft bowler.
+        ctx.fillStyle = "#3a4a68";
+        ctx.beginPath();
+        ctx.ellipse(hx, hy - L * 0.02, L * 0.15, L * 0.1, 0, Math.PI, Math.PI * 2);
+        ctx.fill();
+        ctx.fillRect(hx - L * 0.18, hy - L * 0.03, L * 0.36, L * 0.05);
+        ctx.fillStyle = "#c9a24b";
+        ctx.fillRect(hx - L * 0.15, hy - L * 0.03, L * 0.3, L * 0.02);
+    }
+    ctx.restore();
 }
 
 function rand(a, b) { return a + Math.random() * (b - a); }
@@ -2993,6 +3387,7 @@ let repopulating = false;
 let repopTimer = 0;
 let whaleCheckTimer = 0;
 let reptileCheckTimer = 0;
+let exoticCheckTimer = 0;
 
 class Reptile {
     constructor(kind) {
@@ -3142,6 +3537,7 @@ class Reptile {
         ctx.beginPath();
         ctx.arc(L * 0.22, -W * 0.35, Math.max(0.8, L * 0.015), 0, Math.PI * 2);
         ctx.fill();
+        drawCreatureHat(ctx, L, W, this.kind === "alligator" ? 0.15 : 0.55);
         ctx.restore();
     }
 }
@@ -3274,6 +3670,8 @@ function resetPond() {
     droplets.length = 0;
     rainbowScriptTrail.length = 0;
     grabbedObstacle = null;
+    grabAim = null;
+    cancelGoldLift();
     petStreak = 0;
     guaranteeRainbow = false;
     repopulating = true;
@@ -3441,6 +3839,7 @@ class Shark {
         ctx.beginPath();
         ctx.arc(L * 0.3, -W * 0.18, Math.max(1.4, L * 0.035), 0, Math.PI * 2);
         ctx.fill();
+        drawCreatureHat(ctx, L, W, 0.82);
         ctx.restore();
     }
 }
@@ -3599,13 +3998,19 @@ class Whale {
                 ctx.fill();
             }
         }
+        drawCreatureHat(ctx, L, W, 0.05);
         ctx.restore();
     }
 }
 
 // Create a fish at a random bank, swimming inward (for repopulation).
-function edgeFish() {
-    const type = FISH_TYPES[Math.floor(Math.random() * FISH_TYPES.length)];
+function edgeFish(forceExotic) {
+    let type;
+    if (forceExotic || Math.random() < CONFIG.exoticEdgeChance) {
+        type = EXOTIC_TYPES[Math.floor(Math.random() * EXOTIC_TYPES.length)];
+    } else {
+        type = FISH_TYPES[Math.floor(Math.random() * FISH_TYPES.length)];
+    }
     const f = new Fish(type);
     const side = Math.floor(Math.random() * 4);
     if (side === 0) { f.x = -20; f.y = Math.random() * viewH; f.dir = 0; }
@@ -3635,6 +4040,18 @@ function manageEcosystem(dt) {
         if (!whale && !shark && !repopulating && !rainbowExiting && !povAttack
             && swimmers.length > 0 && Math.random() < CONFIG.whaleChance) {
             whale = new Whale();
+        }
+    }
+
+    // Medium-rare exotic visitors: odd swimmers, more often than crocs.
+    exoticCheckTimer += dt;
+    if (exoticCheckTimer >= CONFIG.exoticInterval) {
+        exoticCheckTimer = 0;
+        const exoticCount = swimmers.filter((f) => f.type && f.type.exotic).length;
+        if (!whale && !shark && !repopulating && !rainbowExiting && !povAttack
+            && swimmers.length > 0 && exoticCount < 3
+            && Math.random() < CONFIG.exoticChance) {
+            fishes.push(edgeFish(true));
         }
     }
 
@@ -3812,16 +4229,134 @@ function chargeFromHold(heldSec, ev) {
     return clamp01(v);
 }
 
+function goldenFishAt(x, y) {
+    let best = null, bd = 42;
+    for (const f of fishes) {
+        if (!f.golden || f.dead || f.lifting) continue;
+        // Only settled gold can be lifted out of the pond.
+        if ((f.sinkDepth || 0) < 0.85) continue;
+        const d = Math.hypot(x - f.x, y - f.y);
+        const reach = Math.max(26, f.size * 0.75);
+        if (d < reach && d < bd) { bd = d; best = f; }
+    }
+    return best;
+}
+
+function updateHatsButtonUI() {
+    const btn = document.getElementById("hats-btn");
+    const cost = document.getElementById("hats-cost");
+    if (!btn || !cost) return;
+    if (hatsUnlocked) {
+        btn.classList.remove("locked", "ready");
+        btn.classList.toggle("on", hatsOn);
+        btn.setAttribute("aria-disabled", "false");
+        btn.setAttribute("aria-pressed", hatsOn ? "true" : "false");
+        btn.title = hatsOn ? "Hats on" : "Hats off";
+        cost.textContent = "";
+    } else {
+        const left = Math.max(0, HATS_GOLD_COST - goldCollected);
+        btn.classList.add("locked");
+        btn.classList.toggle("ready", left === 0);
+        btn.classList.remove("on");
+        btn.setAttribute("aria-disabled", left === 0 ? "false" : "true");
+        btn.setAttribute("aria-pressed", "false");
+        cost.textContent = String(left === 0 ? HATS_GOLD_COST : left);
+        btn.title = left === 0
+            ? "Unlock hats"
+            : "Hats: " + left + " gold fish";
+    }
+}
+
+function updateGoldCountUI() {
+    const el = document.getElementById("gold-count");
+    const wrap = document.getElementById("gold-counter");
+    if (el) el.textContent = String(goldCollected);
+    if (wrap) {
+        wrap.classList.toggle("active", goldCollected > 0 || !!liftState || hatsUnlocked);
+        wrap.title = goldCollected + " of " + HATS_GOLD_COST + " gold fish";
+    }
+}
+
+function cancelGoldLift() {
+    if (!liftState) return;
+    const f = liftState.fish;
+    if (f && !f.dead) {
+        f.lifting = false;
+        f.x = liftState.originX;
+        f.y = liftState.originY;
+        f.sinkDepth = 1;
+    }
+    liftState = null;
+    updateGoldCountUI();
+}
+
+function collectGoldFish(fish) {
+    if (!fish || fish.dead) return;
+    fish.dead = true;
+    fish.lifting = false;
+    liftState = null;
+    goldCollected = Math.min(HATS_GOLD_COST, goldCollected + 1);
+    const pan = Math.max(-1, Math.min(1, (fish.x / viewW) * 2 - 1));
+    Audio.goldChime(pan);
+    water.disturb(fish.x, Math.max(20, fish.y), fish.size, 160);
+    spawnSplash(fish.x, Math.max(24, fish.y), 10, 0.45);
+    updateHatsButtonUI();
+    updateGoldCountUI();
+    markFirstInteraction();
+}
+
+// Hold still on a gold fish: it rises and brightens over GOLD_HOLD_TIME seconds.
+function updateGoldHold(dt) {
+    if (!liftState || !liftState.holding) return;
+    const fish = liftState.fish;
+    if (!fish || fish.dead) {
+        liftState = null;
+        return;
+    }
+    liftState.holdTime += dt;
+    const progress = Math.min(1, liftState.holdTime / GOLD_HOLD_TIME);
+    fish.lifting = true;
+    fish.x = liftState.originX;
+    fish.y = liftState.originY - progress * 58;
+    fish.sinkDepth = Math.max(0.05, 1 - progress * 0.95);
+    if (Math.random() < 0.12 + progress * 0.2) {
+        water.disturb(fish.x, fish.y, fish.size * (0.35 + progress * 0.3), 30 + progress * 40);
+    }
+    updateGoldCountUI();
+    if (progress >= 1) collectGoldFish(fish);
+}
+
 function onPointerDown(ev) {
     Audio.ensure();
-    // Right click: drag solid debris, or pet whale / shark / fish.
+    // Right click: hold gold, drag debris, or pet whale / shark / fish.
     if (ev.button === 2) {
         ev.preventDefault();
         if (mode !== "pond") return;
+        const gold = goldenFishAt(ev.clientX, ev.clientY);
+        if (gold) {
+            gold.lifting = true;
+            liftState = {
+                fish: gold,
+                originX: gold.x,
+                originY: gold.y,
+                holdTime: 0,
+                holding: true,
+            };
+            water.disturb(gold.x, gold.y, gold.size * 0.5, 70);
+            updateGoldCountUI();
+            return;
+        }
         const ob = obstacleAt(ev.clientX, ev.clientY);
         if (ob) {
             grabbedObstacle = ob;
             grabOffset = { x: ob.x - ev.clientX, y: ob.y - ev.clientY };
+            const pad = 24;
+            grabAim = {
+                x: Math.max(pad, Math.min(viewW - pad, ev.clientX + grabOffset.x)),
+                y: Math.max(pad, Math.min(viewH - pad, ev.clientY + grabOffset.y)),
+            };
+            ob.vx = 0;
+            ob.vy = 0;
             water.disturb(ob.x, ob.y, obstacleRadius(ob) * 0.6, 80);
             return;
         }
@@ -3834,13 +4369,19 @@ function onPointerDown(ev) {
 function onPointerMove(ev) {
     pointerNow = { x: ev.clientX, y: ev.clientY };
     if (mode === "pond" && (ev.buttons & 2)) {
+        if (liftState && liftState.holding) {
+            // Stay near where you grabbed; the fish rises on its own.
+            const d = Math.hypot(ev.clientX - liftState.originX, ev.clientY - liftState.originY);
+            if (d > 56) cancelGoldLift();
+            return;
+        }
         if (grabbedObstacle) {
             const pad = 24;
-            grabbedObstacle.x = Math.max(pad, Math.min(viewW - pad, ev.clientX + grabOffset.x));
-            grabbedObstacle.y = Math.max(pad, Math.min(viewH - pad, ev.clientY + grabOffset.y));
-            if (Math.random() < 0.35) {
-                water.disturb(grabbedObstacle.x, grabbedObstacle.y, obstacleRadius(grabbedObstacle) * 0.45, 55);
-            }
+            // Only update the aim point; the debris follows with water resistance.
+            grabAim = {
+                x: Math.max(pad, Math.min(viewW - pad, ev.clientX + grabOffset.x)),
+                y: Math.max(pad, Math.min(viewH - pad, ev.clientY + grabOffset.y)),
+            };
             return;
         }
         petPondLifeAt(ev.clientX, ev.clientY, true);
@@ -3848,9 +4389,15 @@ function onPointerMove(ev) {
 }
 function onPointerUp(ev) {
     if (ev.button === 2) {
+        if (liftState) {
+            // Released too early: the gold fish settles back on the lakebed.
+            cancelGoldLift();
+        }
         if (grabbedObstacle) {
             water.disturb(grabbedObstacle.x, grabbedObstacle.y, obstacleRadius(grabbedObstacle) * 0.7, 120);
+            // Keep velocity so it coasts through the water after release.
             grabbedObstacle = null;
+            grabAim = null;
         }
         return;
     }
@@ -3984,7 +4531,11 @@ function drawCharge(ctx) {
 canvas.addEventListener("pointerdown", onPointerDown);
 canvas.addEventListener("pointermove", onPointerMove);
 window.addEventListener("pointerup", onPointerUp);
-window.addEventListener("pointercancel", () => { grabbedObstacle = null; });
+window.addEventListener("pointercancel", () => {
+    cancelGoldLift();
+    grabbedObstacle = null;
+    grabAim = null;
+});
 
 // ===========================================================================
 // MODE TOGGLE (single click = switch surface, double click = ambient bed)
@@ -4030,6 +4581,25 @@ dropSoundBtn.addEventListener("click", (e) => {
     });
 });
 
+const hatsBtn = document.getElementById("hats-btn");
+hatsBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    Audio.ensure();
+    if (!hatsUnlocked) {
+        if (goldCollected >= HATS_GOLD_COST) {
+            goldCollected = 0;
+            hatsUnlocked = true;
+            hatsOn = true;
+            Audio.goldChime(0);
+            updateHatsButtonUI();
+        }
+        return;
+    }
+    hatsOn = !hatsOn;
+    updateHatsButtonUI();
+});
+updateHatsButtonUI();
+
 // ===========================================================================
 // RENDER LOOP
 // ===========================================================================
@@ -4052,12 +4622,14 @@ function frame(now) {
         drawSticks(ctx, dt);
         drawReeds(ctx, sceneryTime, dt);
         drawCattails(ctx, sceneryTime, dt);
+        updateObstacles(dt);
         drawObstacles(ctx, dt);
         // Green-food plants stay permanently (until refresh).
         drawPondPlants(ctx, sceneryTime, dt);
 
         updateDroplets(dt);
         updateRainbowTrail(dt);
+        updateGoldHold(dt);
 
         // Fish live beneath the surface, so draw them first.
         if (!povAttack) {
@@ -4128,4 +4700,5 @@ function frame(now) {
 resize();
 rebuildScenery();
 initFish();
+updateGoldCountUI();
 requestAnimationFrame(frame);
