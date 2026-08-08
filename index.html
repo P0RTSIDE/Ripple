@@ -15,6 +15,12 @@
         <span id="mode-icon"></span>
     </button>
 
+    <!-- Gold fish collection progress for the hats unlock. -->
+    <div id="gold-counter" aria-live="polite" title="Gold fish collected">
+        <span class="ico ico-gold"></span>
+        <span id="gold-count">0</span><span class="gold-sep">/</span><span>5</span>
+    </div>
+
     <!-- Pond-only aesthetics and drop-sound controls: faint until hovered. -->
     <div id="pond-controls" aria-label="Pond options">
         <button type="button" class="scenery-btn on" data-scenery="stones" title="Shore stones" aria-pressed="true">
@@ -37,6 +43,10 @@
         </button>
         <button type="button" class="scenery-btn on" data-scenery="debris" title="Lake debris (drag with right click)" aria-pressed="true">
             <span class="ico ico-debris"></span>
+        </button>
+        <button type="button" id="hats-btn" class="locked" title="Hats: 5 gold fish" aria-disabled="true" aria-pressed="false">
+            <span class="ico ico-hat"></span>
+            <span id="hats-cost">5</span>
         </button>
         <button type="button" id="drop-sound-btn" title="Drop sound: soft" aria-label="Cycle drop sound">
             <span class="ico ico-sound"></span>

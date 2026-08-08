@@ -100,6 +100,48 @@ body.pond #mode-icon::after {
     opacity: 0.7;
 }
 
+/* Top-left gold fish tally for the hats unlock. */
+#gold-counter {
+    position: fixed;
+    left: 16px;
+    top: 16px;
+    z-index: 10;
+    display: none;
+    align-items: center;
+    gap: 6px;
+    color: rgba(230, 200, 100, 0.85);
+    font: 300 13px/1 "Segoe UI", Roboto, sans-serif;
+    letter-spacing: 0.08em;
+    opacity: 0.35;
+    transition: opacity 0.35s ease;
+    pointer-events: none;
+}
+
+body.pond #gold-counter {
+    display: flex;
+}
+
+#gold-counter.active {
+    opacity: 0.9;
+}
+
+#gold-counter .gold-sep {
+    opacity: 0.55;
+}
+
+#gold-count {
+    min-width: 0.7em;
+    text-align: right;
+}
+
+.ico-gold {
+    width: 12px;
+    height: 10px;
+    border: 1.4px solid currentColor;
+    border-radius: 50% 45% 50% 45%;
+    box-shadow: inset 0 0 0 1px rgba(255, 220, 120, 0.15);
+}
+
 /* Pond aesthetics + drop sound: tucked bottom-left, quiet until hovered. */
 #pond-controls {
     position: fixed;
@@ -123,7 +165,8 @@ body.pond #pond-controls {
 }
 
 .scenery-btn,
-#drop-sound-btn {
+#drop-sound-btn,
+#hats-btn {
     width: 34px;
     min-height: 34px;
     display: flex;
@@ -142,20 +185,51 @@ body.pond #pond-controls {
 
 .scenery-btn:hover,
 #drop-sound-btn:hover,
+#hats-btn:hover,
 .scenery-btn:focus-visible,
-#drop-sound-btn:focus-visible {
+#drop-sound-btn:focus-visible,
+#hats-btn:focus-visible {
     outline: none;
     border-color: rgba(200, 224, 210, 0.55);
     color: var(--ink);
 }
 
-.scenery-btn.on {
+.scenery-btn.on,
+#hats-btn.on {
     border-color: rgba(160, 200, 170, 0.55);
     color: rgba(200, 230, 210, 0.9);
 }
 
 .scenery-btn:not(.on) {
     opacity: 0.45;
+}
+
+#hats-btn.locked {
+    opacity: 0.42;
+    border-style: dashed;
+    border-color: rgba(200, 170, 80, 0.35);
+    color: rgba(220, 190, 100, 0.7);
+}
+
+#hats-btn.locked.ready {
+    opacity: 0.9;
+    border-color: rgba(230, 200, 90, 0.75);
+    color: rgba(255, 230, 140, 0.95);
+    box-shadow: 0 0 10px rgba(220, 180, 60, 0.18);
+}
+
+#hats-btn:not(.locked):not(.on) {
+    opacity: 0.45;
+}
+
+#hats-cost {
+    font: 300 9px/1 "Segoe UI", Roboto, sans-serif;
+    letter-spacing: 0.06em;
+    color: rgba(235, 200, 90, 0.95);
+}
+
+#hats-btn:not(.locked) #hats-cost {
+    display: none;
 }
 
 #drop-sound-btn {
@@ -258,6 +332,34 @@ body.pond #pond-controls {
     border: 1.4px solid currentColor;
     border-radius: 45% 40% 50% 55%;
     transform: rotate(12deg);
+}
+
+.ico-hat {
+    width: 12px;
+    height: 10px;
+}
+
+.ico-hat::before {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 0;
+    width: 6px;
+    height: 5px;
+    border: 1.3px solid currentColor;
+    border-bottom: none;
+    border-radius: 2px 2px 0 0;
+}
+
+.ico-hat::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: 1px;
+    width: 12px;
+    height: 2px;
+    background: currentColor;
+    border-radius: 1px;
 }
 
 .ico-sound {
