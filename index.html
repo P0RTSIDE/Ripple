@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Ripple</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <!-- The whole experience is a single full-viewport canvas surface. -->
+    <canvas id="surface"></canvas>
+
+    <!-- Minimal mode toggle, tucked top-right, low opacity until hovered. -->
+    <button id="mode-toggle" type="button" aria-label="Switch between window and pond" title="Switch surface">
+        <span id="mode-icon"></span>
+    </button>
+
+    <!-- On-load hint that fades out after the first interaction and never returns. -->
+    <div id="hint">click anywhere</div>
+
+    <script src="main.js"></script>
+</body>
+</html>
