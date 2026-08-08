@@ -213,6 +213,53 @@ body.pond #pond-controls {
     transform: rotate(-20deg);
 }
 
+.ico-cattail {
+    width: 2px;
+    height: 11px;
+    background: currentColor;
+    border-radius: 2px;
+    margin: 0 auto;
+    box-shadow: none;
+}
+
+.ico-cattail::after {
+    content: "";
+    position: absolute;
+    left: -2px;
+    top: 0;
+    width: 6px;
+    height: 7px;
+    border: 1.3px solid currentColor;
+    border-radius: 3px;
+    background: transparent;
+}
+
+.ico-duckweed {
+    width: 12px;
+    height: 10px;
+}
+
+.ico-duckweed::before,
+.ico-duckweed::after {
+    content: "";
+    position: absolute;
+    width: 5px;
+    height: 4px;
+    border: 1.2px solid currentColor;
+    border-radius: 50%;
+}
+
+.ico-duckweed::before { left: 0; top: 3px; }
+.ico-duckweed::after { right: 0; top: 1px; }
+
+.ico-debris {
+    width: 11px;
+    height: 8px;
+    border: 1.4px solid currentColor;
+    border-radius: 45% 40% 50% 55%;
+    transform: rotate(12deg);
+}
+
 .ico-sound {
     width: 10px;
     height: 8px;
