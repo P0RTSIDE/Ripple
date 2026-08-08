@@ -15,6 +15,26 @@
         <span id="mode-icon"></span>
     </button>
 
+    <!-- Pond-only aesthetics and drop-sound controls: faint until hovered. -->
+    <div id="pond-controls" aria-label="Pond options">
+        <button type="button" class="scenery-btn on" data-scenery="stones" title="Shore stones" aria-pressed="true">
+            <span class="ico ico-stone"></span>
+        </button>
+        <button type="button" class="scenery-btn on" data-scenery="sticks" title="Fallen sticks" aria-pressed="true">
+            <span class="ico ico-stick"></span>
+        </button>
+        <button type="button" class="scenery-btn on" data-scenery="reeds" title="Reeds" aria-pressed="true">
+            <span class="ico ico-reed"></span>
+        </button>
+        <button type="button" class="scenery-btn on" data-scenery="lilies" title="Lily pads" aria-pressed="true">
+            <span class="ico ico-lily"></span>
+        </button>
+        <button type="button" id="drop-sound-btn" title="Drop sound: soft" aria-label="Cycle drop sound">
+            <span class="ico ico-sound"></span>
+            <span id="drop-sound-label">soft</span>
+        </button>
+    </div>
+
     <!-- On-load hint that fades out after the first interaction and never returns. -->
     <div id="hint">click anywhere</div>
 
