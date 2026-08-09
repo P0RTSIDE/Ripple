@@ -1351,6 +1351,20 @@ function velocityToRings(v) {
     return 2 + Math.round(v * 2);
 }
 function clamp01(n) { return Math.max(0, Math.min(1, n)); }
+function lerp(a, b, t) { return a + (b - a) * t; }
+function smoothstep(edge0, edge1, x) {
+    const t = clamp01((x - edge0) / (edge1 - edge0 || 1));
+    return t * t * (3 - 2 * t);
+}
+
+// Bigger legal prey yields more growth than tiny snacks.
+// preyRatio = prey.size / eater.size (0..1 for legal prey still smaller than the eater).
+// Near-equal prey (~0.85–0.99) lands near highMult; minnows stay near lowMult.
+function preySizeGainMult(eaterSize, preySize) {
+    if (!(eaterSize > 0) || !(preySize > 0)) return 1;
+    const preyRatio = Math.min(1, preySize / eaterSize);
+    return lerp(0.65, 1.55, smoothstep(0.35, 0.95, preyRatio));
+}
 
 // ===========================================================================
 // HARMONY QUANTIZATION
@@ -5259,16 +5273,7 @@ class Fish {
 
     // Stable chase: slow near the target and when turning hard so rainbow fish do not softlock.
     chaseToward(tx, ty, baseSpeed) {
-        const dx = tx - this.x;
-        const dy = ty - this.y;
-        const dist = Math.hypot(dx, dy) || 1;
-        const desired = Math.atan2(dy, dx);
-        const slowR = Math.max(32, this.size * 2.4);
-        let speed = baseSpeed;
-        if (dist < slowR) speed *= Math.max(0.2, dist / slowR);
-        const angErr = Math.abs(normAngle(desired - this.dir));
-        if (angErr > 0.45) speed *= Math.max(0.3, 1 - angErr / Math.PI);
-        return { desired, speed, dist };
+        return chaseTowardPoint(this, tx, ty, baseSpeed);
     }
 
     pet() {
@@ -5542,16 +5547,14 @@ class Fish {
             const d = Math.hypot(r.x - this.x, r.y - this.y);
             if (d < CONFIG.fleeRange * 1.8) return { x: r.x, y: r.y };
         }
-        if (swordfish && !swordfish.dead && !swordfish.tamed && !swordfish.isHero
-            && !swordfish.golden && this.size <= swordfish.size * 1.02) {
+        if (isWildNightPredator(swordfish) && this.size <= swordfish.size * 1.02) {
             const d = Math.hypot(swordfish.x - this.x, swordfish.y - this.y);
             if (d < CONFIG.fleeRange * 1.9
                 && !(this.isHero && this.size > swordfish.size)) {
                 return { x: swordfish.x, y: swordfish.y };
             }
         }
-        if (octopus && !octopus.dead && !octopus.tamed && !octopus.isHero
-            && !octopus.golden && this.size <= octopus.size * 1.02) {
+        if (isWildNightPredator(octopus) && this.size <= octopus.size * 1.02) {
             const d = Math.hypot(octopus.x - this.x, octopus.y - this.y);
             if (d < CONFIG.fleeRange * 1.9
                 && !(this.isHero && this.size > octopus.size)) {
@@ -5585,35 +5588,19 @@ class Fish {
     }
 
     findEdibleSwordfish() {
-        if (!swordfish || swordfish.dead || swordfish.tamed || swordfish.isHero
-            || swordfish.golden || swordfish.isRainbow) return null;
-        if (this.size <= swordfish.size) return null;
-        const d = Math.hypot(swordfish.x - this.x, swordfish.y - this.y);
-        return d < CONFIG.huntRange * (this.isHero ? 1.7 : 1.35) ? swordfish : null;
+        return findEdibleWildSwordfish(this);
     }
 
     findEdibleOctopus() {
-        if (!octopus || octopus.dead || octopus.tamed || octopus.isHero
-            || octopus.golden || octopus.isRainbow) return null;
-        if (this.size <= octopus.size) return null;
-        const d = Math.hypot(octopus.x - this.x, octopus.y - this.y);
-        return d < CONFIG.huntRange * (this.isHero ? 1.7 : 1.35) ? octopus : null;
+        return findEdibleWildOctopus(this);
     }
 
     gainSword() {
-        this.hasSword = true;
-        const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
-        Audio.sharkStrike(pan);
-        water.disturb(this.x, this.y, this.size * 0.8, 300);
-        spawnSplash(this.x, this.y, this.size * 0.4, 0.55);
+        grantSwordTrait(this);
     }
 
     gainTentacles() {
-        this.hasTentacles = true;
-        const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
-        Audio.predatorEat(pan);
-        water.disturb(this.x, this.y, this.size * 0.9, 320);
-        spawnSplash(this.x, this.y, this.size * 0.45, 0.6);
+        grantTentacleTrait(this);
     }
 
     // Sword tip in world space (inherited bill).
@@ -5840,7 +5827,10 @@ class Fish {
             return;
         }
         // Held by an octopus tentacle: body is reeled by the octopus update.
-        if (this.tentacleGrab && this.tentacleGrab.owner === "octopus") return;
+        // Larger heroes break free so wrap cannot block eating a smaller wild octopus.
+        if (this.tentacleGrab && this.tentacleGrab.owner === "octopus") {
+            if (!releaseIfHeroOutgrowsOctopus(this)) return;
+        }
 
         // Continuous stroking soothes evil fish even when quiet pet refreshes skip notes.
         if (this.petTimer > 0 && this.isPredator && !this.isMonster
@@ -6068,25 +6058,16 @@ class Fish {
                             meal.dead = true;
                             this.becomeMonster();
                         }
-                    } else if (sf) {
-                        desired = Math.atan2(sf.y - this.y, sf.x - this.x);
-                        speed = this.baseSpeed * CONFIG.predatorChaseMult * 1.1;
-                        const dist = Math.hypot(sf.x - this.x, sf.y - this.y);
-                        if (dist < this.size * 0.5 + sf.size * 0.4 + 10) {
-                            sf.dead = true;
-                            swordfish = null;
-                            this.grow(sf.size * 0.4, { huge: true });
-                            this.gainSword();
-                        }
-                    } else if (oc) {
-                        desired = Math.atan2(oc.y - this.y, oc.x - this.x);
-                        speed = this.baseSpeed * CONFIG.predatorChaseMult * 1.1;
-                        const dist = Math.hypot(oc.x - this.x, oc.y - this.y);
-                        if (dist < this.size * 0.5 + oc.size * 0.4 + 10) {
-                            oc.dead = true;
-                            octopus = null;
-                            this.grow(oc.size * 0.4, { huge: true });
-                            this.gainTentacles();
+                    } else if (sf || oc) {
+                        const prey = sf || oc;
+                        const chase = this.chaseToward(
+                            prey.x, prey.y,
+                            this.baseSpeed * CONFIG.predatorChaseMult * 1.1
+                        );
+                        desired = chase.desired;
+                        speed = chase.speed;
+                        if (chase.dist < this.size * 0.5 + prey.size * 0.4 + 10) {
+                            consumeWildNightPredator(this, sf ? "swordfish" : "octopus");
                         }
                     } else {
                         // Evil fish prefer the nearest food over hunting other fish.
@@ -6148,33 +6129,13 @@ class Fish {
                         meal.dead = true;
                         this.heroFinishKill("reptile", gain);
                     }
-                } else if (nightSf) {
-                    const chase = this.chaseToward(
-                        nightSf.x, nightSf.y,
-                        this.baseSpeed * CONFIG.heroChaseMult
+                } else if (nightSf || nightOc) {
+                    const nightHunt = tryHeroHuntNightPredator(
+                        this, dt, this.baseSpeed * CONFIG.heroChaseMult
                     );
-                    desired = chase.desired;
-                    speed = chase.speed;
-                    if (chase.dist < this.size * 0.5 + nightSf.size * 0.4 + 10) {
-                        const gain = nightSf.size * 0.35;
-                        nightSf.dead = true;
-                        swordfish = null;
-                        this.heroFinishKill("swordfish", gain);
-                        this.gainSword();
-                    }
-                } else if (nightOc) {
-                    const chase = this.chaseToward(
-                        nightOc.x, nightOc.y,
-                        this.baseSpeed * CONFIG.heroChaseMult
-                    );
-                    desired = chase.desired;
-                    speed = chase.speed;
-                    if (chase.dist < this.size * 0.5 + nightOc.size * 0.4 + 10) {
-                        const gain = nightOc.size * 0.35;
-                        nightOc.dead = true;
-                        octopus = null;
-                        this.heroFinishKill("octopus", gain);
-                        this.gainTentacles();
+                    if (nightHunt) {
+                        desired = nightHunt.desired;
+                        speed = nightHunt.speed;
                     }
                 } else if (swordUse) {
                     desired = swordUse.desired;
@@ -6259,25 +6220,16 @@ class Fish {
                         meal.dead = true;
                         this.becomeMonster();
                     }
-                } else if (sf) {
-                    desired = Math.atan2(sf.y - this.y, sf.x - this.x);
-                    speed = this.baseSpeed * 1.75;
-                    const dist = Math.hypot(sf.x - this.x, sf.y - this.y);
-                    if (dist < this.size * 0.5 + sf.size * 0.4 + 10) {
-                        sf.dead = true;
-                        swordfish = null;
-                        this.grow(sf.size * 0.4, { huge: true });
-                        this.gainSword();
-                    }
-                } else if (oc) {
-                    desired = Math.atan2(oc.y - this.y, oc.x - this.x);
-                    speed = this.baseSpeed * 1.75;
-                    const dist = Math.hypot(oc.x - this.x, oc.y - this.y);
-                    if (dist < this.size * 0.5 + oc.size * 0.4 + 10) {
-                        oc.dead = true;
-                        octopus = null;
-                        this.grow(oc.size * 0.4, { huge: true });
-                        this.gainTentacles();
+                } else if (sf || oc) {
+                    const prey = sf || oc;
+                    const chase = this.chaseToward(
+                        prey.x, prey.y,
+                        this.baseSpeed * 1.75
+                    );
+                    desired = chase.desired;
+                    speed = chase.speed;
+                    if (chase.dist < this.size * 0.5 + prey.size * 0.4 + 10) {
+                        consumeWildNightPredator(this, sf ? "swordfish" : "octopus");
                     }
                 } else if (swordUse) {
                     desired = swordUse.desired;
@@ -6518,7 +6470,8 @@ class Fish {
             this.dead = true;
             this.prey = null;
             if (prey.prey === this) prey.prey = null;
-            prey.grow(this.size * 0.5);
+            // Reverse eat: prey is the eater; scale gain by how large this snack was.
+            prey.grow(this.size * 0.5 * preySizeGainMult(prey.size, this.size));
             Audio.predatorEat(pan);
             water.disturb(this.x, this.y, this.size, 320);
             spawnSplash(this.x, this.y, this.size * 0.6, 0.7);
@@ -6526,7 +6479,8 @@ class Fish {
         }
 
         prey.dead = true;
-        this.grow(prey.size * 0.5);
+        // Relatively large legal prey (high preyRatio) grants a bigger size boost than tiny fish.
+        this.grow(prey.size * 0.5 * preySizeGainMult(this.size, prey.size));
         const pan = Math.max(-1, Math.min(1, (prey.x / viewW) * 2 - 1));
         Audio.predatorEat(pan);
         water.disturb(prey.x, prey.y, prey.size, 320);
@@ -7710,6 +7664,7 @@ class Reptile {
     tame() {
         if (this.tamed || this.dead || this.duelMode || this.golden) return;
         this.tamed = true;
+        this.isHero = true; // tamed apex join heroes (can hunt wild night predators if larger)
         this.target = null;
         this.foodTarget = null;
         this.petCount = 0;
@@ -8083,21 +8038,29 @@ class Reptile {
         if (this.duelMode && shark && !shark.dead) {
             desired = Math.atan2(shark.y - this.y, shark.x - this.x);
             speed = this.speed * 1.2;
-        } else if (this.tamed) {
+        } else if (this.tamed || this.isHero) {
             this.target = null;
-            const foodChase = this.tryBiteFood(dt);
-            if (foodChase) {
-                desired = foodChase.desired;
-                speed = foodChase.speed;
+            const nightHunt = this.isHero
+                ? tryHeroHuntNightPredator(this, dt, this.speed * CONFIG.heroChaseMult * 0.85)
+                : null;
+            if (nightHunt) {
+                desired = nightHunt.desired;
+                speed = nightHunt.speed;
             } else {
-                this.wanderTimer = (this.wanderTimer || 0) - dt;
-                if (this.wanderTimer <= 0) {
-                    this.wanderTimer = 1.8 + Math.random() * 2.4;
-                    desired = this.dir + (Math.random() - 0.5) * 0.9;
+                const foodChase = this.tryBiteFood(dt);
+                if (foodChase) {
+                    desired = foodChase.desired;
+                    speed = foodChase.speed;
                 } else {
-                    desired = this._wanderDir != null ? this._wanderDir : this.dir;
+                    this.wanderTimer = (this.wanderTimer || 0) - dt;
+                    if (this.wanderTimer <= 0) {
+                        this.wanderTimer = 1.8 + Math.random() * 2.4;
+                        desired = this.dir + (Math.random() - 0.5) * 0.9;
+                    } else {
+                        desired = this._wanderDir != null ? this._wanderDir : this.dir;
+                    }
+                    this._wanderDir = desired;
                 }
-                this._wanderDir = desired;
             }
         } else {
             const specialFood = this.tryBiteFood(dt);
@@ -8708,7 +8671,7 @@ class Swordfish {
         let best = null, bd = CONFIG.huntRange * 2.2;
         for (const f of fishes) {
             if (f.dead || f.golden || f.isRainbow || f.isPlatinum || f.isMonster) continue;
-            if (f.size >= this.size * 0.95) continue;
+            if (f.size >= this.size) continue;
             const d = Math.hypot(f.x - this.x, f.y - this.y);
             if (d < bd) { bd = d; best = f; }
         }
@@ -8788,7 +8751,9 @@ class Swordfish {
         const eaten = before - meal.size;
         if (eaten > 0) {
             const sizeCap = Math.min(Math.min(viewW, viewH) * 0.45, CONFIG.swordfishSize[1] * 1.85);
-            this.size = Math.min(sizeCap, this.size + eaten * 0.62);
+            // Larger speared trophies (vs current size) digest into more growth.
+            const mealGain = eaten * 0.62 * preySizeGainMult(this.size, maxSize);
+            this.size = Math.min(sizeCap, this.size + mealGain);
             this.speed = Math.min(120, this.speed + eaten * 0.32);
             if (Math.random() < 0.08) {
                 water.disturb(
@@ -8849,8 +8814,17 @@ class Swordfish {
         let spd = this.speed * (this.tamed || this.isHero ? 0.55 : 0.85);
         let turnRate = this.tamed || this.isHero ? 2.2 : 3.4;
 
-        const foodChase = nightPredatorTryBiteFood(this, dt);
-        if (foodChase) {
+        const nightHunt = this.isHero
+            ? tryHeroHuntNightPredator(this, dt, this.speed * CONFIG.heroChaseMult * 0.8)
+            : null;
+        const foodChase = nightHunt ? null : nightPredatorTryBiteFood(this, dt);
+        if (nightHunt) {
+            this.target = null;
+            this.orcaHunt = false;
+            desired = nightHunt.desired;
+            spd = nightHunt.speed;
+            turnRate = 3.2;
+        } else if (foodChase) {
             this.target = null;
             this.orcaHunt = false;
             desired = foodChase.desired;
@@ -8878,21 +8852,24 @@ class Swordfish {
                 return;
             }
         } else if (this.orcaHunt && (!shark || shark.dead || !shark.isOrca)) {
-            // Orca died mid-hunt (croc, duel, feast race, etc.): still run the screen spear.
+            // Orca died mid-hunt (croc, duel, feast race, etc.): still run the screen spear
+            // only if this swordfish still strictly outsizes the orca reference size.
             this.orcaHunt = false;
             this.target = null;
-            beginSwordfishSpearEnding(this, { force: true });
+            if (this.size > CONFIG.orcaSize) {
+                beginSwordfishSpearEnding(this, { force: true });
+            }
             return;
         } else {
             this.orcaHunt = false;
             if (!this.target || this.target.dead || this.target.golden
                 || this.target.isRainbow || this.target.isPlatinum
-                || this.target.size >= this.size * 0.95) {
+                || this.target.size >= this.size) {
                 this.target = null;
                 let best = null, bd = CONFIG.huntRange * 1.9;
                 for (const f of fishes) {
                     if (f.dead || f.golden || f.isRainbow || f.isPlatinum || f.isMonster) continue;
-                    if (f.size >= this.size * 0.95) continue;
+                    if (f.size >= this.size) continue;
                     const d = Math.hypot(f.x - this.x, f.y - this.y);
                     if (d < bd) { bd = d; best = f; }
                 }
@@ -8902,7 +8879,8 @@ class Swordfish {
                 desired = Math.atan2(this.target.y - this.y, this.target.x - this.x);
                 spd = this.speed * 1.55;
                 turnRate = 4.2;
-                if (this.swordHits(this.target.x, this.target.y, this.target.size * 0.38 + 5)
+                if (this.target.size < this.size
+                    && this.swordHits(this.target.x, this.target.y, this.target.size * 0.38 + 5)
                     && this.spearCooldown <= 0) {
                     this.spear(this.target);
                 }
@@ -8937,10 +8915,11 @@ class Swordfish {
     }
 
     canSpearOrca() {
+        // Strict size gate: swordfish must be larger than the orca, not merely close.
         return !!(shark && !shark.dead && shark.isOrca && !shark.leaving && !shark.isHero
             && !this.tamed && !this.isHero && !this.golden && !this.plantMorph
             && !swordfishSpearEnding && !pondFinaleActive()
-            && this.size >= shark.size * 0.88);
+            && this.size > shark.size);
     }
 
     spear(prey) {
@@ -9245,7 +9224,8 @@ class Octopus {
         let best = null, bestScore = CONFIG.huntRange * 1.55;
         for (const f of fishes) {
             if (f.dead || f.golden || f.isRainbow || f.isPlatinum || f.isMonster) continue;
-            if (f.size >= this.size * 1.05) continue;
+            // Never grab fish that outsize the octopus (heroes must be free to hunt).
+            if (f.size >= this.size) continue;
             if (f.tentacleGrab) continue;
             const ang = Math.atan2(f.y - this.y, f.x - this.x);
             const facing = Math.abs(normAngle(ang - this.dir));
@@ -9264,8 +9244,7 @@ class Octopus {
 
     findApexWrapTarget() {
         const candidates = [];
-        if (swordfish && !swordfish.dead && !swordfish.tamed && !swordfish.isHero
-            && !swordfish.golden && !swordfish.plantMorph) {
+        if (isWildNightPredator(swordfish)) {
             candidates.push({ kind: "swordfish", ent: swordfish, size: swordfish.size });
         }
         if (shark && !shark.dead && !shark.isHero && !shark.leaving) {
@@ -9280,8 +9259,13 @@ class Octopus {
         }
         let best = null, bd = this.size * 3.4;
         for (const c of candidates) {
-            // Must outsize the apex enough to wrap and overpower it.
-            if (this.size < c.size * 1.02) continue;
+            // Night orca: strict size gate (octopus.size > orca.size). Other apex: slight outsize buffer.
+            const isOrca = c.kind === "shark" && c.ent && c.ent.isOrca;
+            if (isOrca) {
+                if (!(this.size > c.size)) continue;
+            } else if (this.size < c.size * 1.02) {
+                continue;
+            }
             if (c.ent.octopusWrap && c.ent.octopusWrap !== this) continue;
             const d = Math.hypot(c.ent.x - this.x, c.ent.y - this.y);
             if (d < bd) { bd = d; best = c; }
@@ -9302,14 +9286,22 @@ class Octopus {
     eatApex(wrap) {
         if (!wrap || !wrap.ent || this.tamed || this.isHero || this.golden) return;
         const prey = wrap.ent;
-        const gain = Math.max(18, prey.size * 0.22);
         const wasOrca = wrap.kind === "shark" && prey && prey.isOrca;
+        // Never finish an orca wrap unless the octopus is still strictly larger.
+        if (wasOrca && !(this.size > prey.size)) {
+            this.clearApexWrap();
+            return;
+        }
+        const gain = Math.max(18, prey.size * 0.22);
         prey.octopusWrap = null;
         prey.dead = true;
         if (wrap.kind === "swordfish") {
             swordfish = null;
             for (const f of fishes) {
-                if (!f.dead && !f.hasSword && Math.random() < 0.35) { f.gainSword(); break; }
+                if (!f.dead && !f.hasSword && Math.random() < 0.35) {
+                    grantSwordTrait(f);
+                    break;
+                }
             }
         } else if (wrap.kind === "shark") shark = null;
         else if (wrap.kind === "whale") whale = null;
@@ -9395,8 +9387,16 @@ class Octopus {
         }
 
         let desired = this.dir;
-        const foodChase = nightPredatorTryBiteFood(this, dt);
-        if (foodChase) {
+        const nightHunt = this.isHero
+            ? tryHeroHuntNightPredator(this, dt, this.speed * CONFIG.heroChaseMult * 0.75)
+            : null;
+        const foodChase = nightHunt ? null : nightPredatorTryBiteFood(this, dt);
+        if (nightHunt) {
+            desired = nightHunt.desired;
+            const pull = nightHunt.speed * 0.08;
+            this.vx += Math.cos(desired) * pull;
+            this.vy += Math.sin(desired) * pull;
+        } else if (foodChase) {
             desired = foodChase.desired;
             const pull = foodChase.speed * 0.07;
             this.vx += Math.cos(desired) * pull;
@@ -9468,7 +9468,7 @@ class Octopus {
             const lost = !this.huntTarget || this.huntTarget.dead || this.huntTarget.golden
                 || this.huntTarget.isRainbow || this.huntTarget.isPlatinum
                 || this.huntTarget.tentacleGrab
-                || this.huntTarget.size >= this.size * 1.05
+                || this.huntTarget.size >= this.size
                 || Math.hypot(this.huntTarget.x - this.x, this.huntTarget.y - this.y) > CONFIG.huntRange * 2.1;
             if (lost) {
                 this.huntTarget = null;
@@ -9501,12 +9501,14 @@ class Octopus {
         } else if (this.tamed || this.isHero) {
             this.huntTarget = null;
             this.huntLockT = 0;
-            this.wanderTimer -= dt;
-            if (this.wanderTimer <= 0) {
-                this.wanderTimer = 1.8 + Math.random() * 2.2;
-                this._wanderDir = this.dir + (Math.random() - 0.5) * 0.9;
+            if (!nightHunt) {
+                this.wanderTimer -= dt;
+                if (this.wanderTimer <= 0) {
+                    this.wanderTimer = 1.8 + Math.random() * 2.2;
+                    this._wanderDir = this.dir + (Math.random() - 0.5) * 0.9;
+                }
+                desired = this._wanderDir;
             }
-            desired = this._wanderDir;
         }
 
         const margin = 46;
@@ -9516,7 +9518,7 @@ class Octopus {
         else if (this.y > viewH - margin) desired = -Math.PI / 2;
 
         const lock = this.huntTarget ? Math.min(1, this.huntLockT / 1.1) : 0;
-        const turn = 0.7 + lock * 0.55;
+        const turn = 0.7 + lock * 0.55 + (nightHunt ? 0.55 : 0);
         const diff = normAngle(desired - this.dir);
         this.dir += Math.max(-turn * dt, Math.min(turn * dt, diff));
 
@@ -9537,6 +9539,11 @@ class Octopus {
             } else if (leg.grab && leg.grab.prey && !leg.grab.prey.dead
                 && !this.tamed && !this.isHero) {
                 const prey = leg.grab.prey;
+                // Prey that outgrew the octopus (or hero ready to eat) breaks free.
+                if (prey.size >= this.size || releaseIfHeroOutgrowsOctopus(prey)) {
+                    if (prey.tentacleGrab) prey.tentacleGrab = null;
+                    leg.grab = null;
+                } else {
                 leg.tipX += (prey.x - leg.tipX) * Math.min(1, 7 * dt);
                 leg.tipY += (prey.y - leg.tipY) * Math.min(1, 7 * dt);
                 prey.x += (leg.tipX - prey.x) * Math.min(1, 4.2 * dt);
@@ -9548,6 +9555,7 @@ class Octopus {
                 if (toBody < this.size * 0.55 || leg.grab.reel > 1.2) {
                     this.eatGrabbed(prey);
                     leg.grab = null;
+                }
                 }
             } else {
                 if (leg.grab && leg.grab.prey) leg.grab.prey.tentacleGrab = null;
@@ -9620,7 +9628,7 @@ class Octopus {
             && this.huntTarget && this.huntLockT >= 0.85) {
             const prey = this.huntTarget;
             if (prey && !prey.dead && !prey.tentacleGrab && !prey.isPlatinum
-                && !prey.isRainbow && !prey.isMonster && prey.size < this.size * 1.05) {
+                && !prey.isRainbow && !prey.isMonster && prey.size < this.size) {
                 const d = Math.hypot(prey.x - this.x, prey.y - this.y);
                 if (d < this.size * 1.85) {
                     let free = null;
@@ -9644,9 +9652,16 @@ class Octopus {
     eatGrabbed(prey) {
         if (!prey || prey.dead || this.tamed || this.isHero || this.golden) return;
         if (prey.isPlatinum || prey.isRainbow || prey.isMonster) return;
+        // Cannot finish prey that outgrew the octopus (heroes must be able to eat back).
+        if (prey.size >= this.size) {
+            prey.tentacleGrab = null;
+            return;
+        }
         prey.dead = true;
         prey.tentacleGrab = null;
-        this.size = Math.min(Math.min(viewW, viewH) * 0.48, this.size + prey.size * 0.28);
+        // Same bigger-prey growth bonus as fish-eat-fish.
+        const gain = prey.size * 0.28 * preySizeGainMult(this.size, prey.size);
+        this.size = Math.min(Math.min(viewW, viewH) * 0.48, this.size + gain);
         for (const leg of this.legs) {
             leg.len = this.size * (1.05 + Math.random() * 0.5);
         }
@@ -10422,15 +10437,17 @@ function swordfishReadyForSpearEnding(sf) {
     if (!sf || sf.dead || sf.tamed || sf.isHero || sf.golden || sf.plantMorph) return false;
     if (swordfishSpearEnding) return false;
     const refSize = (shark && !shark.dead && shark.isOrca) ? shark.size : CONFIG.orcaSize;
-    return sf.size >= refSize * 0.88;
+    // Strict size gate: must outsize the living orca, or CONFIG.orcaSize once it is gone.
+    return sf.size > refSize;
 }
 
-// If the orca dies to a croc/duel/other apex before the spear lands, still honor the hunt.
+// If the orca dies to a croc/duel/other apex before the spear lands, still honor the hunt
+// only when the swordfish still passes the strict size gate (no orcaHunt size bypass).
 function tryBeginSwordfishSpearFromOrcaLoss() {
     if (swordfishSpearEnding) return true;
     const sf = swordfish && !swordfish.dead ? swordfish : null;
     if (!sf) return false;
-    if (!(sf.orcaHunt || swordfishReadyForSpearEnding(sf))) return false;
+    if (!swordfishReadyForSpearEnding(sf)) return false;
     beginSwordfishSpearEnding(sf, { force: true });
     return !!swordfishSpearEnding;
 }
@@ -11323,21 +11340,29 @@ class Shark {
             desired = Math.atan2(this.target.y - this.y, this.target.x - this.x);
             spd = this.rollTimer > 0 ? 145 : 110;
         } else if (this.isHero) {
-            // Friendly patrol: slow wander, never leave for lack of prey.
+            // Friendly patrol, or hunt wild night predators when larger.
             this.target = null;
             this.leaving = false;
-            this.wanderTimer -= dt;
-            if (this.wanderTimer <= 0) {
-                this.wanderTimer = 1.6 + Math.random() * 2.4;
-                this._wanderDir = this.dir + (Math.random() - 0.5) * 1.3;
+            const nightHunt = tryHeroHuntNightPredator(
+                this, dt, (this.isOrca ? 90 : 110) * 0.95
+            );
+            if (nightHunt) {
+                desired = nightHunt.desired;
+                spd = nightHunt.speed;
+            } else {
+                this.wanderTimer -= dt;
+                if (this.wanderTimer <= 0) {
+                    this.wanderTimer = 1.6 + Math.random() * 2.4;
+                    this._wanderDir = this.dir + (Math.random() - 0.5) * 1.3;
+                }
+                desired = this._wanderDir;
+                const margin = 70;
+                if (this.x < margin) desired = 0;
+                else if (this.x > viewW - margin) desired = Math.PI;
+                if (this.y < margin) desired = Math.PI / 2;
+                else if (this.y > viewH - margin) desired = -Math.PI / 2;
+                spd = this.rollTimer > 0 ? 90 : 48;
             }
-            desired = this._wanderDir;
-            const margin = 70;
-            if (this.x < margin) desired = 0;
-            else if (this.x > viewW - margin) desired = Math.PI;
-            if (this.y < margin) desired = Math.PI / 2;
-            else if (this.y > viewH - margin) desired = -Math.PI / 2;
-            spd = this.rollTimer > 0 ? 90 : 48;
         } else if (!this.target || this.target.dead || this.target.insideShark
             || this.target.isPlatinum) {
             // Apex hunters ignore platinum entirely (invulnerable).
@@ -11937,15 +11962,29 @@ function manageEcosystem(dt) {
     reptileCheckTimer += dt;
     if (reptileCheckTimer >= CONFIG.reptileInterval) {
         reptileCheckTimer = 0;
-        if (!whale && !shark && !repopulating && !pondFinaleActive() && !apexDuel
+        // Hero / tamed apex do not block night predator rolls (heroes may hunt wild ones).
+        const wildSharkBlocks = shark && !shark.dead && !shark.isHero;
+        const wildReptileBlocks = reptiles.some(
+            (r) => !r.dead && !r.tamed && !r.isHero && !r.golden && !r.leaving
+        );
+        if (!whale && !wildSharkBlocks && !repopulating && !pondFinaleActive() && !apexDuel
             && countable.length > 2) {
             if (nightMode) {
-                const canSpawn = !swordfish && !octopus && reptiles.length === 0;
+                const needSf = !swordfish;
+                const needOc = !octopus;
+                // Allow the missing night predator beside a tamed/hero ally of the other kind.
+                const canSpawn = (needSf || needOc) && !wildReptileBlocks
+                    && !(swordfish && isWildNightPredator(swordfish))
+                    && !(octopus && isWildNightPredator(octopus));
                 if (canSpawn && Math.random() < CONFIG.nightPredatorChance) {
-                    if (Math.random() < 0.5) swordfish = new Swordfish();
+                    if (needSf && needOc) {
+                        if (Math.random() < 0.5) swordfish = new Swordfish();
+                        else octopus = new Octopus();
+                    } else if (needSf) swordfish = new Swordfish();
                     else octopus = new Octopus();
                 }
-            } else if (reptiles.length === 0 && Math.random() < CONFIG.reptileChance) {
+            } else if (!wildReptileBlocks && reptiles.length === 0
+                && Math.random() < CONFIG.reptileChance) {
                 reptiles.push(new Reptile());
             }
         }
@@ -14766,7 +14805,7 @@ function buildDevMenu() {
         swordfish.tamed = false;
         swordfish.isHero = false;
         swordfish.golden = false;
-        swordfish.size = Math.max(swordfish.size, CONFIG.orcaSize * 0.95);
+        swordfish.size = Math.max(swordfish.size, CONFIG.orcaSize + 8);
         const p = devSpawnPoint();
         swordfish.x = p.x;
         swordfish.y = p.y;
