@@ -56,7 +56,9 @@ const CONFIG = {
     greenChance: 0.005,     // rare green food: turns a fish into a lasting pond plant
     growerChance: 0.007,    // rare grower food: surges a fish past normal size
     growerBoost: 44,        // size gained from one grower pellet
-    growerMaxSize: 215,     // cap when growing from grower / carcass meals
+    growerMaxSize: 215,     // floor cap for grower / carcass; heroes & huge meals scale to ~half screen
+    giantSizeFrac: 0.45,    // ending when size >= min(viewW, viewH) * this
+    giantCapFrac: 0.5,      // grower/carcass (and hero) size ceiling vs shorter screen side
     goldSinkTime: 2.4,      // seconds for a golden fish to settle on the lakebed
     rainbowSpeed: 2.35,     // rainbow chase speed (kept moderate so tracking stays stable)
     predatorFoodBoost: 1.045, // each food bite makes an evil fish a bit faster
@@ -66,6 +68,8 @@ const CONFIG = {
     petsForRainbow: 15,     // hidden: pet this many times with no throws to force rainbow food
     petsToRedeem: 5,        // discrete pets that help soothe an evil fish
     evilSootheTime: 2.6,    // seconds of continuous petting to fully redeem an evil fish
+    petsToTame: 30,         // discrete pets to tame a crocodile/alligator
+    reptileSootheTime: 12,  // seconds of continuous petting that also helps tame
     reptileInterval: 60,    // seconds between crocodile/alligator chance rolls
     reptileChance: 0.18,    // chance a reptile arrives on each roll
     reptileSize: [88, 112], // croc/alligator body length range
@@ -141,6 +145,13 @@ function noteFoodVariantKeyword(ch) {
     if (compact.endsWith("easteregg") || foodTypeBuffer.trimEnd().endsWith("easter egg")) {
         foodTypeBuffer = "";
         beginMariachiFiesta();
+        return;
+    }
+
+    // Hidden reptile: type "alligator" (spaces optional, case ignored).
+    if (compact.endsWith("alligator")) {
+        foodTypeBuffer = "";
+        spawnKeywordAlligator();
         return;
     }
 
@@ -3931,6 +3942,7 @@ class Fish {
         this.redeemed = false; // once good again, never turns evil from eating
         this.debrisFlee = null; // flinch away from hauled debris
         this.dead = false;
+        this.giantEnded = false; // one-shot: already triggered the half-screen ending
         this._chaseBoost = 1;
         this.hatSeed = Math.random();
     }
@@ -4041,10 +4053,13 @@ class Fish {
 
     grow(amount, opts) {
         if (this.golden || this.isRainbow) return;
-        const cap = (opts && opts.huge) ? CONFIG.growerMaxSize : CONFIG.maxFishSize;
+        const cap = fishGrowCap(this, opts);
         this.size = Math.min(cap, this.size + amount);
         // Redeemed and hero fish keep growing but never turn evil.
-        if (this.redeemed || this.isHero || this.isMonster) return;
+        if (this.redeemed || this.isHero || this.isMonster) {
+            this.maybeBeginGiantEnding();
+            return;
+        }
         if (!this.isPredator && this.size >= CONFIG.predatorSize) {
             this.isPredator = true;
             this.isHero = false;
@@ -4054,6 +4069,15 @@ class Fish {
             this.evilPetCount = 0;
             this.evilPetProgress = 0;
         }
+        this.maybeBeginGiantEnding();
+    }
+
+    // Half-screen legend: heroes / redeemed get a calm farewell; untamed giants get a darker close.
+    maybeBeginGiantEnding() {
+        if (this.dead || this.golden || this.isRainbow || this.rainbowLeaving) return;
+        if (this.giantEnded || giantEnding || povAttack) return;
+        if (this.size < giantSizeThreshold()) return;
+        beginGiantEnding(this);
     }
 
     // Ate a crocodile/alligator while larger than it: become a monster fish.
@@ -4065,13 +4089,14 @@ class Fish {
         this.golden = false;
         this.target = null;
         this.prey = null;
-        this.size = Math.min(CONFIG.maxFishSize, this.size + 28);
+        this.size = Math.min(fishGrowCap(this, { huge: true }), this.size + 28);
         this.baseSpeed = Math.max(this.baseSpeed, 48) * 1.35;
         const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
         Audio.predatorEat(pan);
         Audio.sharkStrike(pan);
         water.disturb(this.x, this.y, this.size, 500);
         spawnSplash(this.x, this.y, this.size * 0.7, 0.9);
+        this.maybeBeginGiantEnding();
     }
 
     // Eating golden food: freeze into gold and settle on the lakebed until refresh.
@@ -4149,9 +4174,9 @@ class Fish {
                 return { x: shark.x, y: shark.y };
             }
         }
-        // Flee reptiles only if they are larger than us.
+        // Flee wild reptiles only if they are larger than us. Tamed ones are friends.
         for (const r of reptiles) {
-            if (r.dead) continue;
+            if (r.dead || r.tamed || r.golden) continue;
             if (this.size > r.size * 1.02) continue;
             const d = Math.hypot(r.x - this.x, r.y - this.y);
             if (d < CONFIG.fleeRange * 1.8) return { x: r.x, y: r.y };
@@ -4169,11 +4194,11 @@ class Fish {
         return best ? { x: best.x, y: best.y } : null;
     }
 
-    // Nearest reptile we can eat (we must be bigger).
+    // Nearest wild reptile we can eat (we must be bigger). Tamed ones are left alone.
     findEdibleReptile() {
         let best = null, bd = CONFIG.huntRange * 1.3;
         for (const r of reptiles) {
-            if (r.dead) continue;
+            if (r.dead || r.tamed || r.golden) continue;
             if (this.size <= r.size) continue;
             const d = Math.hypot(r.x - this.x, r.y - this.y);
             if (d < bd) { bd = d; best = r; }
@@ -4910,8 +4935,9 @@ class Fish {
             ctx.shadowColor = "rgba(160,20,30,0.75)";
             ctx.shadowBlur = 14;
         } else if (this.isHero) {
-            ctx.shadowColor = "rgba(70,160,220,0.8)";
-            ctx.shadowBlur = 14;
+            const giantGlow = giantEnding && giantEnding.fish === this && giantEnding.kind === "peace";
+            ctx.shadowColor = giantGlow ? "rgba(160,220,255,0.95)" : "rgba(70,160,220,0.8)";
+            ctx.shadowBlur = giantGlow ? 26 : 14;
         } else if (this.type.exotic) {
             ctx.shadowColor = "rgba(120,180,200,0.55)";
             ctx.shadowBlur = 12;
@@ -5168,11 +5194,14 @@ function initFish() {
 // Rare crocodiles/alligators arrive on a long timer. They eat smaller fish.
 // A fish that outgrows and eats one becomes a monster, which later eats the
 // shark and then swims into the camera (POV) to "eat the user" and reset.
+// Heroes / redeemed (and grower-fed giants) that fill ~half the screen get a
+// separate farewell ending, then resetPond.
 // ===========================================================================
 let shark = null;
 let whale = null;
 let reptiles = [];
 let povAttack = null; // { fish, t }
+let giantEnding = null; // { fish, t, kind: "peace" | "shadow" }
 let apexDuel = null; // croc/alligator vs shark when the pond is emptied
 let repopulating = false;
 let repopTimer = 0;
@@ -5180,14 +5209,45 @@ let whaleCheckTimer = 0;
 let reptileCheckTimer = 0;
 let exoticCheckTimer = 0;
 
+function giantSizeThreshold() {
+    return Math.min(viewW, viewH) * CONFIG.giantSizeFrac;
+}
+
+function giantSizeCap() {
+    return Math.min(viewW, viewH) * CONFIG.giantCapFrac;
+}
+
+// Heroes / redeemed can climb to ~half the screen on any meal; grower/carcass unlocks that for everyone else.
+function fishGrowCap(fish, opts) {
+    const half = giantSizeCap();
+    if (opts && opts.huge) {
+        return Math.max(CONFIG.growerMaxSize, half);
+    }
+    if (fish && (fish.isHero || fish.redeemed)) {
+        return Math.max(CONFIG.maxFishSize, half);
+    }
+    return CONFIG.maxFishSize;
+}
+
+// Quiet keyword spawn: type "alligator" (see noteFoodVariantKeyword).
+function spawnKeywordAlligator() {
+    if (mode !== "pond" || povAttack || giantEnding) return;
+    const r = new Reptile("alligator");
+    reptiles.push(r);
+    water.disturb(r.x, r.y, r.size * 0.5, 200);
+    spawnSplash(r.x, r.y, r.size * 0.35, 0.45);
+}
+
 function beginApexDuel() {
-    if (apexDuel || povAttack) return;
-    // Keep the largest living reptile for the finale.
-    const living = reptiles.filter((r) => !r.dead);
+    if (apexDuel || povAttack || giantEnding) return;
+    // Keep the largest wild reptile for the finale. Tamed crocs sit the fight out.
+    const living = reptiles.filter((r) => !r.dead && !r.tamed && !r.golden);
     if (!living.length) return;
     living.sort((a, b) => b.size - a.size);
     const champ = living[0];
-    for (let i = 1; i < living.length; i++) living[i].dead = true;
+    for (const r of reptiles) {
+        if (r !== champ && !r.tamed && !r.golden) r.dead = true;
+    }
     reptiles = reptiles.filter((r) => !r.dead);
     champ.duelMode = true;
     champ.hp = 6;
@@ -5215,6 +5275,11 @@ function finishApexDuel() {
         spots.push({ x: shark.x, y: shark.y, size: shark.size * 0.85 });
     }
     for (const r of reptiles) {
+        // Tamed friends sit out the duel and should survive the finale.
+        if (r.tamed || r.golden) {
+            r.duelMode = false;
+            continue;
+        }
         spots.push({ x: r.x, y: r.y, size: r.size });
         r.dead = true;
     }
@@ -5222,7 +5287,7 @@ function finishApexDuel() {
         shark.dead = true;
         shark = null;
     }
-    reptiles.length = 0;
+    reptiles = reptiles.filter((r) => !r.dead);
     apexDuel = null;
 
     for (const s of spots) {
@@ -5307,6 +5372,16 @@ class Reptile {
         this.hp = 6;
         this.snoutTaps = 0;
         this.snoutTapWindow = 0;
+        this.tamed = false;
+        this.petCount = 0;
+        this.petProgress = 0;
+        this.petTimer = 0;
+        this.biteTimer = 0;
+        this.foodTarget = null;
+        this.golden = false;
+        this.sinkTimer = 0;
+        this.sinkDepth = 0;
+        this.friendlyBoost = 0; // rainbow food: brief colorful speed rush
         const side = Math.floor(Math.random() * 4);
         if (side === 0) { this.x = -this.size; this.y = Math.random() * viewH; }
         else if (side === 1) { this.x = viewW + this.size; this.y = Math.random() * viewH; }
@@ -5316,6 +5391,187 @@ class Reptile {
         this.speed = 55 + Math.random() * 20;
         this.target = null;
         Audio.predatorEat(this.x < viewW * 0.5 ? -0.3 : 0.3);
+    }
+
+    pet() {
+        if (this.dead || this.leaving || this.duelMode || this.golden) return;
+        this.petTimer = 1.4;
+        const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+        Audio.fishNote({
+            freq: this.tamed ? 240 : 190,
+            wave: "triangle",
+            pan,
+            dur: 0.4,
+            level: 0.07,
+            partialAmt: 0.18,
+            partialRatio: 2.1,
+            bright: 0.85,
+        });
+        water.disturb(this.x, this.y, this.size * 0.35, 50);
+
+        if (this.tamed) return;
+
+        // Discrete pets are the main path; continuous stroke time is tracked in update.
+        this.petCount++;
+        if (this.petCount >= CONFIG.petsToTame
+            || this.petProgress >= CONFIG.reptileSootheTime) {
+            this.tame();
+        }
+    }
+
+    tame() {
+        if (this.tamed || this.dead || this.duelMode || this.golden) return;
+        this.tamed = true;
+        this.target = null;
+        this.foodTarget = null;
+        this.petCount = 0;
+        this.petProgress = 0;
+        this.petTimer = Math.max(this.petTimer, 1.8);
+        this.speed = Math.max(42, this.speed * 0.85);
+        const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+        Audio.fishNote({
+            freq: 260,
+            wave: "sine",
+            pan,
+            dur: 0.55,
+            level: 0.1,
+            partialAmt: 0.3,
+            partialRatio: 2.4,
+            bright: 1.2,
+        });
+        Audio.fishNote({
+            freq: 340,
+            wave: "triangle",
+            pan,
+            dur: 0.4,
+            level: 0.07,
+            partialAmt: 0.22,
+            bright: 1.25,
+        });
+        water.disturb(this.x, this.y, this.size * 0.65, 140);
+        spawnSplash(this.x, this.y, this.size * 0.3, 0.4);
+    }
+
+    grow(amount) {
+        if (this.golden) return;
+        const half = Math.min(viewW, viewH) * CONFIG.giantCapFrac;
+        const cap = Math.max(CONFIG.growerMaxSize, half);
+        this.size = Math.min(cap, this.size + amount);
+    }
+
+    turnToGold() {
+        this.golden = true;
+        this.target = null;
+        this.foodTarget = null;
+        this.sinkTimer = 0;
+        this.sinkDepth = 0;
+        this.friendlyBoost = 0;
+        const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+        if (Audio.goldChime) Audio.goldChime(pan);
+        water.disturb(this.x, this.y, this.size * 1.1, 260);
+        spawnSplash(this.x, this.y, this.size * 0.45, 0.5);
+    }
+
+    turnToPlant() {
+        const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+        Audio.fishNote({
+            freq: 160,
+            wave: "triangle",
+            pan,
+            dur: 0.7,
+            level: 0.12,
+        });
+        water.disturb(this.x, this.y, this.size, 220);
+        spawnSplash(this.x, this.y, this.size * 0.4, 0.4);
+        pondPlants.push(makePondPlant(this.x, this.y, this.size * 0.85));
+        this.dead = true;
+    }
+
+    tryBiteFood(dt) {
+        if (!this.tamed || this.golden || this.leaving || this.duelMode) return false;
+        const range = CONFIG.perception * 1.35;
+        if (!this.foodTarget || this.foodTarget.eaten) {
+            this.foodTarget = nearestFood(this.x, this.y, range);
+        }
+        if (!this.foodTarget) return false;
+        this.biteTimer -= dt;
+        const food = this.foodTarget;
+        const desired = Math.atan2(food.y - this.y, food.x - this.x);
+        const dist = Math.hypot(food.x - this.x, food.y - this.y);
+        const eatDist = this.size * 0.48 + food.radius() + 6;
+        const boost = this.friendlyBoost > 0 ? 1.55 : 1.35;
+        if (dist < eatDist && this.biteTimer <= 0) this.biteFood();
+        return { desired, speed: this.speed * boost, chasing: true };
+    }
+
+    biteFood() {
+        const food = this.foodTarget;
+        if (!food || food.eaten) return;
+        const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+
+        if (food.rainbow) {
+            food.eaten = true;
+            this.foodTarget = null;
+            this.friendlyBoost = 8;
+            this.speed = Math.min(110, this.speed * 1.12);
+            if (Audio.rainbowChime) Audio.rainbowChime(pan);
+            water.disturb(this.x, this.y, this.size * 1.1, 300);
+            spawnSplash(this.x, this.y, this.size * 0.5, 0.7);
+            return;
+        }
+        if (food.green) {
+            food.eaten = true;
+            this.foodTarget = null;
+            this.turnToPlant();
+            return;
+        }
+        if (food.golden) {
+            food.eaten = true;
+            this.foodTarget = null;
+            this.turnToGold();
+            return;
+        }
+        if (food.grower) {
+            food.eaten = true;
+            this.foodTarget = null;
+            this.grow(CONFIG.growerBoost);
+            this.speed = Math.min(100, this.speed * 1.08);
+            Audio.fishNote({
+                freq: 280,
+                wave: "sine",
+                pan,
+                dur: 0.55,
+                level: 0.14,
+                partialAmt: 0.3,
+                bright: 1.25,
+            });
+            water.disturb(this.x, this.y, this.size * 0.7, 220);
+            spawnSplash(this.x, this.y, this.size * 0.35, 0.45);
+            return;
+        }
+
+        const chunk = Math.min((food.carcass ? 12 : 7), food.amount);
+        food.amount -= chunk;
+        food.biteCount++;
+        this.biteTimer = food.biteInterval();
+        this.grow(chunk * (food.carcass ? 0.5 : 0.18));
+        water.disturb(food.x, food.y, food.radius() + 4, 120);
+        Audio.fishNote({
+            freq: 200 + (food.biteCount % 5) * 28,
+            wave: "triangle",
+            pan,
+            dur: 0.35,
+            level: 0.12,
+            partialAmt: 0.15,
+            bright: 0.9,
+        });
+        this.x += Math.cos(this.dir) * 3;
+        this.y += Math.sin(this.dir) * 3;
+        if (food.amount <= 0) {
+            food.eaten = true;
+            water.disturb(food.x, food.y, this.size * 0.5, 180);
+            this.foodTarget = null;
+        }
     }
 
     // Local snout zone matching draw(): forward along facing dir, not the body.
@@ -5389,11 +5645,31 @@ class Reptile {
     }
 
     update(dt) {
-        this.tailPhase += dt * (this.leaving ? 5.5 : 3.2);
+        this.tailPhase += dt * (this.leaving ? 5.5 : (this.tamed ? 2.4 : 3.2));
         this.eatPulse -= dt;
+        if (this.friendlyBoost > 0) this.friendlyBoost = Math.max(0, this.friendlyBoost - dt);
+        if (this.petTimer > 0) this.petTimer = Math.max(0, this.petTimer - dt);
         if (this.snoutTapWindow > 0) {
             this.snoutTapWindow -= dt;
             if (this.snoutTapWindow <= 0) this.snoutTaps = 0;
+        }
+
+        // Continuous stroking helps tame (discrete pets remain the clear 30-pet target).
+        if (this.petTimer > 0 && !this.tamed && !this.duelMode && !this.golden) {
+            this.petProgress += dt;
+            if (this.petCount >= CONFIG.petsToTame
+                || this.petProgress >= CONFIG.reptileSootheTime) {
+                this.tame();
+            }
+        }
+
+        if (this.golden) {
+            this.sinkTimer += dt;
+            this.sinkDepth = Math.min(1, this.sinkTimer / CONFIG.goldSinkTime);
+            if (this.sinkDepth < 1 && Math.random() < 0.08) {
+                water.disturb(this.x, this.y, this.size * (1 - this.sinkDepth * 0.5), 40);
+            }
+            return;
         }
 
         // Scared: bolt off-screen, same idea as shark.leaving.
@@ -5413,12 +5689,28 @@ class Reptile {
         }
 
         let desired = this.dir;
-        let speed = this.speed * 0.55;
+        let speed = this.speed * (this.tamed ? 0.42 : 0.55);
 
-        // Finale: hunt the shark until both fall.
+        // Finale: hunt the shark until both fall. Taming mid-duel is blocked.
         if (this.duelMode && shark && !shark.dead) {
             desired = Math.atan2(shark.y - this.y, shark.x - this.x);
             speed = this.speed * 1.2;
+        } else if (this.tamed) {
+            this.target = null;
+            const foodChase = this.tryBiteFood(dt);
+            if (foodChase) {
+                desired = foodChase.desired;
+                speed = foodChase.speed;
+            } else {
+                this.wanderTimer = (this.wanderTimer || 0) - dt;
+                if (this.wanderTimer <= 0) {
+                    this.wanderTimer = 1.8 + Math.random() * 2.4;
+                    desired = this.dir + (Math.random() - 0.5) * 0.9;
+                } else {
+                    desired = this._wanderDir != null ? this._wanderDir : this.dir;
+                }
+                this._wanderDir = desired;
+            }
         } else {
             if (!this.target || this.target.dead || this.target.golden
                 || this.target.isRainbow || this.target.isMonster
@@ -5467,15 +5759,16 @@ class Reptile {
         if (this.y < margin) desired = Math.PI / 2;
         else if (this.y > viewH - margin) desired = -Math.PI / 2;
 
+        const turnRate = this.tamed ? 1.35 : 1.6;
         const diff = normAngle(desired - this.dir);
-        this.dir += Math.max(-1.6 * dt, Math.min(1.6 * dt, diff));
+        this.dir += Math.max(-turnRate * dt, Math.min(turnRate * dt, diff));
         this.x += Math.cos(this.dir) * speed * dt;
         this.y += Math.sin(this.dir) * speed * dt;
         this.x = Math.max(8, Math.min(viewW - 8, this.x));
         this.y = Math.max(8, Math.min(viewH - 8, this.y));
         resolveObstacleOverlap(this, this.size * 0.32);
 
-        if (Math.random() < 0.35) {
+        if (Math.random() < (this.tamed ? 0.18 : 0.35)) {
             water.disturb(this.x - Math.cos(this.dir) * this.size * 0.4,
                           this.y - Math.sin(this.dir) * this.size * 0.4, 10, 45);
         }
@@ -5484,17 +5777,32 @@ class Reptile {
     draw(ctx) {
         const L = this.size;
         const W = this.size * (this.kind === "alligator" ? 0.34 : 0.28);
-        const wig = Math.sin(this.tailPhase) * 0.3;
+        const wig = Math.sin(this.tailPhase) * (this.tamed ? 0.18 : 0.3);
         const snout = this.kind === "alligator" ? 0.22 : 0.32; // croc longer/narrower
+        const sink = this.golden ? (this.sinkDepth || 0) : 0;
         ctx.save();
-        ctx.translate(this.x, this.y);
+        ctx.translate(this.x, this.y + sink * 6);
         ctx.rotate(this.dir);
-        ctx.globalAlpha = 0.9;
-        ctx.shadowColor = "rgba(20,40,25,0.45)";
-        ctx.shadowBlur = 14;
+        ctx.globalAlpha = 0.9 * (1 - sink * 0.25);
+        if (this.tamed && !this.golden) {
+            ctx.shadowColor = "rgba(70,120,100,0.28)";
+            ctx.shadowBlur = 8;
+        } else if (this.golden) {
+            ctx.shadowColor = "rgba(255,200,80,0.55)";
+            ctx.shadowBlur = 12;
+        } else {
+            ctx.shadowColor = "rgba(20,40,25,0.45)";
+            ctx.shadowBlur = 14;
+        }
+
+        const rainbowing = this.friendlyBoost > 0 && !this.golden;
+        const hue = rainbowing ? (performance.now() * 0.12) % 360 : 0;
 
         // Tail.
-        ctx.fillStyle = "#3d5a38";
+        let tailCol = this.tamed ? "#6a8f68" : "#3d5a38";
+        if (this.golden) tailCol = "#c9a24b";
+        else if (rainbowing) tailCol = `hsl(${(hue + 40) % 360}, 55%, 42%)`;
+        ctx.fillStyle = tailCol;
         ctx.beginPath();
         ctx.moveTo(-L * 0.4, 0);
         ctx.lineTo(-L * 0.85, -W * 0.7 + wig * W);
@@ -5505,9 +5813,23 @@ class Reptile {
 
         // Body.
         const g = ctx.createLinearGradient(0, -W, 0, W);
-        g.addColorStop(0, "#4a6b42");
-        g.addColorStop(0.55, "#2f4630");
-        g.addColorStop(1, "#6f8a5a");
+        if (this.golden) {
+            g.addColorStop(0, "#fff3b0");
+            g.addColorStop(0.55, "#e0b030");
+            g.addColorStop(1, "#a9791a");
+        } else if (rainbowing) {
+            g.addColorStop(0, `hsl(${hue}, 70%, 58%)`);
+            g.addColorStop(0.55, `hsl(${(hue + 120) % 360}, 60%, 42%)`);
+            g.addColorStop(1, `hsl(${(hue + 240) % 360}, 55%, 48%)`);
+        } else if (this.tamed) {
+            g.addColorStop(0, "#7a9e72");
+            g.addColorStop(0.55, "#5a7d58");
+            g.addColorStop(1, "#9bb88a");
+        } else {
+            g.addColorStop(0, "#4a6b42");
+            g.addColorStop(0.55, "#2f4630");
+            g.addColorStop(1, "#6f8a5a");
+        }
         ctx.fillStyle = g;
         ctx.beginPath();
         ctx.ellipse(0, 0, L * 0.42, W, 0, 0, Math.PI * 2);
@@ -5527,36 +5849,226 @@ class Reptile {
         ctx.fill();
 
         // Ridge scutes.
-        ctx.fillStyle = "rgba(30,50,28,0.55)";
+        ctx.fillStyle = this.tamed || this.golden
+            ? "rgba(50,80,55,0.28)"
+            : "rgba(30,50,28,0.55)";
         for (let i = -2; i <= 2; i++) {
             ctx.beginPath();
             ctx.ellipse(i * L * 0.1, -W * 0.55, L * 0.04, L * 0.03, 0, 0, Math.PI * 2);
             ctx.fill();
         }
 
-        // Eye.
+        // Soft friendly wash once tamed (replaces the dark menace read).
+        if (this.tamed && !this.golden && !rainbowing) {
+            ctx.fillStyle = "rgba(90,150,130,0.18)";
+            ctx.beginPath();
+            ctx.ellipse(0, 0, L * 0.42, W, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Eye: closed while petted; soft calm iris when tamed; yellow menace when wild.
         ctx.shadowBlur = 0;
-        ctx.fillStyle = "#c8b020";
-        ctx.beginPath();
-        ctx.arc(L * 0.22, -W * 0.35, Math.max(1.5, L * 0.03), 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "#111";
-        ctx.beginPath();
-        ctx.arc(L * 0.22, -W * 0.35, Math.max(0.8, L * 0.015), 0, Math.PI * 2);
-        ctx.fill();
+        const eyeX = L * 0.22;
+        const eyeY = -W * 0.35;
+        const eyeR = Math.max(1.5, L * 0.03);
+        if (this.petTimer > 0 && !this.golden) {
+            ctx.strokeStyle = this.tamed
+                ? "rgba(30,50,40,0.85)"
+                : "rgba(40,45,30,0.9)";
+            ctx.lineWidth = Math.max(1.2, L * 0.04);
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            ctx.arc(eyeX, eyeY + eyeR * 0.15, eyeR * 1.15, Math.PI * 1.15, Math.PI * 1.85);
+            ctx.stroke();
+        } else {
+            ctx.fillStyle = this.golden ? "#8a6a18"
+                : (this.tamed ? "#7ec4a8" : "#c8b020");
+            ctx.beginPath();
+            ctx.arc(eyeX, eyeY, eyeR, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = this.tamed && !this.golden ? "#1a3030" : "#111";
+            ctx.beginPath();
+            ctx.arc(eyeX, eyeY, Math.max(0.8, L * 0.015), 0, Math.PI * 2);
+            ctx.fill();
+        }
         drawCreatureHat(ctx, L, W, this.kind === "alligator" ? 0.15 : 0.55);
         ctx.restore();
     }
 }
 
 function beginPovAttack(fish) {
-    if (povAttack) return;
+    if (povAttack || giantEnding) return;
     povAttack = { fish, t: 0 };
     fish.petTimer = 0;
     fish.target = null;
     fish.prey = null;
     Audio.sharkStrike(0);
     Audio.predatorEat(0);
+}
+
+function beginGiantEnding(fish) {
+    if (giantEnding || povAttack || !fish || fish.dead || fish.giantEnded) return;
+    fish.giantEnded = true;
+    fish.target = null;
+    fish.prey = null;
+    fish.petTimer = 0;
+    const peaceful = (fish.isHero || fish.redeemed) && !fish.isMonster && !fish.isPredator;
+    const kind = peaceful ? "peace" : "shadow";
+    giantEnding = { fish, t: 0, kind };
+    const pan = Math.max(-1, Math.min(1, (fish.x / viewW) * 2 - 1));
+    water.disturb(fish.x, fish.y, fish.size * 0.9, 360);
+    spawnSplash(fish.x, fish.y, fish.size * 0.4, 0.55);
+    if (kind === "peace") {
+        fish.petTimer = 4;
+        Audio.goldChime(pan);
+        Audio.fishNote({
+            freq: (fish.type.petFreq || 320) * 1.05,
+            wave: "sine",
+            pan,
+            dur: 0.7,
+            level: 0.11,
+            partialAmt: 0.3,
+            partialRatio: 2.4,
+            bright: 1.25,
+        });
+        Audio.fishNote({
+            freq: (fish.type.petFreq || 320) * 1.55,
+            wave: "triangle",
+            pan,
+            dur: 0.55,
+            level: 0.08,
+            partialAmt: 0.22,
+            bright: 1.35,
+        });
+    } else {
+        Audio.predatorEat(pan);
+        Audio.sharkStrike(pan);
+    }
+}
+
+function updateGiantEnding(dt) {
+    if (!giantEnding) return;
+    giantEnding.t += dt;
+    const f = giantEnding.fish;
+    const t = giantEnding.t;
+    if (f && !f.dead) {
+        const cx = viewW * 0.5;
+        const cy = viewH * 0.5;
+        if (giantEnding.kind === "peace") {
+            if (t < 2.1) {
+                f.x += (cx - f.x) * Math.min(1, dt * 1.1);
+                f.y += (cy - f.y) * Math.min(1, dt * 1.1);
+                f.dir += dt * 0.55;
+                f.tailPhase += dt * 5;
+                f.petTimer = Math.max(f.petTimer, 1.2);
+                if (Math.random() < 0.12) {
+                    water.disturb(f.x, f.y, f.size * 0.35, 50);
+                }
+            } else {
+                if (f._giantExitDir === undefined) {
+                    const toLeft = f.x, toRight = viewW - f.x;
+                    const toTop = f.y, toBottom = viewH - f.y;
+                    const m = Math.min(toLeft, toRight, toTop, toBottom);
+                    if (m === toLeft) f._giantExitDir = Math.PI;
+                    else if (m === toRight) f._giantExitDir = 0;
+                    else if (m === toTop) f._giantExitDir = -Math.PI / 2;
+                    else f._giantExitDir = Math.PI / 2;
+                }
+                const turn = 2.2 * dt;
+                const diff = normAngle(f._giantExitDir - f.dir);
+                f.dir += Math.max(-turn, Math.min(turn, diff));
+                const glide = 55 + Math.min(90, (t - 2.1) * 40);
+                f.x += Math.cos(f.dir) * glide * dt;
+                f.y += Math.sin(f.dir) * glide * dt;
+                f.tailPhase += dt * 7;
+                if (Math.random() < 0.1) {
+                    water.disturb(
+                        f.x - Math.cos(f.dir) * f.size * 0.4,
+                        f.y - Math.sin(f.dir) * f.size * 0.4,
+                        8, 28
+                    );
+                }
+            }
+        } else {
+            f.x += (cx - f.x) * Math.min(1, dt * 1.6);
+            f.y += (cy - f.y) * Math.min(1, dt * 1.6);
+            f.dir += dt * 1.4;
+            f.tailPhase += dt * 8;
+            if (Math.random() < 0.18) {
+                water.disturb(f.x, f.y, f.size * 0.5, 90);
+            }
+        }
+    }
+    const doneAt = giantEnding.kind === "peace" ? 4.6 : 3.5;
+    if (t >= doneAt) {
+        resetPond();
+    }
+}
+
+function drawGiantEnding(ctx) {
+    if (!giantEnding) return;
+    const t = giantEnding.t;
+    const f = giantEnding.fish;
+    const kind = giantEnding.kind;
+
+    ctx.save();
+    if (kind === "peace") {
+        const glow = Math.min(1, t / 1.2);
+        const fade = t > 3.8 ? Math.min(1, (t - 3.8) / 0.8) : 0;
+        const wash = ctx.createRadialGradient(
+            viewW * 0.5, viewH * 0.5, Math.min(viewW, viewH) * 0.08,
+            viewW * 0.5, viewH * 0.5, Math.max(viewW, viewH) * 0.7
+        );
+        wash.addColorStop(0, `rgba(180, 220, 255, ${0.08 + glow * 0.18})`);
+        wash.addColorStop(0.55, `rgba(120, 180, 210, ${0.04 + glow * 0.1})`);
+        wash.addColorStop(1, `rgba(20, 40, 55, ${0.05 + glow * 0.12})`);
+        ctx.fillStyle = wash;
+        ctx.fillRect(0, 0, viewW, viewH);
+        if (f && !f.dead) {
+            ctx.save();
+            ctx.globalAlpha = 0.35 + glow * 0.35;
+            ctx.shadowColor = "rgba(140, 210, 255, 0.9)";
+            ctx.shadowBlur = 28 + glow * 36;
+            ctx.fillStyle = "rgba(160, 210, 255, 0.2)";
+            ctx.beginPath();
+            ctx.ellipse(f.x, f.y, f.size * 0.75, f.size * 0.4, f.dir, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+        if (fade > 0) {
+            ctx.fillStyle = `rgba(210, 230, 245, ${fade * 0.85})`;
+            ctx.fillRect(0, 0, viewW, viewH);
+        }
+    } else {
+        const zoom = Math.min(1, t / 2);
+        const choke = t > 2.4 ? Math.min(1, (t - 2.4) / 0.9) : 0;
+        ctx.fillStyle = `rgba(8, 4, 6, ${0.2 + zoom * 0.5})`;
+        ctx.fillRect(0, 0, viewW, viewH);
+        if (f && !f.dead) {
+            const scale = 1 + zoom * 1.35;
+            ctx.save();
+            ctx.translate(f.x, f.y);
+            ctx.scale(scale, scale);
+            ctx.translate(-f.x, -f.y);
+            ctx.globalAlpha = 0.55 + zoom * 0.35;
+            ctx.shadowColor = "rgba(120, 10, 30, 0.9)";
+            ctx.shadowBlur = 30 + zoom * 40;
+            ctx.fillStyle = "rgba(60, 8, 18, 0.55)";
+            ctx.beginPath();
+            ctx.ellipse(f.x, f.y, f.size * 0.85, f.size * 0.45, f.dir, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+        if (choke > 0) {
+            ctx.fillStyle = `rgba(0, 0, 0, ${choke})`;
+            ctx.fillRect(0, 0, viewW, viewH);
+            if (choke > 0.4) {
+                ctx.fillStyle = `rgba(30, 0, 5, ${(choke - 0.4) * 1.4})`;
+                ctx.fillRect(0, 0, viewW, viewH);
+            }
+        }
+    }
+    ctx.restore();
 }
 
 function updatePovAttack(dt) {
@@ -5668,6 +6180,7 @@ function drawPovAttack(ctx) {
 
 function resetPond() {
     povAttack = null;
+    giantEnding = null;
     apexDuel = null;
     shark = null;
     whale = null;
@@ -6049,6 +6562,10 @@ function manageEcosystem(dt) {
         updatePovAttack(dt);
         return;
     }
+    if (giantEnding) {
+        updateGiantEnding(dt);
+        return;
+    }
 
     // Golden fish rest on the lakebed until refresh; they are not active swimmers.
     const alive = fishes.filter((f) => !f.dead);
@@ -6061,7 +6578,7 @@ function manageEcosystem(dt) {
     whaleCheckTimer += dt;
     if (whaleCheckTimer >= CONFIG.whaleInterval) {
         whaleCheckTimer = 0;
-        if (!whale && !shark && !repopulating && !rainbowExiting && !povAttack
+        if (!whale && !shark && !repopulating && !rainbowExiting && !povAttack && !giantEnding
             && swimmers.length > 0 && Math.random() < CONFIG.whaleChance) {
             whale = new Whale();
         }
@@ -6072,7 +6589,7 @@ function manageEcosystem(dt) {
     if (exoticCheckTimer >= CONFIG.exoticInterval) {
         exoticCheckTimer = 0;
         const exoticCount = swimmers.filter((f) => f.type && f.type.exotic).length;
-        if (!whale && !shark && !repopulating && !rainbowExiting && !povAttack
+        if (!whale && !shark && !repopulating && !rainbowExiting && !povAttack && !giantEnding
             && swimmers.length > 0 && exoticCount < 3
             && Math.random() < CONFIG.exoticChance) {
             fishes.push(edgeFish(true));
@@ -6083,7 +6600,7 @@ function manageEcosystem(dt) {
     reptileCheckTimer += dt;
     if (reptileCheckTimer >= CONFIG.reptileInterval) {
         reptileCheckTimer = 0;
-        if (!whale && !shark && !repopulating && !povAttack && !apexDuel
+        if (!whale && !shark && !repopulating && !povAttack && !giantEnding && !apexDuel
             && reptiles.length === 0 && swimmers.length > 2
             && Math.random() < CONFIG.reptileChance) {
             reptiles.push(new Reptile());
@@ -6106,9 +6623,9 @@ function manageEcosystem(dt) {
         }
     }
 
-    const livingReptiles = reptiles.filter((r) => !r.dead && !r.leaving);
-    // Croc/alligator cleared the pond: summon the shark for a fight to the death.
-    if (!apexDuel && !povAttack && !whale && !rainbowExiting
+    const livingReptiles = reptiles.filter((r) => !r.dead && !r.leaving && !r.tamed && !r.golden);
+    // Wild croc/alligator cleared the pond: summon the shark for a fight to the death.
+    if (!apexDuel && !povAttack && !giantEnding && !whale && !rainbowExiting
         && livingReptiles.length > 0 && swimmers.length === 0) {
         beginApexDuel();
     }
@@ -6124,11 +6641,11 @@ function manageEcosystem(dt) {
                 repopTimer = 0.8;
             }
         }
-    } else if (!whale && !repopulating && !rainbowExiting && !povAttack && !apexDuel
+    } else if (!whale && !repopulating && !rainbowExiting && !povAttack && !giantEnding && !apexDuel
         && swimmers.length === 1 && alive.filter((f) => !f.golden).length === 1) {
         // Last swimmer remaining (rainbow or monster included): summon the shark.
         shark = new Shark(swimmers[0]);
-    } else if (!repopulating && !shark && !whale && !povAttack && !apexDuel && !rainbowExiting
+    } else if (!repopulating && !shark && !whale && !povAttack && !giantEnding && !apexDuel && !rainbowExiting
         && swimmers.length === 0 && livingReptiles.length === 0) {
         // Restock when no swimmers remain (golden resting fish do not block this).
         repopulating = true;
@@ -6569,7 +7086,7 @@ function tryScareReptileAt(x, y) {
     return best.prodSnout(x, y);
 }
 
-// Right-click pets: whale and shark first (larger targets), then ordinary fish.
+// Right-click pets: whale and shark first, then reptiles, then ordinary fish.
 function petPondLifeAt(x, y, quiet) {
     if (whale && !whale.dead) {
         const d = Math.hypot(x - whale.x, y - whale.y);
@@ -6591,6 +7108,24 @@ function petPondLifeAt(x, y, quiet) {
             markFirstInteraction();
             return;
         }
+    }
+
+    let bestR = null;
+    let bestRD = Infinity;
+    for (const r of reptiles) {
+        if (r.dead || r.leaving || r.duelMode || r.golden) continue;
+        const d = Math.hypot(x - r.x, y - r.y);
+        const reach = r.size * 0.48;
+        if (d < reach && d < bestRD) { bestRD = d; bestR = r; }
+    }
+    if (bestR) {
+        if (quiet && bestR.petTimer > 0.6) {
+            bestR.petTimer = 1.4;
+            return;
+        }
+        bestR.pet();
+        markFirstInteraction();
+        return;
     }
 
     let best = null;
@@ -6810,10 +7345,10 @@ function frame(now) {
         updateMariachiFiesta(dt);
 
         // Fish live beneath the surface, so draw them first.
-        if (!povAttack) {
+        if (!povAttack && !giantEnding) {
             for (const fish of fishes) fish.update(dt);
         }
-        manageEcosystem(dt); // predators, shark, reptiles, POV finale
+        manageEcosystem(dt); // predators, shark, reptiles, POV / giant finales
         for (let i = fishes.length - 1; i >= 0; i--) {
             if (fishes[i].dead) fishes.splice(i, 1);
         }
@@ -6849,7 +7384,7 @@ function frame(now) {
         }
         for (const rk of rocks) rk.draw(ctx);
         drawDroplets(ctx);
-        if (!povAttack) drawCharge(ctx);
+        if (!povAttack && !giantEnding) drawCharge(ctx);
 
         // Golden-hour wash (no rays) sits above the pond life.
         drawSunAmbience(ctx);
@@ -6861,8 +7396,9 @@ function frame(now) {
         ctx.fillRect(0, 0, viewW, viewH);
         ctx.restore();
 
-        // Monster POV finale draws on top of everything.
+        // Finales draw on top of everything.
         if (povAttack) drawPovAttack(ctx);
+        if (giantEnding) drawGiantEnding(ctx);
     } else {
         ctx.globalCompositeOperation = "source-over";
         ctx.fillStyle = "rgba(7, 10, 15, 0.22)";
