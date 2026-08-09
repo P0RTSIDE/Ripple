@@ -5101,46 +5101,66 @@ function cursiveConnector(from, to, samples) {
     return pts;
 }
 
-function buildEasterEggPath(fromX, fromY) {
-    const text = "Easter Egg";
-    const padX = viewW * 0.07;
-    const padY = viewH * 0.2;
-    const usableW = Math.max(160, viewW - padX * 2);
-    const usableH = Math.max(100, viewH - padY * 2);
-    const letterW = usableW / text.length;
-    const letterH = Math.min(usableH * 0.62, letterW * 1.55);
-    const anchors = [];
-
-    for (let i = 0; i < text.length; i++) {
-        const poly = letterCursive(text[i]);
-        const ox = padX + i * letterW + letterW * 0.08;
-        const oy = padY + (usableH - letterH) * 0.3;
-        const sx = letterW * 0.82;
-        const sy = letterH;
-        const letterPts = poly.map(([u, v]) => ({
-            x: ox + u * sx,
-            y: oy + v * sy,
-            strokeId: 1,
-        }));
-        if (!anchors.length) {
-            anchors.push(...letterPts);
-        } else {
-            const prev = anchors[anchors.length - 1];
-            const next = letterPts[0];
-            anchors.push(...cursiveConnector(prev, next, text[i] === " " ? 5 : 7));
-            anchors.push(...letterPts);
-        }
-    }
-
-    // Swim in from the fish's current spot with a cursive approach curve.
+// Simple fish-logo outline the rainbow swims to "draw" before bursting.
+function buildFishLogoPath(fromX, fromY) {
+    const cx = viewW * 0.5;
+    const cy = viewH * 0.48;
+    const s = Math.min(viewW, viewH) * 0.17;
+    const ox = cx - s * 0.15;
+    const oy = cy;
+    // Unit fish facing right: forked tail on the left, round snout on the right.
+    const outline = [
+        [-1.05, -0.2],
+        [-1.35, -0.85],
+        [-0.75, 0],
+        [-1.35, 0.85],
+        [-1.05, 0.2],
+        [-0.45, 0.55],
+        [0.15, 0.62],
+        [0.7, 0.38],
+        [1.05, 0.08],
+        [1.12, 0],
+        [1.05, -0.08],
+        [0.7, -0.38],
+        [0.15, -0.62],
+        [-0.45, -0.55],
+        [-1.05, -0.2],
+    ];
+    const anchors = outline.map(([u, v]) => ({
+        x: ox + u * s,
+        y: oy + v * s,
+        strokeId: 1,
+    }));
     if (fromX != null && fromY != null && anchors.length) {
         const start = { x: fromX, y: fromY, strokeId: 1 };
-        const approach = cursiveConnector(start, anchors[0], 8);
-        anchors.unshift(start, ...approach);
+        const mid = {
+            x: (fromX + anchors[0].x) * 0.5,
+            y: (fromY + anchors[0].y) * 0.5 + s * 0.15,
+            strokeId: 1,
+        };
+        anchors.unshift(start, mid);
     }
+    return smoothPolyline(anchors, 5);
+}
 
-    // Fewer samples: still reads as cursive, much cheaper to follow and draw.
-    return smoothPolyline(anchors, 3);
+function burstRainbowIntoFood(fish) {
+    if (!fish) return;
+    const cx = fish.x;
+    const cy = fish.y;
+    const pan = Math.max(-1, Math.min(1, (cx / viewW) * 2 - 1));
+    if (Audio.rainbowChime) Audio.rainbowChime(pan);
+    water.disturb(cx, cy, Math.max(28, fish.size * 0.9), 420);
+    spawnSplash(cx, cy, 26, 0.9);
+    const size = 12 + Math.random() * 4;
+    for (let i = 0; i < 2; i++) {
+        const side = i === 0 ? -1 : 1;
+        const fx = Math.max(24, Math.min(viewW - 24, cx + side * (18 + Math.random() * 10)));
+        const fy = Math.max(24, Math.min(viewH - 24, cy + (Math.random() - 0.5) * 16));
+        foods.push(new Food(fx, fy, size, { rainbow: true }));
+    }
+    fish.dead = true;
+    fish.rainbowLeaving = false;
+    fish.rainbowPhase = null;
 }
 
 const RAINBOW_TRAIL_CAP = 220;
@@ -5161,9 +5181,9 @@ function pushRainbowTrail(x, y, life, pathIndex) {
 }
 
 function updateRainbowTrail(dt) {
-    // Hold the script steady while writing; afterglow fades once the exit starts.
-    const writing = fishes.some((f) => f.isRainbow && f.rainbowLeaving && f.rainbowPhase === "write");
-    if (!writing) {
+    // Hold the logo trail while drawing; fade once the fish heads to center / bursts.
+    const drawing = fishes.some((f) => f.isRainbow && f.rainbowLeaving && f.rainbowPhase === "logo");
+    if (!drawing) {
         for (const p of rainbowScriptTrail) p.age += dt;
     }
     // Compact from the front when old; avoid splicing every point mid-array each frame.
@@ -5500,12 +5520,12 @@ class Fish {
         spawnSplash(this.x, this.y, this.size * 0.28, 0.35);
     }
 
-    // Victory lap: swim a smooth cursive "Easter Egg" trail, then glide away.
+    // Victory lap: swim a fish logo, ease to center, burst into two rainbow food.
     beginRainbowExit() {
         this.rainbowLeaving = true;
-        this.rainbowPhase = "write";
+        this.rainbowPhase = "logo";
         rainbowScriptTrail.length = 0;
-        this.eggPath = buildEasterEggPath(this.x, this.y);
+        this.eggPath = buildFishLogoPath(this.x, this.y);
         this.eggIndex = 0;
         this.trailDrop = 0;
         this.erraticTimer = 0;
@@ -5514,11 +5534,12 @@ class Fish {
         this.petTimer = 0;
         this._exitDir = undefined;
         this._writePathI = 0;
+        this._logoDoneT = 0;
         if (this.eggPath.length > 1) {
             const n = this.eggPath[1];
             this.dir = Math.atan2(n.y - this.y, n.x - this.x);
         }
-        pushRainbowTrail(this.x, this.y, 10, 0);
+        pushRainbowTrail(this.x, this.y, 6, 0);
     }
 
     // Nearest threat: whale, shark, reptiles (if bigger), larger predators, rainbow/monster.
@@ -5612,7 +5633,48 @@ class Fish {
         };
     }
 
-    // Evil: spear smaller fish. Hero: spear predators / monsters. Also spears large food.
+    // Pack speared trophies along the inherited bill (same stacking idea as wild swordfish).
+    swordTrophyAlong(i) {
+        return Math.min(0.88, 0.42 + Math.max(0, i) * 0.07);
+    }
+
+    pushSwordTrophy(opts) {
+        if (!this.stuckPrey) this.stuckPrey = [];
+        const size = Math.max(7, opts.size || 10);
+        this.stuckPrey.push({
+            along: this.swordTrophyAlong(this.stuckPrey.length),
+            side: this.stuckPrey.length % 2 === 0 ? 1 : -1,
+            size,
+            maxSize: size,
+            body: opts.body || "#8899aa",
+            belly: opts.belly || "#dde5ee",
+            wobble: Math.random() * Math.PI * 2,
+        });
+    }
+
+    // Pond-fish spear gate: near-equal OK (hunter at least ~95% of prey size).
+    swordOutsizesFish(preySize) {
+        return this.size >= preySize * 0.95;
+    }
+
+    // Apex spear gate: match hero / night-predator eats (strictly larger).
+    swordOutsizesApex(preySize) {
+        return this.size > preySize;
+    }
+
+    // Eligible pond fish for an inherited sword: golden, evil, monster, and (for
+    // evil/monster hunters) ordinary smaller fish. Never platinum, rainbow, heroes.
+    canSwordSpearFish(p) {
+        if (!p || p === this || p.dead) return false;
+        if (p.isPlatinum || p.isRainbow || p.isHero) return false;
+        if (!this.swordOutsizesFish(p.size)) return false;
+        if (p.golden || p.isPredator || p.isMonster) return true;
+        // Evil / monster sword-bearers may still spear ordinary pond fish.
+        return !!(this.isPredator || this.isMonster);
+    }
+
+    // Inherited sword: spear food, large goldfish, evil/monster fish, and wild apex
+    // when large enough. Trophies stack on the bill. Chase eases toward prey (no teleport).
     tryUseSword(dt) {
         if (!this.hasSword || this.dead || this.golden || this.plantMorph) return null;
         const tip = this.swordTip();
@@ -5629,36 +5691,107 @@ class Fish {
             }
         }
 
-        let best = null, bd = CONFIG.huntRange * 1.15;
+        let best = null;
+        let bestKind = null;
+        let bd = CONFIG.huntRange * 1.15;
+
         for (const p of fishes) {
-            if (p === this || p.dead || p.golden || p.isRainbow || p.isPlatinum) continue;
-            if (this.isHero || this.redeemed) {
-                if (!p.isPredator && !p.isMonster) continue;
-            } else if (!this.isPredator && !this.isMonster) {
-                continue; // peaceful non-heroes do not spear fish
-            }
-            if (p.size >= this.size) continue;
+            if (!this.canSwordSpearFish(p)) continue;
             const d = Math.hypot(p.x - tip.x, p.y - tip.y);
-            if (d < bd) { bd = d; best = p; }
+            if (d < bd) { bd = d; best = p; bestKind = "fish"; }
         }
+
+        for (const r of reptiles) {
+            if (r.dead || r.tamed || r.isHero || r.golden) continue;
+            if (!this.swordOutsizesApex(r.size)) continue;
+            const d = Math.hypot(r.x - tip.x, r.y - tip.y);
+            if (d < bd) { bd = d; best = r; bestKind = "reptile"; }
+        }
+
+        if (isWildNightPredator(swordfish) && this.swordOutsizesApex(swordfish.size)) {
+            const d = Math.hypot(swordfish.x - tip.x, swordfish.y - tip.y);
+            if (d < bd) { bd = d; best = swordfish; bestKind = "swordfish"; }
+        }
+        if (isWildNightPredator(octopus) && this.swordOutsizesApex(octopus.size)) {
+            const d = Math.hypot(octopus.x - tip.x, octopus.y - tip.y);
+            if (d < bd) { bd = d; best = octopus; bestKind = "octopus"; }
+        }
+
+        if (shark && !shark.dead && !shark.leaving && !shark.isHero
+            && this.swordOutsizesApex(shark.size)) {
+            const d = Math.hypot(shark.x - tip.x, shark.y - tip.y);
+            if (d < bd) { bd = d; best = shark; bestKind = "shark"; }
+        }
+
         if (!best) return null;
         const desired = Math.atan2(best.y - this.y, best.x - this.x);
         const dist = Math.hypot(best.x - tip.x, best.y - tip.y);
-        if (dist < this.size * 0.22 + best.size * 0.35) {
-            best.dead = true;
-            this.stuckPrey.push({
-                along: Math.min(0.88, 0.42 + this.stuckPrey.length * 0.07),
-                side: this.stuckPrey.length % 2 === 0 ? 1 : -1,
-                size: Math.max(7, best.size * 0.6),
-                body: best.type ? best.type.body : "#8899aa",
-                belly: best.type ? best.type.belly : "#dde5ee",
-                wobble: Math.random() * Math.PI * 2,
-            });
-            this.grow(best.size * 0.35);
-            Audio.sharkStrike(Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1)));
-            water.disturb(tip.x, tip.y, 14, 160);
+        const hitR = this.size * 0.22 + best.size * 0.35;
+        if (dist < hitR) {
+            this.finishSwordSpear(best, bestKind, tip);
         }
-        return { desired, speed: this.baseSpeed * (this.isHero ? CONFIG.heroChaseMult : CONFIG.predatorChaseMult), used: true };
+        return {
+            desired,
+            speed: this.baseSpeed * (this.isHero ? CONFIG.heroChaseMult : CONFIG.predatorChaseMult),
+            used: true,
+        };
+    }
+
+    finishSwordSpear(prey, kind, tip) {
+        if (!prey || prey.dead) return;
+        const tipX = tip ? tip.x : this.x;
+        const tipY = tip ? tip.y : this.y;
+
+        if (kind === "fish") {
+            if (!this.canSwordSpearFish(prey)) return;
+            prey.dead = true;
+            this.pushSwordTrophy({
+                size: Math.max(7, prey.size * 0.6),
+                body: prey.type ? prey.type.body : (prey.golden ? "#d4b84a" : "#8899aa"),
+                belly: prey.type ? prey.type.belly : (prey.golden ? "#f0e6a8" : "#dde5ee"),
+            });
+            this.grow(prey.size * 0.35 * preySizeGainMult(this.size, prey.size));
+            Audio.sharkStrike(Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1)));
+            water.disturb(tipX, tipY, 14, 160);
+            return;
+        }
+
+        if (kind === "reptile") {
+            if (prey.dead || prey.tamed || prey.isHero || prey.golden) return;
+            if (!this.swordOutsizesApex(prey.size)) return;
+            const gain = prey.size * 0.35;
+            prey.dead = true;
+            this.pushSwordTrophy({
+                size: Math.max(10, prey.size * 0.45),
+                body: "#3d5a38",
+                belly: "#8a9a70",
+            });
+            if (this.isHero) this.heroFinishKill("reptile", gain);
+            else this.becomeMonster();
+            return;
+        }
+
+        if (kind === "swordfish" || kind === "octopus") {
+            if (!isWildNightPredator(prey) || !this.swordOutsizesApex(prey.size)) return;
+            this.pushSwordTrophy({
+                size: Math.max(10, prey.size * 0.45),
+                body: kind === "swordfish" ? "#7a8a9a" : "#8a4060",
+                belly: kind === "swordfish" ? "#d0d8e0" : "#c08090",
+            });
+            consumeWildNightPredator(this, kind);
+            return;
+        }
+
+        if (kind === "shark") {
+            if (!shark || shark.dead || shark.isHero || !this.swordOutsizesApex(shark.size)) return;
+            const isOrca = !!shark.isOrca;
+            this.pushSwordTrophy({
+                size: Math.max(12, shark.size * (isOrca ? 0.22 : 0.4)),
+                body: isOrca ? "#0c1018" : "#5a6a78",
+                belly: isOrca ? "#f2f4f8" : "#c8d0d8",
+            });
+            this.eatShark();
+        }
     }
 
     // Tentacles: reel prey in. Evil grabs smaller fish; heroes grab predators.
@@ -5859,78 +5992,70 @@ class Fish {
         let freeRoam = false; // when leaving, ignore bank steering
         let hardChase = false;
 
-        // Rainbow victory lap: smooth cursive "Easter Egg", then exit with afterglow.
+        // Rainbow victory lap: draw a fish logo, ease to center, burst into food.
         if (this.rainbowLeaving) {
             freeRoam = true;
-            if (this.rainbowPhase === "write" && this.eggPath && this.eggIndex < this.eggPath.length) {
+            const cx = viewW * 0.5;
+            const cy = viewH * 0.48;
+            if (this.rainbowPhase === "logo" && this.eggPath && this.eggIndex < this.eggPath.length) {
                 this.trailDrop -= dt;
-                // Look ahead a little so turns stay rounded instead of corner-snapping.
-                const look = Math.min(this.eggPath.length - 1, this.eggIndex + 5);
+                const look = Math.min(this.eggPath.length - 1, this.eggIndex + 3);
                 const wp = this.eggPath[look];
                 const desiredWrite = Math.atan2(wp.y - this.y, wp.x - this.x);
-                const turnRate = 7.2;
+                const turnRate = 5.4;
                 const diff = normAngle(desiredWrite - this.dir);
                 this.dir += Math.max(-turnRate * dt, Math.min(turnRate * dt, diff));
-                // Ease speed in corners; keep a steady ink flow on straights.
                 const align = 1 - Math.min(1, Math.abs(diff) / Math.PI);
-                const writeSpeed = 310 + 95 * align;
+                const writeSpeed = 160 + 70 * align;
                 this.x += Math.cos(this.dir) * writeSpeed * dt;
                 this.y += Math.sin(this.dir) * writeSpeed * dt;
-                // Advance along the ribbon when close enough to the current knot.
                 while (this.eggIndex < this.eggPath.length) {
                     const p = this.eggPath[this.eggIndex];
-                    if (Math.hypot(p.x - this.x, p.y - this.y) > 18) break;
+                    if (Math.hypot(p.x - this.x, p.y - this.y) > 16) break;
                     this.eggIndex++;
                 }
-                // Also advance if we have mostly passed the waypoint along our heading.
-                if (this.eggIndex < this.eggPath.length) {
-                    const p = this.eggPath[this.eggIndex];
-                    const tox = p.x - this.x, toy = p.y - this.y;
-                    if (tox * Math.cos(this.dir) + toy * Math.sin(this.dir) < -2) {
-                        this.eggIndex++;
-                    }
-                }
                 if (this.trailDrop <= 0) {
-                    this.trailDrop = 0.032;
+                    this.trailDrop = 0.04;
                     this._writePathI = (this._writePathI || 0) + 1;
-                    pushRainbowTrail(this.x, this.y, 8, this._writePathI);
+                    pushRainbowTrail(this.x, this.y, 5.5, this._writePathI);
                 }
-                this.tailPhase += dt * 11;
-                if (Math.random() < 0.06) {
-                    water.disturb(this.x, this.y, 5, 18);
-                }
+                this.tailPhase += dt * 9;
+                if (Math.random() < 0.05) water.disturb(this.x, this.y, 5, 16);
                 if (this.eggIndex >= this.eggPath.length) {
-                    this.rainbowPhase = "exit";
-                    this._exitDir = undefined;
-                    for (const p of rainbowScriptTrail) {
-                        p.life = Math.max(p.life, p.age + 5.5);
-                    }
+                    this.rainbowPhase = "center";
+                    this._logoDoneT = 0;
                 }
                 return;
             }
 
-            this.rainbowPhase = "exit";
-            if (this._exitDir === undefined) {
-                const toLeft = this.x, toRight = viewW - this.x;
-                const toTop = this.y, toBottom = viewH - this.y;
-                const m = Math.min(toLeft, toRight, toTop, toBottom);
-                if (m === toLeft) this._exitDir = Math.PI;
-                else if (m === toRight) this._exitDir = 0;
-                else if (m === toTop) this._exitDir = -Math.PI / 2;
-                else this._exitDir = Math.PI / 2;
+            if (this.rainbowPhase === "center" || this.rainbowPhase === "logo") {
+                this.rainbowPhase = "center";
+                this._logoDoneT = (this._logoDoneT || 0) + dt;
+                const want = Math.atan2(cy - this.y, cx - this.x);
+                const diff = normAngle(want - this.dir);
+                this.dir += Math.max(-3.2 * dt, Math.min(3.2 * dt, diff));
+                const dist = Math.hypot(cx - this.x, cy - this.y);
+                const step = Math.min(dist, (95 + this.size * 0.4) * dt);
+                if (dist > 1) {
+                    this.x += Math.cos(want) * step;
+                    this.y += Math.sin(want) * step;
+                }
+                this.trailDrop -= dt;
+                if (this.trailDrop <= 0) {
+                    this.trailDrop = 0.06;
+                    this._writePathI = (this._writePathI || 0) + 1;
+                    pushRainbowTrail(this.x, this.y, 3.2, this._writePathI);
+                }
+                this.tailPhase += dt * 10;
+                if (dist < 14 || this._logoDoneT > 2.8) {
+                    burstRainbowIntoFood(this);
+                }
+                return;
             }
-            desired = this._exitDir;
-            speed = this.baseSpeed * CONFIG.rainbowSpeed * 1.15;
-            this.trailDrop -= dt;
-            if (this.trailDrop <= 0) {
-                this.trailDrop = 0.08;
-                this._writePathI = (this._writePathI || 0) + 1;
-                pushRainbowTrail(this.x, this.y, 2.2, this._writePathI);
-            }
-            const m = this.size * 2;
-            if (this.x < -m || this.x > viewW + m || this.y < -m || this.y > viewH + m) {
-                this.dead = true;
-            }
+
+            // Fallback: burst if phase is unknown.
+            burstRainbowIntoFood(this);
+            return;
         } else if (this.debrisFlee && !this.isRainbow && !this.isMonster) {
             // Flinch away from hauled lake debris.
             desired = Math.atan2(this.y - this.debrisFlee.y, this.x - this.debrisFlee.x);
@@ -6029,11 +6154,19 @@ class Fish {
                 }
             } else if (this.isPredator || this.isMonster) {
                 // Monster endgame: hunt the shark instead of fleeing.
+                // Sword-bearing monsters spear the shark (or other prey) when large enough.
                 if (this.isMonster && shark && !shark.dead && !shark.leaving) {
-                    desired = Math.atan2(shark.y - this.y, shark.x - this.x);
-                    speed = this.baseSpeed * 2.6;
-                    const dist = Math.hypot(shark.x - this.x, shark.y - this.y);
-                    if (dist < this.size * 0.5 + shark.size * 0.45 + 10) this.eatShark();
+                    const swordUse = this.hasSword ? this.tryUseSword(dt) : null;
+                    if (swordUse) {
+                        desired = swordUse.desired;
+                        speed = swordUse.speed;
+                        hardChase = true;
+                    } else {
+                        desired = Math.atan2(shark.y - this.y, shark.x - this.x);
+                        speed = this.baseSpeed * 2.6;
+                        const dist = Math.hypot(shark.x - this.x, shark.y - this.y);
+                        if (dist < this.size * 0.5 + shark.size * 0.45 + 10) this.eatShark();
+                    }
                 } else {
                     const swordUse = this.tryUseSword(dt);
                     const tentUse = !swordUse ? this.tryUseTentacles(dt) : null;
@@ -6100,11 +6233,15 @@ class Fish {
                 hardChase = true;
                 const whaleRemorseHunt = whale && !whale.dead && !whale.isHero && whale.ateFish
                     && !whaleRemorseDone && heroCanHuntWhale(this);
-                const meal = whaleRemorseHunt ? null : this.findEdibleReptile();
-                const nightSf = whaleRemorseHunt ? null : this.findEdibleSwordfish();
-                const nightOc = whaleRemorseHunt ? null : this.findEdibleOctopus();
-                const swordUse = (!whaleRemorseHunt && !meal) ? this.tryUseSword(dt) : null;
-                const tentUse = (!whaleRemorseHunt && !meal && !swordUse) ? this.tryUseTentacles(dt) : null;
+                // Sword-bearing heroes spear apex / gold / evil when large enough (before mouth eats).
+                const swordUse = whaleRemorseHunt ? null : this.tryUseSword(dt);
+                const meal = (!whaleRemorseHunt && !swordUse) ? this.findEdibleReptile() : null;
+                const nightSf = (!whaleRemorseHunt && !swordUse && !meal)
+                    ? this.findEdibleSwordfish() : null;
+                const nightOc = (!whaleRemorseHunt && !swordUse && !meal && !nightSf)
+                    ? this.findEdibleOctopus() : null;
+                const tentUse = (!whaleRemorseHunt && !meal && !swordUse)
+                    ? this.tryUseTentacles(dt) : null;
                 if (whaleRemorseHunt) {
                     const chase = this.chaseToward(
                         whale.x, whale.y,
@@ -6117,6 +6254,9 @@ class Fish {
                         whale = null;
                         beginHeroRemorseEnding(this);
                     }
+                } else if (swordUse) {
+                    desired = swordUse.desired;
+                    speed = swordUse.speed;
                 } else if (meal) {
                     const chase = this.chaseToward(
                         meal.x, meal.y,
@@ -6137,9 +6277,6 @@ class Fish {
                         desired = nightHunt.desired;
                         speed = nightHunt.speed;
                     }
-                } else if (swordUse) {
-                    desired = swordUse.desired;
-                    speed = swordUse.speed;
                 } else if (tentUse) {
                     desired = tentUse.desired;
                     speed = tentUse.speed;
@@ -6208,11 +6345,15 @@ class Fish {
                 }
             } else {
                 // Normal fish that outgrew a reptile / night predator can still hunt it.
-                const meal = this.findEdibleReptile();
-                const sf = this.findEdibleSwordfish();
-                const oc = this.findEdibleOctopus();
+                // Sword-bearers spear eligible prey (including apex) when large enough.
                 const swordUse = this.hasSword ? this.tryUseSword(dt) : null;
-                if (meal) {
+                const meal = swordUse ? null : this.findEdibleReptile();
+                const sf = swordUse || meal ? null : this.findEdibleSwordfish();
+                const oc = swordUse || meal || sf ? null : this.findEdibleOctopus();
+                if (swordUse) {
+                    desired = swordUse.desired;
+                    speed = swordUse.speed;
+                } else if (meal) {
                     desired = Math.atan2(meal.y - this.y, meal.x - this.x);
                     speed = this.baseSpeed * 1.8;
                     const dist = Math.hypot(meal.x - this.x, meal.y - this.y);
@@ -6231,9 +6372,6 @@ class Fish {
                     if (chase.dist < this.size * 0.5 + prey.size * 0.4 + 10) {
                         consumeWildNightPredator(this, sf ? "swordfish" : "octopus");
                     }
-                } else if (swordUse) {
-                    desired = swordUse.desired;
-                    speed = swordUse.speed;
                 } else {
                     const foodChase = this.tryBiteFood(dt);
                     if (foodChase) {
@@ -7357,7 +7495,7 @@ let povAttack = null; // { fish, t }
 let giantEnding = null; // { fish, t, kind: "peace" | "shadow" }
 let heroRemorseEnding = null; // { fish, t, burst }
 let orcaFeastEnding = null; // { fish, t } night: a fish ate the orca
-let swordfishSpearEnding = null; // { sf, t } night: swordfish spears orca, then the screen
+let swordfishSpearEnding = null; // { sf, t, approach, fade, liveAlpha } POV tip thrust finale
 let whaleRemorseDone = false; // one-shot: remorse finale already fired this session
 let apexDuel = null; // croc/alligator vs shark when the pond is emptied
 let repopulating = false;
@@ -8973,16 +9111,23 @@ class Swordfish {
 
     draw(ctx) {
         if (this.dead) return;
+        // POV spear finale draws the tip overlay; ease the live body out instead.
+        if (swordfishSpearEnding && swordfishSpearEnding.sf === this) {
+            if ((swordfishSpearEnding.liveAlpha || 0) < 0.04) return;
+        }
         if (this.plantMorph) drawPlantMorphAura(ctx, this);
         const L = this.size;
         const W = this.size * 0.22;
         const wig = Math.sin(this.tailPhase) * 0.25;
         const sink = this.golden ? (this.sinkDepth || 0) : 0;
         const morphA = this.plantMorph && this._morphAlpha != null ? this._morphAlpha : 1;
+        const finaleA = (swordfishSpearEnding && swordfishSpearEnding.sf === this)
+            ? (swordfishSpearEnding.liveAlpha || 0)
+            : 1;
         ctx.save();
         ctx.translate(this.x, this.y + sink * 6);
         ctx.rotate(this.dir);
-        ctx.globalAlpha = 0.92 * (1 - sink * 0.25) * morphA;
+        ctx.globalAlpha = 0.92 * (1 - sink * 0.25) * morphA * finaleA;
         if (this.isRainbow) {
             ctx.shadowColor = "rgba(255,120,255,0.9)";
             ctx.shadowBlur = 18;
@@ -10468,7 +10613,14 @@ function beginSwordfishSpearEnding(sf, opts) {
     } else if (povAttack || giantEnding || heroRemorseEnding || frogFinale || octopusWhaleFight) {
         return;
     }
-    swordfishSpearEnding = { sf, t: 0 };
+    // POV tip thrust: approach/fade ease toward the camera (no body snap to center).
+    swordfishSpearEnding = {
+        sf,
+        t: 0,
+        approach: 0,
+        fade: 0,
+        liveAlpha: 1,
+    };
     sf.target = null;
     sf.orcaHunt = false;
     // Keep the swordfish entity available for the charge even if globals churn.
@@ -10479,103 +10631,153 @@ function beginSwordfishSpearEnding(sf, opts) {
 
 function updateSwordfishSpearEnding(dt) {
     if (!swordfishSpearEnding) return;
-    swordfishSpearEnding.t += dt;
-    const t = swordfishSpearEnding.t;
-    const sf = swordfishSpearEnding.sf;
-    // Finale still completes if whale/orca/shark are already gone or the body was nulled.
+    const e = swordfishSpearEnding;
+    e.t += dt;
+    const t = e.t;
+    const sf = e.sf;
+
+    // Desired tip closeness over time (tiny point, then thrust, then final lunge).
+    let want = 0;
+    if (t < 0.4) want = (t / 0.4) * 0.1;
+    else if (t < 2.15) want = 0.1 + ((t - 0.4) / 1.75) * 0.72;
+    else want = 0.82 + Math.min(0.18, (t - 2.15) / 0.4 * 0.18);
+    want = Math.min(1, want);
+    const approachK = t > 2.1 ? 7 : 3.4;
+    e.approach += (want - e.approach) * (1 - Math.exp(-approachK * dt));
+
+    const wantFade = Math.min(0.72, 0.08 + e.approach * 0.62);
+    e.fade += (wantFade - e.fade) * (1 - Math.exp(-4.2 * dt));
+
+    // Ease the live body off-camera and fade it out; POV overlay owns the beat.
+    e.liveAlpha += (0 - e.liveAlpha) * (1 - Math.exp(-3.8 * dt));
     if (sf && !sf.dead) {
-        const cx = viewW * 0.5;
-        const cy = viewH * 0.5;
-        if (t < 1.1) {
-            // Turn the bill toward the viewer (screen center).
-            const want = Math.atan2(cy - sf.y, cx - sf.x);
-            const diff = normAngle(want - sf.dir);
-            sf.dir += Math.max(-3.2 * dt, Math.min(3.2 * dt, diff));
-            sf.x += (cx - 40 - sf.x) * Math.min(1, dt * 1.4);
-            sf.y += (cy - sf.y) * Math.min(1, dt * 1.4);
-            sf.tailPhase += dt * 5;
-        } else {
-            // Charge the camera.
-            sf.x += (cx - sf.x) * Math.min(1, dt * 3.2);
-            sf.y += (cy - sf.y) * Math.min(1, dt * 3.2);
-            sf.dir += normAngle(Math.atan2(cy - sf.y, cx - sf.x) - sf.dir) * Math.min(1, dt * 4);
-            sf.tailPhase += dt * 8;
-            if (t > 1.6 && Math.random() < 0.5) {
-                water.disturb(sf.x, sf.y, sf.size * 0.5, 120);
-            }
+        const edgeX = sf.x < viewW * 0.5 ? -sf.size * 1.4 : viewW + sf.size * 1.4;
+        const edgeY = sf.y + (sf.y < viewH * 0.5 ? -1 : 1) * sf.size * 0.35;
+        const ease = 1 - Math.exp(-2.4 * dt);
+        const maxStep = 260 * dt;
+        let dx = (edgeX - sf.x) * ease;
+        let dy = (edgeY - sf.y) * ease;
+        const dist = Math.hypot(dx, dy) || 1;
+        if (dist > maxStep) {
+            dx *= maxStep / dist;
+            dy *= maxStep / dist;
         }
+        sf.x += dx;
+        sf.y += dy;
+        const away = Math.atan2(dy, dx);
+        sf.dir += normAngle(away - sf.dir) * Math.min(1, dt * 3.5);
+        sf.tailPhase += dt * (5 + (1 - e.liveAlpha) * 5);
     }
+
     if (t >= 3.45) resetPond({ fromSwordfishSpear: true });
 }
 
 function drawSwordfishSpearEnding(ctx) {
     if (!swordfishSpearEnding) return;
-    const t = swordfishSpearEnding.t;
-    const sf = swordfishSpearEnding.sf;
-    const charge = Math.max(0, Math.min(1, (t - 1.05) / 1.5));
+    const e = swordfishSpearEnding;
+    const t = e.t;
+    const approach = e.approach;
     const pierce = t > 2.45 ? Math.min(1, (t - 2.45) / 0.85) : 0;
+    const cx = viewW * 0.5;
+    const cy = viewH * 0.5;
+    const base = Math.min(viewW, viewH);
 
     ctx.save();
-    ctx.fillStyle = `rgba(6, 8, 14, ${0.1 + charge * 0.45})`;
+    ctx.fillStyle = `rgba(6, 8, 14, ${e.fade})`;
     ctx.fillRect(0, 0, viewW, viewH);
 
-    // Facing-camera bill thrust overlay.
-    if (charge > 0.05) {
-        const cx = viewW * 0.5;
-        const cy = viewH * 0.5;
-        const reach = charge * Math.min(viewW, viewH) * 0.72;
+    // POV: bill tip aimed at the viewer, growing larger toward the camera.
+    if (approach > 0.01) {
         ctx.save();
         ctx.translate(cx, cy);
-        ctx.globalAlpha = 0.55 + charge * 0.4;
-        // Shaft.
-        const shaft = ctx.createLinearGradient(0, 0, reach, 0);
-        shaft.addColorStop(0, "#3a4a58");
-        shaft.addColorStop(0.7, "#c8d0d8");
-        shaft.addColorStop(1, "#f4f6f8");
-        ctx.fillStyle = shaft;
-        ctx.beginPath();
-        ctx.moveTo(-40, -18 - charge * 10);
-        ctx.lineTo(reach, -2);
-        ctx.lineTo(reach, 2);
-        ctx.lineTo(-40, 18 + charge * 10);
-        ctx.closePath();
-        ctx.fill();
-        // Tip gleam.
-        ctx.fillStyle = `rgba(255,255,255,${0.35 + charge * 0.5})`;
-        ctx.beginPath();
-        ctx.moveTo(reach - 30, -6);
-        ctx.lineTo(reach + 18 + pierce * 40, 0);
-        ctx.lineTo(reach - 30, 6);
-        ctx.closePath();
-        ctx.fill();
-        // Body hint behind the bill.
-        if (sf && charge < 0.85) {
-            ctx.fillStyle = "#2a3848";
-            ctx.globalAlpha = 0.5 * (1 - charge);
+        const alpha = Math.min(1, 0.2 + approach * 0.9);
+        ctx.globalAlpha = alpha;
+
+        // Tip size first so eyes stay parked above the growing point.
+        const tipSize = 5 + approach * base * 0.3 + pierce * base * 0.08;
+
+        // Foreshortened shaft rings sit behind the tip.
+        for (let i = 4; i >= 1; i--) {
+            const u = i / 4;
+            const r = (4 + tipSize * 0.55) * (0.4 + u * 1.1);
+            const yOff = -tipSize * 0.12 * (1 - u);
+            const g = ctx.createRadialGradient(0, yOff, r * 0.12, 0, yOff, r);
+            g.addColorStop(0, `rgba(210,220,230,${0.5 - u * 0.18})`);
+            g.addColorStop(0.55, `rgba(90,110,128,${0.4 - u * 0.1})`);
+            g.addColorStop(1, `rgba(30,40,52,${0.3 - u * 0.08})`);
+            ctx.fillStyle = g;
             ctx.beginPath();
-            ctx.ellipse(-50, 0, 55, 28, 0, 0, Math.PI * 2);
+            ctx.ellipse(0, yOff, r * 0.7, r * 0.5, 0, 0, Math.PI * 2);
             ctx.fill();
         }
+
+        // Head + eyes above the tip, staring at the viewer.
+        const headR = 8 + tipSize * 0.42;
+        const headY = -(tipSize * 0.72 + headR * 0.55);
+        const headG = ctx.createRadialGradient(0, headY, headR * 0.2, 0, headY, headR);
+        headG.addColorStop(0, "#6a8296");
+        headG.addColorStop(0.55, "#3a5164");
+        headG.addColorStop(1, "#1a2834");
+        ctx.fillStyle = headG;
+        ctx.beginPath();
+        ctx.ellipse(0, headY, headR * 1.1, headR * 0.8, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        const eyeSpread = headR * 0.42;
+        const eyeY = headY - headR * 0.08;
+        const eyeR = 2.8 + tipSize * 0.08;
+        ctx.fillStyle = "rgba(245,248,252,0.96)";
+        ctx.shadowColor = "rgba(180,210,240,0.55)";
+        ctx.shadowBlur = 6 + approach * 10;
+        ctx.beginPath();
+        ctx.ellipse(-eyeSpread, eyeY, eyeR * 1.15, eyeR * 0.85, -0.15, 0, Math.PI * 2);
+        ctx.ellipse(eyeSpread, eyeY, eyeR * 1.15, eyeR * 0.85, 0.15, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = "rgba(12,16,22,0.95)";
+        ctx.beginPath();
+        ctx.ellipse(-eyeSpread + eyeR * 0.12, eyeY, eyeR * 0.45, eyeR * 0.55, 0, 0, Math.PI * 2);
+        ctx.ellipse(eyeSpread + eyeR * 0.12, eyeY, eyeR * 0.45, eyeR * 0.55, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Center tip: a point on screen that grows toward the camera.
+        const tipFill = ctx.createRadialGradient(0, 0, tipSize * 0.04, 0, 0, tipSize);
+        tipFill.addColorStop(0, "#ffffff");
+        tipFill.addColorStop(0.35, "#e8eef4");
+        tipFill.addColorStop(0.75, "#9aacbc");
+        tipFill.addColorStop(1, "#5a6c7c");
+        ctx.fillStyle = tipFill;
+        ctx.beginPath();
+        ctx.moveTo(0, -tipSize * 0.55);
+        ctx.lineTo(tipSize * 0.4, 0);
+        ctx.lineTo(0, tipSize * 0.5);
+        ctx.lineTo(-tipSize * 0.4, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = `rgba(255,255,255,${0.4 + approach * 0.45})`;
+        ctx.beginPath();
+        ctx.moveTo(0, -tipSize * 0.12);
+        ctx.lineTo(tipSize * 0.14, 0);
+        ctx.lineTo(0, tipSize * 0.18);
+        ctx.lineTo(-tipSize * 0.14, 0);
+        ctx.closePath();
+        ctx.fill();
+
         ctx.restore();
     }
 
-    // Screen crack / pierce flash, then blackout (pond reset).
+    // Pierce flash from the tip, then blackout (pond reset). No crack spears.
     if (pierce > 0) {
-        ctx.strokeStyle = `rgba(240,245,255,${0.35 + pierce * 0.55})`;
-        ctx.lineWidth = 2 + pierce * 6;
-        ctx.beginPath();
-        const cx = viewW * 0.5, cy = viewH * 0.5;
-        ctx.moveTo(cx - 20, cy);
-        ctx.lineTo(cx + viewW * 0.55 * pierce, cy - viewH * 0.15 * pierce);
-        ctx.moveTo(cx, cy - 10);
-        ctx.lineTo(cx + viewW * 0.2 * pierce, cy + viewH * 0.4 * pierce);
-        ctx.moveTo(cx, cy + 8);
-        ctx.lineTo(cx - viewW * 0.25 * pierce, cy + viewH * 0.3 * pierce);
-        ctx.stroke();
-        ctx.fillStyle = `rgba(255,255,255,${pierce * 0.35})`;
+        const flash = ctx.createRadialGradient(cx, cy, 4, cx, cy, base * (0.25 + pierce * 0.75));
+        flash.addColorStop(0, `rgba(255,255,255,${0.75 * pierce})`);
+        flash.addColorStop(0.35, `rgba(220,230,240,${0.35 * pierce})`);
+        flash.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = flash;
         ctx.fillRect(0, 0, viewW, viewH);
-        if (pierce > 0.45) {
-            ctx.fillStyle = `rgba(0,0,0,${(pierce - 0.45) * 1.9})`;
+        ctx.fillStyle = `rgba(255,255,255,${pierce * 0.22})`;
+        ctx.fillRect(0, 0, viewW, viewH);
+        if (pierce > 0.4) {
+            ctx.fillStyle = `rgba(0,0,0,${(pierce - 0.4) * 1.85})`;
             ctx.fillRect(0, 0, viewW, viewH);
         }
     }
