@@ -16,7 +16,7 @@ Appear when night pond is on (unlocked with platinum). Moon-toned species replac
 ## Special fish forms
 
 ### Hero
-Blue-glow guardians. They hunt smaller evil fish, aggressive exotic hunters, wild crocs, night predators they outgrow, and (when large enough) sharks. They do not hunt rainbow fish. After a whale has eaten someone, a large enough hero can hunt that whale for the remorse ending.
+Blue-glow guardians. They hunt smaller evil fish, aggressive exotic hunters, wild crocs, night predators they outgrow, and (when large enough) sharks. Any hero swimmer counts: common, exotic, night fish, redeemed, and tamed apex with the hero trait. Size gate for night predators is strict, hunter size must be greater than swordfish or octopus size. On a kill, eating a wild swordfish grants the sword trait and eating a wild octopus grants the tentacle trait. Heroes never eat already-tamed or hero allies. A larger hero breaks free of octopus grabs so wrap cannot block that eat. They do not hunt rainbow fish. After a whale has eaten someone, a large enough hero can hunt that whale for the remorse ending.
 
 ### Predator / evil
 Red-glow hunters. A fish becomes evil once it grows past the predator size threshold (40). They chase smaller fish and prefer food when it is nearby. Pet them enough to redeem them into heroes. Redeemed fish never turn evil from food again.
@@ -45,13 +45,13 @@ Grower food gives a large size surge and raises the size ceiling. Used for giant
 Roll in on a timer while it is day. Wild ones hunt smaller fish. Pet them a lot (about 30 discrete pets, or a long continuous stroke) to tame them. A fish that outgrows and eats a wild reptile becomes a monster (heroes just grow and stay heroic). Prod the snout a few times to scare one away.
 
 ### Swordfish and octopus (night)
-Night replacements for crocs. Harder to tame (about 40 pets or a longer stroke). Wild swordfish spear prey onto their bill and slowly eat trophies to grow. A swordfish that outgrows the orca can spear it for the screen-spear ending. Wild octopus grab fish with arms; a grown octopus can wrap larger apex prey. If a wild octopus is alone in an empty countable pond, it can start the octopus-whale fight.
+Night replacements for crocs. Harder to tame (about 40 pets or a longer stroke). Wild swordfish spear prey onto their bill and slowly eat trophies to grow. A swordfish must be strictly larger than the orca before it can spear or start the screen-spear ending. Wild octopus grab only smaller fish with arms; they cannot finish or pin a fish that outsizes them, so a larger hero can chase and eat them. A grown octopus can wrap larger apex prey, but it must also be strictly larger than the orca before wrapping or eating it. If a wild octopus is alone in an empty countable pond, it can start the octopus-whale fight. Tamed or hero apex (including crocs, sharks, swordfish, and octopus) that outgrow a wild night predator will hunt it the same way hero fish do, and inherit sword or tentacle traits on the kill. A tamed or hero ally of one night predator does not block the other kind from rolling in.
 
 ### Shark (day, last fish)
 When the last countable fish remains in day mode, a shark enters. It hunts ordinary fish. Petting makes it belly-roll. Heroes, monsters, and rainbows that outsize it can eat it (monster: POV ending; rainbow: victory exit). Platinum is ignored.
 
 ### Orca (night, last fish)
-Night last-fish visitor, much larger than the day shark. Same role as the shark for endings, but eating it starts the orca feast instead of the POV choke. Swordfish can spear it when large enough.
+Night last-fish visitor, much larger than the day shark. Same role as the shark for endings, but eating it starts the orca feast instead of the POV choke. Swordfish and octopus can only spear or wrap it when they are strictly larger than the orca.
 
 ### Whale
 Rare visitor. Swallows fish it swims over (not platinum, and not heroes large enough to hunt it). If it has eaten someone, a large hero can hunt it for the one-shot remorse ending. A wild octopus alone can summon an octopus-whale fight.
@@ -121,18 +121,25 @@ Hats unlock separately in Looks for 5 gold and put little hats on fish.
 - **POV**: A monster eats the day shark. First-person choke attack, then pond reset.
 - **Giant**: A fish reaches about half the shorter screen side. Peaceful heroes ease to center, gently come apart into light, wash to white, then fade back into a friendly hero school for the current day or night pond. Shadow giants keep the darker close, then reset.
 - **Orca feast**: A fish (monster, rainbow, large hero, or large enough platinum) eats the night orca. Cool breach celebration, then reset.
-- **Swordfish screen spear**: A grown wild swordfish spears the orca. Bill fills the view, then reset.
+- **Swordfish screen spear**: A wild swordfish that is strictly larger than the orca spears it. Bill fills the view, then reset.
 - **Octopus-whale**: Wild octopus alone in an empty countable pond summons a whale fight spectacle. The whale thrashes while wrapped, then a dark ship-pull beat plays before a soft fade back into a restocked pond.
 - **Remorse**: A large hero eats a whale that already swallowed someone. One-shot per session: surge, close eyes, burst into one of every fish type, with a friendly whale afterward.
 - **Rainbow exit**: A rainbow that finishes the day shark (not orca) writes a trail and leaves.
 - **Frog finale**: Giant hero frog bursts into tadpoles.
 - **Apex duel**: Day-only croc-versus-shark clash when wild reptiles clear the pond. Night never starts this fight; moonlight uses swordfish, octopus, and orca stories instead.
 
+## Growth from prey
+
+When a fish eats another fish that is still smaller than the eater, size gain scales with how large that prey was relative to the eater (prey size divided by eater size). Near-equal legal prey gives a noticeably higher growth bonus than tiny snacks. The same bigger-prey multiplier applies to octopus arm grabs and swordfish trophy digestion.
+
 ## What ignores what (quick rules)
 
 - Apex predators never target platinum (no hunt, spear, grab, or eat).
 - Platinum ignores apex except eating an outsized night orca.
+- Swordfish and octopus cannot spear, wrap, or eat the night orca unless they are strictly larger than it.
 - Heroes never hunt rainbow fish.
+- Heroes never eat tamed or hero swordfish / octopus allies.
+- Hero size must be greater than wild swordfish or octopus size to hunt them; kill grants sword or tentacle.
 - Rainbow catcher only catches rainbow fish (including rainbow night predators).
 - Fish picker never moves rainbow or platinum fish.
 - Golden fish are inert on the lakebed until collected or the page refreshes.
