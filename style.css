@@ -760,6 +760,7 @@ body.pond #food-stash.has-items {
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.25s ease;
+    touch-action: none;
 }
 
 #dev-panel.open {
@@ -773,6 +774,12 @@ body.pond #food-stash.has-items {
     opacity: 0.98;
 }
 
+#dev-panel.dragging {
+    transition: none;
+    opacity: 0.98;
+    user-select: none;
+}
+
 .dev-head {
     display: flex;
     align-items: center;
@@ -781,6 +788,12 @@ body.pond #food-stash.has-items {
     padding: 2px 2px 8px;
     border-bottom: 1px solid rgba(180, 210, 200, 0.12);
     margin-bottom: 6px;
+    cursor: grab;
+    touch-action: none;
+}
+
+.dev-head:active {
+    cursor: grabbing;
 }
 
 .dev-title {
@@ -799,6 +812,7 @@ body.pond #food-stash.has-items {
     color: rgba(210, 230, 220, 0.75);
     font: 300 11px/1 "Segoe UI", Roboto, sans-serif;
     cursor: pointer;
+    touch-action: auto;
 }
 
 .dev-close:hover,
