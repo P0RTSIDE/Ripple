@@ -26,47 +26,52 @@
         <span id="gold-count">0</span>
     </div>
 
-    <!-- Pond-only aesthetics and drop-sound controls: faint until hovered. -->
+    <!-- Pond tools; looks menu holds aesthetic toggles. -->
     <div id="pond-controls" aria-label="Pond options">
-        <button type="button" class="scenery-btn on" data-scenery="stones" title="Shore stones" aria-pressed="true">
-            <span class="ico ico-stone"></span>
+        <button type="button" id="looks-btn" class="scenery-btn" title="Pond looks" aria-pressed="false" aria-expanded="false">
+            <span class="ico ico-looks"></span>
         </button>
-        <button type="button" class="scenery-btn on" data-scenery="sticks" title="Fallen sticks" aria-pressed="true">
-            <span class="ico ico-stick"></span>
-        </button>
-        <button type="button" class="scenery-btn on" data-scenery="reeds" title="Reeds" aria-pressed="true">
-            <span class="ico ico-reed"></span>
-        </button>
-        <button type="button" class="scenery-btn on" data-scenery="lilies" title="Lily pads" aria-pressed="true">
-            <span class="ico ico-lily"></span>
-        </button>
-        <button type="button" class="scenery-btn on" data-scenery="cattails" title="Cattails" aria-pressed="true">
-            <span class="ico ico-cattail"></span>
-        </button>
-        <button type="button" class="scenery-btn on" data-scenery="duckweed" title="Duckweed and leaves" aria-pressed="true">
-            <span class="ico ico-duckweed"></span>
-        </button>
-        <button type="button" class="scenery-btn on" data-scenery="debris" title="Lake debris (drag with right click)" aria-pressed="true">
-            <span class="ico ico-debris"></span>
-        </button>
-        <button type="button" class="scenery-btn on" data-scenery="bed" title="Pond bed" aria-pressed="true">
-            <span class="ico ico-bed"></span>
-        </button>
-        <button type="button" class="scenery-btn on" data-scenery="sun" title="Harsh overhead sun" aria-pressed="true">
-            <span class="ico ico-sun"></span>
-        </button>
+        <div id="looks-panel" aria-label="Pond looks" aria-hidden="true">
+            <button type="button" class="scenery-btn on" data-scenery="stones" title="Shore stones" aria-pressed="true">
+                <span class="ico ico-stone"></span>
+            </button>
+            <button type="button" class="scenery-btn on" data-scenery="sticks" title="Fallen sticks" aria-pressed="true">
+                <span class="ico ico-stick"></span>
+            </button>
+            <button type="button" class="scenery-btn on" data-scenery="reeds" title="Reeds" aria-pressed="true">
+                <span class="ico ico-reed"></span>
+            </button>
+            <button type="button" class="scenery-btn on" data-scenery="lilies" title="Lily pads" aria-pressed="true">
+                <span class="ico ico-lily"></span>
+            </button>
+            <button type="button" class="scenery-btn on" data-scenery="cattails" title="Cattails" aria-pressed="true">
+                <span class="ico ico-cattail"></span>
+            </button>
+            <button type="button" class="scenery-btn on" data-scenery="duckweed" title="Duckweed and leaves" aria-pressed="true">
+                <span class="ico ico-duckweed"></span>
+            </button>
+            <button type="button" class="scenery-btn on" data-scenery="debris" title="Lake debris (drag with right click)" aria-pressed="true">
+                <span class="ico ico-debris"></span>
+            </button>
+            <button type="button" class="scenery-btn on" data-scenery="bed" title="Pond bed" aria-pressed="true">
+                <span class="ico ico-bed"></span>
+            </button>
+            <button type="button" class="scenery-btn on" data-scenery="sun" title="Harsh overhead sun" aria-pressed="true">
+                <span class="ico ico-sun"></span>
+            </button>
+            <button type="button" class="scenery-btn on" data-scenery="frogs" title="Swimming frogs and tadpoles" aria-pressed="true">
+                <span class="ico ico-frog"></span>
+            </button>
+            <button type="button" id="hats-btn" class="locked" title="Hats: 5 gold fish" aria-disabled="true" aria-pressed="false">
+                <span class="ico ico-hat"></span>
+                <span id="hats-cost">5</span>
+            </button>
+        </div>
         <button type="button" id="night-btn" class="scenery-btn" title="Night pond" aria-pressed="false" hidden>
             <span class="ico ico-moon"></span>
         </button>
-        <button type="button" class="scenery-btn on" data-scenery="frogs" title="Swimming frogs and tadpoles" aria-pressed="true">
-            <span class="ico ico-frog"></span>
-        </button>
         <button type="button" id="net-btn" class="scenery-btn" title="Net: scoop food with right click" aria-pressed="false">
             <span class="ico ico-net"></span>
-        </button>
-        <button type="button" id="hats-btn" class="locked" title="Hats: 5 gold fish" aria-disabled="true" aria-pressed="false">
-            <span class="ico ico-hat"></span>
-            <span id="hats-cost">5</span>
         </button>
         <button type="button" id="market-btn" class="locked" title="Market: 7 gold fish" aria-disabled="true" aria-pressed="false">
             <span class="ico ico-market"></span>
@@ -74,6 +79,9 @@
         </button>
         <button type="button" id="catcher-btn" class="scenery-btn" title="Rainbow catcher" aria-pressed="false" hidden>
             <span class="ico ico-catcher"></span>
+        </button>
+        <button type="button" id="picker-btn" class="scenery-btn" title="Fish picker" aria-pressed="false" hidden>
+            <span class="ico ico-picker"></span>
         </button>
         <button type="button" id="drop-sound-btn" title="Drop sound: soft" aria-label="Cycle drop sound">
             <span class="ico ico-sound"></span>
@@ -90,7 +98,9 @@
         <button type="button" id="market-buy-magnet" class="market-row" disabled>Magnet · 3 gold</button>
         <button type="button" id="market-buy-catcher" class="market-row" disabled>Rainbow catcher · 4 gold</button>
         <button type="button" id="market-buy-catcher-up" class="market-row" disabled hidden>Wider catcher · 3 rainbow food</button>
-        <button type="button" id="market-buy-rainbow" class="market-row" disabled>Rainbow fish · 10 gold</button>
+        <button type="button" id="market-buy-picker" class="market-row" disabled>Fish picker · 3 rainbow food</button>
+        <button type="button" id="market-buy-double-petter" class="market-row" disabled hidden>Double petter · 5 rainbow food</button>
+        <button type="button" id="market-buy-rainbow" class="market-row" disabled>Rainbow food · 10 gold</button>
         <button type="button" id="market-buy-goldfood" class="market-row" disabled>Gold food · 20 fish food</button>
         <button type="button" id="market-buy-platinum" class="market-row" disabled hidden>Platinum food · 5 rainbow food</button>
     </div>

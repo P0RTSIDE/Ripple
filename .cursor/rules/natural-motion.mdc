@@ -1,0 +1,15 @@
+---
+description: Keep pond creatures moving smoothly without teleports or snap motion
+alwaysApply: true
+---
+
+# Natural motion
+
+When animating fish, predators, finales, or camera beats in Ripple:
+
+- Do not teleport entities to a target. Ease or steer with capped speed.
+- Prefer frame-rate independent easing such as `1 - Math.exp(-k * dt)` or a max step per second.
+- Do not assign limb tip / body positions to final goals each frame. Lerp toward goals.
+- Avoid sudden size jumps; grow or shrink over time.
+- Fade overlays and scene transitions gradually. No hard cut to black unless the beat is a deliberate flash.
+- Finales should feel like swimming and reaching, not cutscene snaps.
