@@ -6472,8 +6472,13 @@ class Fish {
             body = `hsl(${hue}, 85%, 55%)`;
             belly = `hsl(${(hue + 40) % 360}, 90%, 75%)`;
         } else if (this.isPlatinum) {
-            const pulse = 0.5 + 0.5 * Math.sin(this.age * 4.5);
-            body = pulse > 0.55 ? "#e8eef8" : "#b8c4d8";
+            // Bright metallic silver that flickers like polished metal under water.
+            const gleam = 0.5 + 0.5 * Math.sin(this.age * 6.4);
+            const cool = 0.5 + 0.5 * Math.sin(this.age * 3.7 + 1.1);
+            const r = Math.round(205 + 50 * gleam);
+            const g = Math.round(215 + 40 * gleam);
+            const b = Math.round(230 + 25 * cool);
+            body = `rgb(${r},${g},${b})`;
             belly = "#ffffff";
         } else if (this.isMonster) {
             body = "#2a1020";
@@ -6497,14 +6502,16 @@ class Fish {
             ? this._giantFlyAlpha : 1;
         ctx.globalAlpha = (this.golden
             ? (0.42 + 0.38 * (1 - sink))
+            : this.isPlatinum ? 0.98 * ghost
             : 0.9 * ghost) * morphA * giantA;
 
         if (this.golden) {
             ctx.shadowColor = `rgba(255,215,90,${0.55 * (1 - sink * 0.7)})`;
             ctx.shadowBlur = 10 * (1 - sink * 0.5);
         } else if (this.isPlatinum) {
-            ctx.shadowColor = "rgba(200, 230, 255, 0.95)";
-            ctx.shadowBlur = 18 + 10 * Math.sin(this.age * 5);
+            const glow = 0.7 + 0.3 * Math.sin(this.age * 5.5);
+            ctx.shadowColor = `rgba(220, 240, 255, ${0.85 + 0.15 * glow})`;
+            ctx.shadowBlur = 24 + 16 * glow;
         } else if (this.isRainbow) {
             ctx.shadowColor = "rgba(255,100,255,0.85)";
             ctx.shadowBlur = 18;
@@ -6584,6 +6591,41 @@ class Fish {
         ctx.quadraticCurveTo(0, W * 0.35, L * 0.25, W * 0.15);
         ctx.fill();
         ctx.globalAlpha /= 0.35;
+
+        // Platinum: traveling specular band + sparkle glints.
+        if (this.isPlatinum) {
+            ctx.save();
+            const slide = Math.sin(this.age * 2.9) * L * 0.4;
+            const gloss = ctx.createLinearGradient(slide - L * 0.25, -W, slide + L * 0.4, W * 0.6);
+            gloss.addColorStop(0, "rgba(255,255,255,0)");
+            gloss.addColorStop(0.42, "rgba(255,255,255,0.12)");
+            gloss.addColorStop(0.5, "rgba(255,255,255,0.7)");
+            gloss.addColorStop(0.58, "rgba(190,220,255,0.35)");
+            gloss.addColorStop(1, "rgba(255,255,255,0)");
+            ctx.fillStyle = gloss;
+            if (shape === "diamond") {
+                ctx.beginPath();
+                ctx.moveTo(L * 0.48, 0);
+                ctx.bezierCurveTo(L * 0.2, -W * 0.9, -L * 0.05, -W * 1.2, -L * 0.38, 0);
+                ctx.bezierCurveTo(-L * 0.05, W * 1.2, L * 0.2, W * 0.9, L * 0.48, 0);
+                ctx.closePath();
+            } else {
+                pathFishFusiform(ctx, L, W, shape);
+            }
+            ctx.fill();
+            ctx.fillStyle = "rgba(255,255,255,0.95)";
+            for (let i = 0; i < 6; i++) {
+                const flash = Math.max(0, Math.sin(this.age * 9 + i * 1.7));
+                if (flash < 0.35) continue;
+                const px = Math.cos(this.age * 1.8 + i * 1.1) * L * 0.28;
+                const py = Math.sin(this.age * 2.3 + i * 0.9) * W * 0.42;
+                ctx.globalAlpha = flash * 0.85;
+                ctx.beginPath();
+                ctx.ellipse(px, py, L * (0.03 + flash * 0.025), L * 0.012, this.age + i, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
 
         // Dorsal fin.
         if (!this.golden) {
@@ -6670,9 +6712,39 @@ class Fish {
             ctx.globalAlpha /= 0.5;
         }
 
-        if (!this.golden && !this.isRainbow && !this.isMonster) this.drawPattern(ctx, L, W);
+        if (!this.golden && !this.isRainbow && !this.isMonster && !this.isPlatinum) {
+            this.drawPattern(ctx, L, W);
+        }
 
-        if (this.isMonster) {
+        if (this.isPlatinum) {
+            // Fine chrome scale sheen over the metal body.
+            ctx.save();
+            ctx.globalAlpha *= 0.4;
+            ctx.strokeStyle = "rgba(255,255,255,0.75)";
+            ctx.lineWidth = Math.max(0.5, L * 0.018);
+            for (let row = -2; row <= 2; row++) {
+                for (let colI = -3; colI <= 3; colI++) {
+                    const ox = colI * L * 0.09 + (row % 2) * L * 0.045;
+                    const oy = row * W * 0.24;
+                    if (Math.hypot(ox / L, oy / W) > 0.55) continue;
+                    ctx.beginPath();
+                    ctx.arc(ox, oy, L * 0.035, Math.PI * 0.15, Math.PI * 1.85);
+                    ctx.stroke();
+                }
+            }
+            ctx.restore();
+            ctx.fillStyle = "rgba(200, 230, 255, 0.14)";
+            if (shape === "diamond") {
+                ctx.beginPath();
+                ctx.moveTo(L * 0.48, 0);
+                ctx.bezierCurveTo(L * 0.2, -W * 0.9, -L * 0.05, -W * 1.2, -L * 0.38, 0);
+                ctx.bezierCurveTo(-L * 0.05, W * 1.2, L * 0.2, W * 0.9, L * 0.48, 0);
+                ctx.closePath();
+            } else {
+                pathFishFusiform(ctx, L, W, shape);
+            }
+            ctx.fill();
+        } else if (this.isMonster) {
             ctx.fillStyle = "rgba(120,0,30,0.28)";
             pathFishFusiform(ctx, L, W, shape);
             ctx.fill();
@@ -6723,6 +6795,7 @@ class Fish {
             ctx.fillStyle = this.golden
                 ? "rgba(120,80,20,0.9)"
                 : this.isRainbow ? "rgba(40,40,50,0.95)"
+                : this.isPlatinum ? "rgba(70,110,150,0.95)"
                 : this.isMonster ? "rgba(255,40,40,0.95)"
                 : this.isPredator ? "rgba(180,30,25,0.95)"
                 : this.isHero ? "rgba(30,90,160,0.95)" : "rgba(12,16,22,0.95)";
@@ -6738,27 +6811,25 @@ class Fish {
                 ctx.beginPath();
                 ctx.arc(eyeX, eyeY, eyeR * 0.35, 0, Math.PI * 2);
                 ctx.fill();
+            } else if (this.isPlatinum) {
+                ctx.fillStyle = "rgba(230,245,255,0.95)";
+                ctx.beginPath();
+                ctx.arc(eyeX + eyeR * 0.12, eyeY - eyeR * 0.1, eyeR * 0.28, 0, Math.PI * 2);
+                ctx.fill();
             }
         }
 
-        // Inherited swordfish bill + speared trophies.
+        // Inherited swordfish bill + speared trophies (pierced through midsection).
         if (this.hasSword && !this.golden) {
-            ctx.strokeStyle = "rgba(210,225,240,0.95)";
-            ctx.lineWidth = Math.max(1.6, L * 0.045);
-            ctx.lineCap = "round";
-            ctx.beginPath();
-            ctx.moveTo(L * 0.35, 0);
-            ctx.lineTo(L * 0.95, 0);
-            ctx.stroke();
             for (const s of this.stuckPrey) {
                 const sx = L * s.along;
-                const sy = s.side * (W * 0.7 + s.size * 0.12);
                 ctx.save();
-                ctx.translate(sx, sy);
-                ctx.rotate(Math.sin(this.tailPhase * 2 + s.wobble) * 0.12);
+                ctx.translate(sx, 0);
+                ctx.rotate(s.side * (Math.PI * 0.5)
+                    + Math.sin(this.tailPhase * 2 + s.wobble) * 0.1);
                 ctx.fillStyle = s.body;
                 ctx.beginPath();
-                ctx.ellipse(0, 0, s.size * 0.5, s.size * 0.25, 0, 0, Math.PI * 2);
+                ctx.ellipse(0, 0, s.size * 0.5, s.size * 0.24, 0, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.strokeStyle = "rgba(20,25,30,0.9)";
                 ctx.lineWidth = Math.max(1, s.size * 0.08);
@@ -6771,6 +6842,13 @@ class Fish {
                 ctx.stroke();
                 ctx.restore();
             }
+            ctx.strokeStyle = "rgba(210,225,240,0.95)";
+            ctx.lineWidth = Math.max(1.6, L * 0.045);
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            ctx.moveTo(L * 0.35, 0);
+            ctx.lineTo(L * 0.95, 0);
+            ctx.stroke();
         }
 
         // Inherited octopus tentacles (trail behind, independent sway).
@@ -7585,6 +7663,10 @@ class Reptile {
     }
 
     update(dt) {
+        if (this.octopusWrap) {
+            this.tailPhase += dt * 1.8;
+            return;
+        }
         this.tailPhase += dt * (this.leaving ? 5.5 : (this.tamed ? 2.4 : 3.2));
         this.eatPulse -= dt;
         if (this.friendlyBoost > 0) this.friendlyBoost = Math.max(0, this.friendlyBoost - dt);
@@ -7921,9 +8003,13 @@ function nightPredatorTame(ent) {
     ent.petProgress = 0;
     ent.petTimer = Math.max(ent.petTimer, 1.8);
     if (ent.stuck) ent.stuck.length = 0;
+    if (typeof ent.clearApexWrap === "function") ent.clearApexWrap();
     if (ent.legs) {
         for (const leg of ent.legs) {
-            if (leg.grab && leg.grab.prey) leg.grab.prey.tentacleGrab = null;
+            if (leg.grab && leg.grab.prey) {
+                if (leg.grab.prey.tentacleGrab) leg.grab.prey.tentacleGrab = null;
+                if (leg.grab.apex) leg.grab.prey.octopusWrap = null;
+            }
             leg.grab = null;
         }
     }
@@ -8003,6 +8089,8 @@ function nightPredatorTryBiteFood(ent, dt) {
     const desired = Math.atan2(food.y - ent.y, food.x - ent.x);
     const dist = Math.hypot(food.x - ent.x, food.y - ent.y);
     const eatDist = ent.size * 0.48 + food.radius() + 6;
+    // Wild hunters stay on prey unless a transform pellet is nearly in bite range.
+    if (!ent.tamed && !ent.isHero && dist > eatDist * 2.6) return false;
     const boost = ent.friendlyBoost > 0 ? 1.5 : 1.3;
     if (dist < eatDist && ent.biteTimer <= 0) nightPredatorBiteFood(ent);
     return { desired, speed: (ent.speed || 50) * boost, chasing: true };
@@ -8108,14 +8196,32 @@ class Swordfish {
         this._wanderDir = 0;
         this.spearCooldown = 0;
         initNightPredatorSocial(this);
+        // Always enter wild and hungry: never spawn tamed / heroic.
+        this.tamed = false;
+        this.isHero = false;
+        this.friendlyBoost = 0;
+        this.petCount = 0;
+        this.petProgress = 0;
         const side = Math.floor(Math.random() * 4);
         if (side === 0) { this.x = -this.size; this.y = Math.random() * viewH; }
         else if (side === 1) { this.x = viewW + this.size; this.y = Math.random() * viewH; }
         else if (side === 2) { this.x = Math.random() * viewW; this.y = -this.size; }
         else { this.x = Math.random() * viewW; this.y = viewH + this.size; }
         this.dir = Math.atan2(viewH * 0.5 - this.y, viewW * 0.5 - this.x);
-        this.speed = 62 + Math.random() * 18;
+        this.speed = 78 + Math.random() * 22;
         this.target = null;
+        // Lock onto the nearest edible fish immediately so the entrance reads as a hunt.
+        let best = null, bd = CONFIG.huntRange * 2.2;
+        for (const f of fishes) {
+            if (f.dead || f.golden || f.isRainbow || f.isPlatinum || f.isMonster) continue;
+            if (f.size >= this.size * 0.95) continue;
+            const d = Math.hypot(f.x - this.x, f.y - this.y);
+            if (d < bd) { bd = d; best = f; }
+        }
+        this.target = best;
+        if (this.target) {
+            this.dir = Math.atan2(this.target.y - this.y, this.target.x - this.x);
+        }
         Audio.predatorEat(this.x < viewW * 0.5 ? -0.35 : 0.35);
     }
 
@@ -8131,6 +8237,11 @@ class Swordfish {
 
     update(dt) {
         if (this.dead) return;
+        // Held in an octopus wrap: body is driven by the octopus.
+        if (this.octopusWrap) {
+            this.tailPhase += dt * 2.2;
+            return;
+        }
         this.tailPhase += dt * (this.tamed || this.isHero ? 3.2 : 4.2);
         this.spearCooldown = Math.max(0, this.spearCooldown - dt);
         this.huntTimer -= dt;
@@ -8155,7 +8266,8 @@ class Swordfish {
         }
 
         let desired = this.dir;
-        let spd = this.speed * (this.tamed || this.isHero ? 0.55 : 0.7);
+        let spd = this.speed * (this.tamed || this.isHero ? 0.55 : 0.85);
+        let turnRate = this.tamed || this.isHero ? 2.2 : 3.4;
 
         const foodChase = nightPredatorTryBiteFood(this, dt);
         if (foodChase) {
@@ -8177,7 +8289,7 @@ class Swordfish {
                 || this.target.isRainbow || this.target.isPlatinum
                 || this.target.size >= this.size * 0.95) {
                 this.target = null;
-                let best = null, bd = CONFIG.huntRange * 1.55;
+                let best = null, bd = CONFIG.huntRange * 1.9;
                 for (const f of fishes) {
                     if (f.dead || f.golden || f.isRainbow || f.isPlatinum || f.isMonster) continue;
                     if (f.size >= this.size * 0.95) continue;
@@ -8188,16 +8300,17 @@ class Swordfish {
             }
             if (this.target) {
                 desired = Math.atan2(this.target.y - this.y, this.target.x - this.x);
-                spd = this.speed * 1.25;
+                spd = this.speed * 1.55;
+                turnRate = 4.2;
                 const tip = this.tipPos();
                 const dist = Math.hypot(this.target.x - tip.x, this.target.y - tip.y);
-                if (dist < this.size * 0.22 + this.target.size * 0.35 && this.spearCooldown <= 0) {
+                if (dist < this.size * 0.3 + this.target.size * 0.4 && this.spearCooldown <= 0) {
                     this.spear(this.target);
                 }
             } else {
                 this.wanderTimer -= dt;
                 if (this.wanderTimer <= 0) {
-                    this.wanderTimer = 1.4 + Math.random() * 2;
+                    this.wanderTimer = 1.0 + Math.random() * 1.4;
                     this._wanderDir = this.dir + (Math.random() - 0.5) * 1.1;
                 }
                 desired = this._wanderDir;
@@ -8211,7 +8324,7 @@ class Swordfish {
         else if (this.y > viewH - margin) desired = -Math.PI / 2;
 
         const diff = normAngle(desired - this.dir);
-        this.dir += Math.max(-2.4 * dt, Math.min(2.4 * dt, diff));
+        this.dir += Math.max(-turnRate * dt, Math.min(turnRate * dt, diff));
         this.x += Math.cos(this.dir) * spd * dt;
         this.y += Math.sin(this.dir) * spd * dt;
         this.x = Math.max(12, Math.min(viewW - 12, this.x));
@@ -8228,7 +8341,7 @@ class Swordfish {
         if (!prey || prey.dead || this.tamed || this.isHero || this.golden) return;
         prey.dead = true;
         this.stuck.push({
-            along: 0.35 + this.stuck.length * 0.14,
+            along: 0.42 + this.stuck.length * 0.12,
             side: this.stuck.length % 2 === 0 ? 1 : -1,
             size: Math.max(8, prey.size * 0.65),
             body: prey.type ? prey.type.body : "#7a8a9a",
@@ -8267,7 +8380,37 @@ class Swordfish {
             ctx.shadowBlur = 14;
         }
 
-        // Sword / bill.
+        // Speared fish first (under the horn): bill pierces through their midsection.
+        for (const s of this.stuck) {
+            const sx = L * s.along;
+            const wob = Math.sin(this.tailPhase * 2 + s.wobble) * 0.1;
+            ctx.save();
+            ctx.translate(sx, 0);
+            // Body lies across the bill so the horn reads as driven through the middle.
+            ctx.rotate(s.side * (Math.PI * 0.5) + wob);
+            ctx.fillStyle = s.body;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, s.size * 0.55, s.size * 0.26, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = s.belly;
+            ctx.globalAlpha *= 0.7;
+            ctx.beginPath();
+            ctx.ellipse(s.size * 0.04, s.size * 0.06, s.size * 0.26, s.size * 0.12, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha /= 0.7;
+            ctx.strokeStyle = "rgba(20,25,30,0.9)";
+            ctx.lineWidth = Math.max(1.1, s.size * 0.08);
+            const e = s.size * 0.11;
+            ctx.beginPath();
+            ctx.moveTo(s.size * 0.18 - e, -e);
+            ctx.lineTo(s.size * 0.18 + e, e);
+            ctx.moveTo(s.size * 0.18 + e, -e);
+            ctx.lineTo(s.size * 0.18 - e, e);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // Sword / bill drawn over trophies so it pierces their centers.
         ctx.strokeStyle = this.golden ? "rgba(255,220,120,0.95)" : "rgba(200,215,230,0.95)";
         ctx.lineWidth = Math.max(2.2, L * 0.04);
         ctx.lineCap = "round";
@@ -8281,36 +8424,6 @@ class Swordfish {
         ctx.moveTo(L * 0.4, -L * 0.02);
         ctx.lineTo(L * 0.92, 0);
         ctx.stroke();
-
-        // Speared fish with X eyes along the bill.
-        for (const s of this.stuck) {
-            const sx = L * s.along;
-            const sy = s.side * (W * 0.55 + s.size * 0.15);
-            const wob = Math.sin(this.tailPhase * 2 + s.wobble) * 0.15;
-            ctx.save();
-            ctx.translate(sx, sy);
-            ctx.rotate(wob);
-            ctx.fillStyle = s.body;
-            ctx.beginPath();
-            ctx.ellipse(0, 0, s.size * 0.55, s.size * 0.28, 0, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = s.belly;
-            ctx.globalAlpha *= 0.7;
-            ctx.beginPath();
-            ctx.ellipse(s.size * 0.05, s.size * 0.08, s.size * 0.28, s.size * 0.14, 0, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.globalAlpha /= 0.7;
-            ctx.strokeStyle = "rgba(20,25,30,0.9)";
-            ctx.lineWidth = Math.max(1.1, s.size * 0.08);
-            const e = s.size * 0.12;
-            ctx.beginPath();
-            ctx.moveTo(s.size * 0.2 - e, -e);
-            ctx.lineTo(s.size * 0.2 + e, e);
-            ctx.moveTo(s.size * 0.2 + e, -e);
-            ctx.lineTo(s.size * 0.2 - e, e);
-            ctx.stroke();
-            ctx.restore();
-        }
 
         // Body.
         const g = ctx.createLinearGradient(0, -W, 0, W);
@@ -8381,6 +8494,56 @@ class Swordfish {
     }
 }
 
+// Soft tapered tentacle ribbon (wide mantle root to thin tip).
+function drawTaperTentacle(ctx, bx, by, mx, my, tipX, tipY, baseW, tipW, fillStyle, suckerStyle) {
+    const steps = 14;
+    const pts = [];
+    for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const omt = 1 - t;
+        pts.push({
+            x: omt * omt * bx + 2 * omt * t * mx + t * t * tipX,
+            y: omt * omt * by + 2 * omt * t * my + t * t * tipY,
+            t,
+        });
+    }
+    ctx.beginPath();
+    for (let i = 0; i < pts.length; i++) {
+        const prev = pts[Math.max(0, i - 1)];
+        const next = pts[Math.min(pts.length - 1, i + 1)];
+        const dx = next.x - prev.x;
+        const dy = next.y - prev.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const w = (baseW * (1 - pts[i].t) + tipW * pts[i].t) * 0.5;
+        const ox = pts[i].x + (-dy / len) * w;
+        const oy = pts[i].y + (dx / len) * w;
+        if (i === 0) ctx.moveTo(ox, oy);
+        else ctx.lineTo(ox, oy);
+    }
+    for (let i = pts.length - 1; i >= 0; i--) {
+        const prev = pts[Math.max(0, i - 1)];
+        const next = pts[Math.min(pts.length - 1, i + 1)];
+        const dx = next.x - prev.x;
+        const dy = next.y - prev.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const w = (baseW * (1 - pts[i].t) + tipW * pts[i].t) * 0.5;
+        ctx.lineTo(pts[i].x - (-dy / len) * w, pts[i].y - (dx / len) * w);
+    }
+    ctx.closePath();
+    ctx.fillStyle = fillStyle;
+    ctx.fill();
+    if (suckerStyle) {
+        ctx.fillStyle = suckerStyle;
+        for (let k = 4; k < pts.length; k += 2) {
+            const p = pts[k];
+            const rad = Math.max(1.1, (baseW * (1 - p.t) + tipW * p.t) * 0.22);
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+}
+
 class Octopus {
     constructor() {
         this.size = rand(CONFIG.octopusSize[0], CONFIG.octopusSize[1]);
@@ -8389,7 +8552,10 @@ class Octopus {
         this.pulse = 0;
         this.grabCooldown = 0;
         this.eatPulse = 0;
+        this.apexWrap = null; // { kind, ent, reel }
         initNightPredatorSocial(this);
+        this.tamed = false;
+        this.isHero = false;
         const side = Math.floor(Math.random() * 4);
         if (side === 0) { this.x = -this.size; this.y = Math.random() * viewH; }
         else if (side === 1) { this.x = viewW + this.size; this.y = Math.random() * viewH; }
@@ -8398,19 +8564,19 @@ class Octopus {
         this.vx = 0;
         this.vy = 0;
         this.dir = 0;
-        this.speed = 48 + Math.random() * 14;
+        this.speed = 70 + Math.random() * 18;
         this.legs = [];
         for (let i = 0; i < 8; i++) {
             const ang = (i / 8) * Math.PI * 2 + Math.random() * 0.2;
             this.legs.push({
                 baseAng: ang,
                 phase: Math.random() * Math.PI * 2,
-                len: this.size * (0.9 + Math.random() * 0.55),
+                len: this.size * (1.05 + Math.random() * 0.55),
                 tipX: this.x + Math.cos(ang) * this.size,
                 tipY: this.y + Math.sin(ang) * this.size,
                 planted: false,
-                grab: null, // { prey, reel }
-                autonomy: 0.6 + Math.random() * 0.8,
+                grab: null, // { prey, reel, apex? }
+                autonomy: 0.7 + Math.random() * 0.9,
             });
         }
         Audio.predatorEat(this.x < viewW * 0.5 ? -0.2 : 0.2);
@@ -8418,11 +8584,101 @@ class Octopus {
 
     pet(quiet) { nightPredatorPet(this, quiet); }
 
+    findApexWrapTarget() {
+        const candidates = [];
+        if (swordfish && !swordfish.dead && !swordfish.tamed && !swordfish.isHero
+            && !swordfish.golden && !swordfish.plantMorph) {
+            candidates.push({ kind: "swordfish", ent: swordfish, size: swordfish.size });
+        }
+        if (shark && !shark.dead && !shark.isHero && !shark.leaving) {
+            candidates.push({ kind: "shark", ent: shark, size: shark.size });
+        }
+        if (whale && !whale.dead && !whale.isHero) {
+            candidates.push({ kind: "whale", ent: whale, size: whale.size });
+        }
+        for (const r of reptiles) {
+            if (r.dead || r.tamed || r.golden || r.plantMorph || r.leaving) continue;
+            candidates.push({ kind: "reptile", ent: r, size: r.size });
+        }
+        let best = null, bd = this.size * 3.4;
+        for (const c of candidates) {
+            // Must outsize the apex enough to wrap and overpower it.
+            if (this.size < c.size * 1.02) continue;
+            if (c.ent.octopusWrap && c.ent.octopusWrap !== this) continue;
+            const d = Math.hypot(c.ent.x - this.x, c.ent.y - this.y);
+            if (d < bd) { bd = d; best = c; }
+        }
+        return best;
+    }
+
+    clearApexWrap() {
+        if (this.apexWrap && this.apexWrap.ent) {
+            this.apexWrap.ent.octopusWrap = null;
+        }
+        this.apexWrap = null;
+        for (const leg of this.legs) {
+            if (leg.grab && leg.grab.apex) leg.grab = null;
+        }
+    }
+
+    eatApex(wrap) {
+        if (!wrap || !wrap.ent || this.tamed || this.isHero || this.golden) return;
+        const prey = wrap.ent;
+        const gain = Math.max(18, prey.size * 0.22);
+        prey.octopusWrap = null;
+        prey.dead = true;
+        if (wrap.kind === "swordfish") {
+            swordfish = null;
+            for (const f of fishes) {
+                if (!f.dead && !f.hasSword && Math.random() < 0.35) { f.gainSword(); break; }
+            }
+        } else if (wrap.kind === "shark") shark = null;
+        else if (wrap.kind === "whale") whale = null;
+        else if (wrap.kind === "reptile") {
+            const idx = reptiles.indexOf(prey);
+            if (idx >= 0) reptiles.splice(idx, 1);
+        }
+        this.clearApexWrap();
+        this.size = Math.min(Math.min(viewW, viewH) * 0.48, this.size + gain);
+        for (const leg of this.legs) {
+            leg.len = this.size * (1.05 + Math.random() * 0.5);
+        }
+        this.eatPulse = 0.55;
+        const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+        Audio.predatorEat(pan);
+        Audio.sharkStrike(pan);
+        water.disturb(this.x, this.y, this.size * 0.9, 360);
+        spawnSplash(this.x, this.y, 22, 0.75);
+    }
+
+    shoveObstaclesWithArms(dt) {
+        if (!scenery.debris || !obstacles.length) return;
+        for (const leg of this.legs) {
+            if (leg.grab) continue;
+            for (const o of obstacles) {
+                if (o === grabbedObstacle) continue;
+                const rr = obstacleRadius(o) + 10;
+                const d = Math.hypot(leg.tipX - o.x, leg.tipY - o.y);
+                if (d >= rr || d < 0.001) continue;
+                if (this.size < obstacleRadius(o) * 0.7) continue;
+                const nx = (o.x - this.x) / (Math.hypot(o.x - this.x, o.y - this.y) || 1);
+                const ny = (o.y - this.y) / (Math.hypot(o.x - this.x, o.y - this.y) || 1);
+                const force = (55 + this.size * 0.55) * dt;
+                o.vx = (o.vx || 0) + nx * force * 18;
+                o.vy = (o.vy || 0) + ny * force * 18;
+                o.spin = (o.spin || 0) + (Math.random() - 0.5) * 0.8 * dt;
+                // Sweep tip past the debris so the arm keeps crawling.
+                leg.tipX += nx * 20 * dt;
+                leg.tipY += ny * 20 * dt;
+            }
+        }
+    }
+
     update(dt) {
         if (this.dead) return;
         if (octopusWhaleFight) return;
-        this.phase += dt * 1.6;
-        this.pulse += dt * 2.4;
+        this.phase += dt * 2.1;
+        this.pulse += dt * 2.8;
         this.grabCooldown = Math.max(0, this.grabCooldown - dt);
         this.eatPulse = Math.max(0, this.eatPulse - dt);
         if (this.friendlyBoost > 0) this.friendlyBoost = Math.max(0, this.friendlyBoost - dt);
@@ -8453,47 +8709,107 @@ class Octopus {
             return;
         }
 
-        // Chase food when tamed / hero, or for transform pellets when wild.
         const foodChase = nightPredatorTryBiteFood(this, dt);
         if (foodChase) {
-            const pull = foodChase.speed * 0.04;
+            const pull = foodChase.speed * 0.055;
             this.vx += Math.cos(foodChase.desired) * pull;
             this.vy += Math.sin(foodChase.desired) * pull;
         }
 
-        // Autonomous leg motion + pull the body toward planted tips.
+        // Apex wrap: several arms coil around a larger predator and reel it in.
+        if (!this.tamed && !this.isHero) {
+            if (this.apexWrap) {
+                const wrap = this.apexWrap;
+                const prey = wrap.ent;
+                if (!prey || prey.dead) {
+                    this.clearApexWrap();
+                } else {
+                    wrap.reel += dt;
+                    prey.octopusWrap = this;
+                    prey.x += (this.x - prey.x) * Math.min(1, 1.6 * dt);
+                    prey.y += (this.y - prey.y) * Math.min(1, 1.6 * dt);
+                    let wrapLegs = 0;
+                    for (let i = 0; i < this.legs.length; i++) {
+                        const leg = this.legs[i];
+                        if (!leg.grab || !leg.grab.apex || leg.grab.prey !== prey) continue;
+                        wrapLegs++;
+                        const ang = leg.baseAng + wrap.reel * 2.4 + i * 0.4;
+                        const rad = prey.size * (0.28 + 0.12 * Math.sin(wrap.reel * 3 + i));
+                        const gx = prey.x + Math.cos(ang) * rad;
+                        const gy = prey.y + Math.sin(ang) * rad * 0.75;
+                        leg.tipX += (gx - leg.tipX) * Math.min(1, 7 * dt);
+                        leg.tipY += (gy - leg.tipY) * Math.min(1, 7 * dt);
+                        leg.grab.reel += dt;
+                    }
+                    const toBody = Math.hypot(this.x - prey.x, this.y - prey.y);
+                    if (wrapLegs >= 3 && (toBody < this.size * 0.7 || wrap.reel > 2.1)) {
+                        this.eatApex(wrap);
+                    }
+                }
+            } else {
+                const apex = this.findApexWrapTarget();
+                if (apex) {
+                    const d = Math.hypot(apex.ent.x - this.x, apex.ent.y - this.y);
+                    if (d < this.size * 2.8) {
+                        this.apexWrap = { kind: apex.kind, ent: apex.ent, reel: 0 };
+                        apex.ent.octopusWrap = this;
+                        let assigned = 0;
+                        for (const leg of this.legs) {
+                            if (leg.grab) continue;
+                            leg.grab = { prey: apex.ent, reel: 0, apex: true };
+                            assigned++;
+                            if (assigned >= 5) break;
+                        }
+                        this.grabCooldown = 1.1;
+                        Audio.sharkStrike(Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1)));
+                    } else {
+                        const pull = 0.09 * this.speed;
+                        this.vx += ((apex.ent.x - this.x) / (d || 1)) * pull;
+                        this.vy += ((apex.ent.y - this.y) / (d || 1)) * pull;
+                    }
+                }
+            }
+        } else if (this.apexWrap) {
+            this.clearApexWrap();
+        }
+
+        // Autonomous leg motion + strong yank toward planted tips.
         let pullX = 0, pullY = 0, pulls = 0;
         for (let i = 0; i < this.legs.length; i++) {
             const leg = this.legs[i];
-            leg.phase += dt * (1.4 + leg.autonomy);
-            const reach = this.size * (1.05 + 0.35 * Math.sin(leg.phase));
-            const wanderAng = leg.baseAng + Math.sin(leg.phase * 0.7 + i) * 0.7
-                + Math.sin(this.phase + i * 0.4) * 0.35;
+            leg.phase += dt * (2.1 + leg.autonomy * 1.2);
+            const reach = this.size * (1.15 + 0.4 * Math.sin(leg.phase));
+            const wanderAng = leg.baseAng + Math.sin(leg.phase * 0.85 + i) * 0.85
+                + Math.sin(this.phase + i * 0.4) * 0.4;
 
-            if (leg.grab && leg.grab.prey && !leg.grab.prey.dead
+            if (leg.grab && leg.grab.apex) {
+                // Tip motion handled in apex wrap block.
+            } else if (leg.grab && leg.grab.prey && !leg.grab.prey.dead
                 && !this.tamed && !this.isHero) {
                 const prey = leg.grab.prey;
-                leg.tipX += (prey.x - leg.tipX) * Math.min(1, 5 * dt);
-                leg.tipY += (prey.y - leg.tipY) * Math.min(1, 5 * dt);
-                prey.x += (leg.tipX - prey.x) * Math.min(1, 3.5 * dt);
-                prey.y += (leg.tipY - prey.y) * Math.min(1, 3.5 * dt);
+                leg.tipX += (prey.x - leg.tipX) * Math.min(1, 6.5 * dt);
+                leg.tipY += (prey.y - leg.tipY) * Math.min(1, 6.5 * dt);
+                prey.x += (leg.tipX - prey.x) * Math.min(1, 4 * dt);
+                prey.y += (leg.tipY - prey.y) * Math.min(1, 4 * dt);
                 leg.grab.reel += dt;
-                // Reel toward body.
                 const toBody = Math.hypot(this.x - prey.x, this.y - prey.y);
-                prey.x += (this.x - prey.x) * Math.min(1, 1.8 * dt);
-                prey.y += (this.y - prey.y) * Math.min(1, 1.8 * dt);
-                if (toBody < this.size * 0.55 || leg.grab.reel > 1.4) {
+                prey.x += (this.x - prey.x) * Math.min(1, 2.3 * dt);
+                prey.y += (this.y - prey.y) * Math.min(1, 2.3 * dt);
+                if (toBody < this.size * 0.55 || leg.grab.reel > 1.25) {
                     this.eatGrabbed(prey);
                     leg.grab = null;
                 }
             } else {
+                if (leg.grab && leg.grab.prey) {
+                    leg.grab.prey.tentacleGrab = null;
+                }
                 leg.grab = null;
                 const goalX = this.x + Math.cos(wanderAng) * reach;
                 const goalY = this.y + Math.sin(wanderAng) * reach;
-                leg.tipX += (goalX - leg.tipX) * Math.min(1, (1.8 + leg.autonomy) * dt);
-                leg.tipY += (goalY - leg.tipY) * Math.min(1, (1.8 + leg.autonomy) * dt);
-                // Plant tip briefly to yank the body.
-                leg.planted = Math.sin(leg.phase * 1.3) > 0.55;
+                const tipSpeed = 3.4 + leg.autonomy * 1.4;
+                leg.tipX += (goalX - leg.tipX) * Math.min(1, tipSpeed * dt);
+                leg.tipY += (goalY - leg.tipY) * Math.min(1, tipSpeed * dt);
+                leg.planted = Math.sin(leg.phase * 1.45) > 0.35;
                 if (leg.planted) {
                     pullX += leg.tipX;
                     pullY += leg.tipY;
@@ -8504,15 +8820,17 @@ class Octopus {
             leg.tipY = Math.max(8, Math.min(viewH - 8, leg.tipY));
         }
 
+        this.shoveObstaclesWithArms(dt);
+
         if (pulls > 0) {
             const tx = pullX / pulls;
             const ty = pullY / pulls;
-            this.vx += (tx - this.x) * 1.6 * dt;
-            this.vy += (ty - this.y) * 1.6 * dt;
+            this.vx += (tx - this.x) * 3.4 * dt;
+            this.vy += (ty - this.y) * 3.4 * dt;
         }
-        this.vx *= Math.exp(-1.8 * dt);
-        this.vy *= Math.exp(-1.8 * dt);
-        const maxSpd = 55 + this.size * 0.15;
+        this.vx *= Math.exp(-1.05 * dt);
+        this.vy *= Math.exp(-1.05 * dt);
+        const maxSpd = 105 + this.size * 0.4;
         const spd = Math.hypot(this.vx, this.vy);
         if (spd > maxSpd) {
             this.vx *= maxSpd / spd;
@@ -8522,10 +8840,11 @@ class Octopus {
         this.y += this.vy * dt;
         this.x = Math.max(20, Math.min(viewW - 20, this.x));
         this.y = Math.max(20, Math.min(viewH - 20, this.y));
+        resolveObstacleOverlap(this, this.size * 0.5);
 
-        // Free legs try to grab nearby fish (wild only).
-        if (!this.tamed && !this.isHero && this.grabCooldown <= 0) {
-            let best = null, bd = this.size * 2.4;
+        // Free legs grab nearby fish (wild only); apex wrap uses its own path.
+        if (!this.tamed && !this.isHero && !this.apexWrap && this.grabCooldown <= 0) {
+            let best = null, bd = this.size * 2.6;
             for (const f of fishes) {
                 if (f.dead || f.golden || f.isRainbow || f.isPlatinum || f.isMonster) continue;
                 if (f.size >= this.size * 1.05) continue;
@@ -8541,13 +8860,13 @@ class Octopus {
                 if (free) {
                     free.grab = { prey: best, reel: 0 };
                     best.tentacleGrab = { owner: "octopus" };
-                    this.grabCooldown = 0.85;
+                    this.grabCooldown = 0.7;
                 }
             }
         }
 
-        if (Math.random() < (this.tamed || this.isHero ? 0.07 : 0.12)) {
-            water.disturb(this.x, this.y, this.size * 0.35, 35);
+        if (Math.random() < (this.tamed || this.isHero ? 0.08 : 0.16)) {
+            water.disturb(this.x, this.y, this.size * 0.4, 40);
         }
     }
 
@@ -8555,9 +8874,9 @@ class Octopus {
         if (!prey || prey.dead || this.tamed || this.isHero || this.golden) return;
         prey.dead = true;
         prey.tentacleGrab = null;
-        this.size = Math.min(Math.min(viewW, viewH) * 0.45, this.size + prey.size * 0.28);
+        this.size = Math.min(Math.min(viewW, viewH) * 0.48, this.size + prey.size * 0.28);
         for (const leg of this.legs) {
-            leg.len = this.size * (0.9 + Math.random() * 0.5);
+            leg.len = this.size * (1.05 + Math.random() * 0.5);
         }
         this.eatPulse = 0.45;
         const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
@@ -8570,12 +8889,12 @@ class Octopus {
         if (this.dead) return;
         if (this.plantMorph) drawPlantMorphAura(ctx, this);
         const S = this.size;
-        const breath = 1 + Math.sin(this.pulse) * 0.05;
+        const breath = 1 + Math.sin(this.pulse) * 0.06;
         const sink = this.golden ? (this.sinkDepth || 0) : 0;
         const morphA = this.plantMorph && this._morphAlpha != null ? this._morphAlpha : 1;
         const drawY = this.y + sink * 6;
         ctx.save();
-        ctx.globalAlpha = 0.95 * (1 - sink * 0.25) * morphA;
+        ctx.globalAlpha = 0.96 * (1 - sink * 0.25) * morphA;
         if (this.isRainbow) {
             ctx.shadowColor = "rgba(255,120,255,0.9)";
             ctx.shadowBlur = 18;
@@ -8585,56 +8904,69 @@ class Octopus {
         } else if (this.golden) {
             ctx.shadowColor = "rgba(255,200,80,0.6)";
             ctx.shadowBlur = 14;
+        } else {
+            ctx.shadowColor = "rgba(40,20,45,0.45)";
+            ctx.shadowBlur = 12;
         }
 
-        // Legs first (under body), each tip moves on its own.
-        let legStroke = "rgba(90,55,95,0.78)";
-        let grabStroke = "rgba(140,70,110,0.85)";
-        let sucker = "rgba(180,120,150,0.45)";
+        let armFill = "#6a3a62";
+        let armGrab = "#8a4068";
+        let sucker = "rgba(180,120,150,0.5)";
         if (this.golden) {
-            legStroke = "rgba(180,140,40,0.82)";
-            grabStroke = "rgba(210,170,50,0.9)";
-            sucker = "rgba(255,220,120,0.5)";
+            armFill = "#c9a24b";
+            armGrab = "#e0b030";
+            sucker = "rgba(255,220,120,0.55)";
         } else if (this.isRainbow) {
             const hue = (performance.now() * 0.12) % 360;
-            legStroke = `hsla(${hue}, 65%, 45%, 0.8)`;
-            grabStroke = `hsla(${(hue + 80) % 360}, 70%, 55%, 0.88)`;
+            armFill = `hsl(${hue}, 55%, 42%)`;
+            armGrab = `hsl(${(hue + 80) % 360}, 65%, 50%)`;
             sucker = `hsla(${(hue + 160) % 360}, 60%, 65%, 0.5)`;
         } else if (this.isHero || this.tamed) {
-            legStroke = "rgba(70,110,140,0.8)";
-            grabStroke = "rgba(90,140,170,0.85)";
-            sucker = "rgba(160,200,230,0.45)";
-        }
-        for (let i = 0; i < this.legs.length; i++) {
-            const leg = this.legs[i];
-            const bx = this.x + Math.cos(leg.baseAng + Math.sin(this.phase) * 0.1) * S * 0.35;
-            const by = drawY + Math.sin(leg.baseAng + Math.sin(this.phase) * 0.1) * S * 0.35;
-            const tipY = leg.tipY + (drawY - this.y);
-            const mx = (bx + leg.tipX) * 0.5 + Math.sin(leg.phase) * S * 0.2;
-            const my = (by + tipY) * 0.5 + Math.cos(leg.phase * 1.1) * S * 0.2;
-            ctx.strokeStyle = leg.grab ? grabStroke : legStroke;
-            ctx.lineWidth = Math.max(2.5, S * 0.09);
-            ctx.lineCap = "round";
-            ctx.beginPath();
-            ctx.moveTo(bx, by);
-            ctx.quadraticCurveTo(mx, my, leg.tipX, tipY);
-            ctx.stroke();
-            // Sucker dots near tip.
-            ctx.fillStyle = sucker;
-            for (let k = 0; k < 3; k++) {
-                const t = 0.55 + k * 0.15;
-                const sx = bx + (leg.tipX - bx) * t;
-                const sy = by + (tipY - by) * t;
-                ctx.beginPath();
-                ctx.arc(sx, sy, Math.max(1.2, S * 0.03), 0, Math.PI * 2);
-                ctx.fill();
-            }
+            armFill = "#4a7a98";
+            armGrab = "#6a9ab8";
+            sucker = "rgba(160,200,230,0.5)";
         }
 
-        // Mantle / head.
+        // Inter-arm webbing under the mantle.
+        ctx.fillStyle = this.golden ? "rgba(180,140,50,0.35)"
+            : this.isHero || this.tamed ? "rgba(60,100,130,0.35)"
+            : "rgba(70,40,70,0.4)";
+        ctx.beginPath();
+        for (let i = 0; i < this.legs.length; i++) {
+            const leg = this.legs[i];
+            const ang = leg.baseAng + Math.sin(this.phase) * 0.08;
+            const wx = this.x + Math.cos(ang) * S * 0.62 * breath;
+            const wy = drawY + Math.sin(ang) * S * 0.5 * breath;
+            if (i === 0) ctx.moveTo(wx, wy);
+            else ctx.lineTo(wx, wy);
+        }
+        ctx.closePath();
+        ctx.fill();
+
+        // Tapered tentacles (wide root, thin tip).
+        for (let i = 0; i < this.legs.length; i++) {
+            const leg = this.legs[i];
+            const bx = this.x + Math.cos(leg.baseAng + Math.sin(this.phase) * 0.1) * S * 0.42;
+            const by = drawY + Math.sin(leg.baseAng + Math.sin(this.phase) * 0.1) * S * 0.36;
+            const tipY = leg.tipY + (drawY - this.y);
+            const mx = (bx + leg.tipX) * 0.5 + Math.sin(leg.phase) * S * 0.28;
+            const my = (by + tipY) * 0.5 + Math.cos(leg.phase * 1.1) * S * 0.22;
+            const baseW = Math.max(7, S * 0.22);
+            const tipW = Math.max(1.4, S * 0.035);
+            drawTaperTentacle(
+                ctx, bx, by, mx, my, leg.tipX, tipY,
+                baseW, tipW,
+                leg.grab ? armGrab : armFill,
+                sucker
+            );
+        }
+
+        // Mantle: bulbous pear shape with siphon, more octopus than plain oval.
+        const mantleW = S * 0.62 * breath;
+        const mantleH = S * 0.58 * breath;
         const g = ctx.createRadialGradient(
-            this.x - S * 0.15, drawY - S * 0.15, S * 0.1,
-            this.x, drawY, S * 0.7
+            this.x - mantleW * 0.2, drawY - mantleH * 0.25, S * 0.08,
+            this.x, drawY, S * 0.78
         );
         if (this.golden) {
             g.addColorStop(0, "#fff3b0");
@@ -8646,44 +8978,95 @@ class Octopus {
             g.addColorStop(0.55, `hsl(${(hue + 120) % 360}, 65%, 45%)`);
             g.addColorStop(1, `hsl(${(hue + 240) % 360}, 60%, 50%)`);
         } else if (this.isHero || this.tamed) {
-            g.addColorStop(0, "#a8d0e8");
-            g.addColorStop(0.55, "#5a8aaa");
+            g.addColorStop(0, "#b4d8ec");
+            g.addColorStop(0.5, "#5a8aaa");
             g.addColorStop(1, "#2a4a60");
         } else {
-            g.addColorStop(0, "#c070a0");
-            g.addColorStop(0.55, "#6a3a68");
-            g.addColorStop(1, "#3a2040");
+            g.addColorStop(0, "#d080a8");
+            g.addColorStop(0.45, "#7a3a6a");
+            g.addColorStop(1, "#2e1830");
         }
         ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.ellipse(this.x, drawY, S * 0.55 * breath, S * 0.48 * breath, 0, 0, Math.PI * 2);
+        ctx.moveTo(this.x, drawY - mantleH * 0.95);
+        ctx.bezierCurveTo(
+            this.x + mantleW * 0.95, drawY - mantleH * 0.7,
+            this.x + mantleW * 1.05, drawY + mantleH * 0.15,
+            this.x + mantleW * 0.55, drawY + mantleH * 0.7
+        );
+        ctx.bezierCurveTo(
+            this.x + mantleW * 0.15, drawY + mantleH * 0.95,
+            this.x - mantleW * 0.15, drawY + mantleH * 0.95,
+            this.x - mantleW * 0.55, drawY + mantleH * 0.7
+        );
+        ctx.bezierCurveTo(
+            this.x - mantleW * 1.05, drawY + mantleH * 0.15,
+            this.x - mantleW * 0.95, drawY - mantleH * 0.7,
+            this.x, drawY - mantleH * 0.95
+        );
         ctx.fill();
+
+        // Siphon funnel on the side.
+        ctx.fillStyle = this.golden ? "rgba(160,120,40,0.7)" : "rgba(50,30,50,0.7)";
+        ctx.beginPath();
+        ctx.ellipse(
+            this.x + mantleW * 0.55, drawY + mantleH * 0.15,
+            S * 0.12, S * 0.07, 0.4, 0, Math.PI * 2
+        );
+        ctx.fill();
+
+        // Soft mantle wrinkles.
+        ctx.strokeStyle = "rgba(255,255,255,0.12)";
+        ctx.lineWidth = Math.max(1, S * 0.02);
+        for (let w = -2; w <= 2; w++) {
+            ctx.beginPath();
+            ctx.moveTo(this.x + w * S * 0.08, drawY - mantleH * 0.55);
+            ctx.quadraticCurveTo(
+                this.x + w * S * 0.12, drawY,
+                this.x + w * S * 0.05, drawY + mantleH * 0.4
+            );
+            ctx.stroke();
+        }
+
         if (this.eatPulse > 0) {
             ctx.fillStyle = `rgba(200,80,120,${this.eatPulse * 0.45})`;
             ctx.beginPath();
-            ctx.ellipse(this.x, drawY, S * 0.55, S * 0.48, 0, 0, Math.PI * 2);
+            ctx.ellipse(this.x, drawY, mantleW, mantleH, 0, 0, Math.PI * 2);
             ctx.fill();
         }
-        // Eyes (closed while petted).
+
+        // Raised eye stalks / bulbous eyes with rectangular pupils.
         if (this.petTimer > 0) {
             ctx.strokeStyle = "rgba(20,15,25,0.85)";
             ctx.lineWidth = Math.max(1.4, S * 0.04);
             ctx.lineCap = "round";
             ctx.beginPath();
-            ctx.arc(this.x - S * 0.16, drawY - S * 0.08, S * 0.08, Math.PI * 1.15, Math.PI * 1.85);
-            ctx.arc(this.x + S * 0.16, drawY - S * 0.08, S * 0.08, Math.PI * 1.15, Math.PI * 1.85);
+            ctx.arc(this.x - S * 0.18, drawY - S * 0.12, S * 0.09, Math.PI * 1.15, Math.PI * 1.85);
+            ctx.arc(this.x + S * 0.18, drawY - S * 0.12, S * 0.09, Math.PI * 1.15, Math.PI * 1.85);
             ctx.stroke();
         } else {
-            ctx.fillStyle = "rgba(240,230,200,0.95)";
-            ctx.beginPath();
-            ctx.ellipse(this.x - S * 0.16, drawY - S * 0.08, S * 0.1, S * 0.12, 0, 0, Math.PI * 2);
-            ctx.ellipse(this.x + S * 0.16, drawY - S * 0.08, S * 0.1, S * 0.12, 0, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = "rgba(20,15,25,0.95)";
-            ctx.beginPath();
-            ctx.arc(this.x - S * 0.14, drawY - S * 0.08, S * 0.045, 0, Math.PI * 2);
-            ctx.arc(this.x + S * 0.18, drawY - S * 0.08, S * 0.045, 0, Math.PI * 2);
-            ctx.fill();
+            const eyes = [
+                { x: this.x - S * 0.2, y: drawY - S * 0.14 },
+                { x: this.x + S * 0.2, y: drawY - S * 0.14 },
+            ];
+            for (const eye of eyes) {
+                ctx.fillStyle = "rgba(40,25,40,0.55)";
+                ctx.beginPath();
+                ctx.ellipse(eye.x, eye.y + S * 0.02, S * 0.13, S * 0.1, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = "rgba(245,235,210,0.96)";
+                ctx.beginPath();
+                ctx.ellipse(eye.x, eye.y, S * 0.11, S * 0.13, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = "rgba(20,15,25,0.95)";
+                ctx.beginPath();
+                ctx.ellipse(eye.x + S * 0.015, eye.y, S * 0.035, S * 0.07, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = "rgba(255,255,255,0.55)";
+                ctx.beginPath();
+                ctx.arc(eye.x - S * 0.03, eye.y - S * 0.035, S * 0.025, 0, Math.PI * 2);
+                ctx.fill();
+            }
         }
         ctx.restore();
     }
@@ -9414,6 +9797,10 @@ class Shark {
     }
 
     update(dt) {
+        if (this.octopusWrap) {
+            this.tailPhase += dt * 2.4;
+            return;
+        }
         // Slow, gliding hunt: more pond visitor than chase cutscene.
         this.tailPhase += dt * (this.leaving ? 6 : 4.2);
         if (this.rollTimer > 0) this.rollTimer = Math.max(0, this.rollTimer - dt);
@@ -9724,6 +10111,11 @@ class Whale {
     }
 
     update(dt) {
+        if (this.octopusWrap) {
+            this.age += dt;
+            this.tailPhase += dt * 1.6;
+            return;
+        }
         this.age += dt;
         this.tailPhase += dt * 2.6;
         this.eatPulse -= dt;
@@ -9987,7 +10379,10 @@ function manageEcosystem(dt) {
     }
     if (octopus) {
         octopus.update(dt);
-        if (octopus.dead) octopus = null;
+        if (octopus.dead) {
+            if (typeof octopus.clearApexWrap === "function") octopus.clearApexWrap();
+            octopus = null;
+        }
     }
 
     if (whale) {
