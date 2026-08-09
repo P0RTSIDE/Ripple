@@ -54,6 +54,7 @@ const CONFIG = {
     goldenChance: 0.03,     // chance a piece of food is the golden kind
     rainbowChance: 0.0035,  // even rarer: rainbow food (must stay below goldenChance)
     greenChance: 0.005,     // rare green food: turns a fish into a lasting pond plant
+    pinkChance: 0.006,      // breeding food: turns a fish pink; two pink fish can spawn young
     growerChance: 0.007,    // rare grower food: surges a fish past normal size
     growerBoost: 44,        // size gained from one grower pellet
     growerMaxSize: 215,     // floor cap for grower / carcass; heroes & huge meals scale to ~half screen
@@ -78,6 +79,9 @@ const CONFIG = {
     exoticEdgeChance: 0.14, // chance a repopulating fish is an exotic
     heroChance: 0.24,       // chance a new fish is a hero (hunts smaller predators)
     heroChaseMult: 2.1,     // hero chase: a bit faster than evil fish so they can catch them
+    breedCooldown: 6.5,     // seconds before a pink pair can breed again
+    maxBreedPop: 24,        // soft cap on living fish from breeding (above fishCount)
+    foodStashMax: 10,       // special pellets saved from the net
 };
 
 // Hidden streak: consecutive pets with no food thrown unlock a guaranteed rainbow pellet.
@@ -86,29 +90,49 @@ let guaranteeRainbow = false;
 
 // Type a variant name (anywhere) to force that kind on the next food drop.
 // When adding a new food variant: append its keyword here and handle it in applyFoodVariant.
-const FOOD_VARIANT_KEYWORDS = ["rainbow", "golden", "green", "grower"];
+// "breed" is an alias keyword for pink breeding food.
+const FOOD_VARIANT_KEYWORDS = ["rainbow", "golden", "green", "grower", "pink", "breed"];
 let nextFoodVariant = null;
 let foodTypeBuffer = "";
+
+function normalizeFoodVariant(variant) {
+    if (variant === "breed") return "pink";
+    return variant || null;
+}
 
 function applyFoodVariant(target, variant) {
     target.rainbow = false;
     target.green = false;
     target.golden = false;
     target.grower = false;
-    if (!variant) return;
-    if (variant === "rainbow") target.rainbow = true;
-    else if (variant === "green") target.green = true;
-    else if (variant === "golden") target.golden = true;
-    else if (variant === "grower") target.grower = true;
+    target.pink = false;
+    const v = normalizeFoodVariant(variant);
+    if (!v) return;
+    if (v === "rainbow") target.rainbow = true;
+    else if (v === "green") target.green = true;
+    else if (v === "golden") target.golden = true;
+    else if (v === "grower") target.grower = true;
+    else if (v === "pink") target.pink = true;
 }
 
 function isRareFoodFlags(f) {
-    return !!(f && (f.golden || f.rainbow || f.green || f.grower || f.carcass));
+    return !!(f && (f.golden || f.rainbow || f.green || f.grower || f.pink || f.carcass));
+}
+
+function foodVariantKey(f) {
+    if (!f) return null;
+    if (f.rainbow) return "rainbow";
+    if (f.green) return "green";
+    if (f.grower) return "grower";
+    if (f.pink) return "pink";
+    if (f.golden) return "golden";
+    if (f.carcass) return "carcass";
+    return null;
 }
 
 function consumeNextFoodVariant() {
     if (nextFoodVariant) {
-        const v = nextFoodVariant;
+        const v = normalizeFoodVariant(nextFoodVariant);
         nextFoodVariant = null;
         return v;
     }
@@ -127,6 +151,8 @@ function rollFoodVariant() {
     if (roll < edge) return "rainbow";
     edge += CONFIG.greenChance;
     if (roll < edge) return "green";
+    edge += CONFIG.pinkChance;
+    if (roll < edge) return "pink";
     edge += CONFIG.growerChance;
     if (roll < edge) return "grower";
     edge += CONFIG.goldenChance;
@@ -169,7 +195,9 @@ function noteFoodVariantKeyword(ch) {
         Audio.ensure();
         if (matched === "rainbow" && Audio.rainbowChime) Audio.rainbowChime(0);
         else if (matched === "golden" && Audio.goldChime) Audio.goldChime(0);
-        else if (matched === "grower" && Audio.playDrop) {
+        else if ((matched === "pink" || matched === "breed") && Audio.playDrop) {
+            Audio.playDrop({ freq: 460, decay: 1.0, velocity: 0.35, pan: 0, plunk: false });
+        } else if (matched === "grower" && Audio.playDrop) {
             Audio.playDrop({ freq: 520, decay: 1.1, velocity: 0.4, pan: 0, plunk: true });
         } else if (Audio.playDrop) {
             Audio.playDrop({ freq: 380, decay: 0.9, velocity: 0.3, pan: 0, plunk: false });
@@ -3461,6 +3489,7 @@ class Rock {
             rainbow: this.rainbow,
             green: this.green,
             grower: this.grower,
+            pink: this.pink,
         }));
     }
 
@@ -3479,7 +3508,7 @@ class Rock {
         ctx.fill();
         ctx.restore();
 
-        // The food pellet itself: brown, golden, green, or rainbow.
+        // The food pellet itself: brown, golden, green, pink, or rainbow.
         ctx.save();
         ctx.translate(x, screenY);
         ctx.rotate(this.rot);
@@ -3497,6 +3526,13 @@ class Rock {
             g.addColorStop(0, "#c8f5b0");
             g.addColorStop(0.55, "#5db84a");
             g.addColorStop(1, "#2a6b2e");
+        } else if (this.pink) {
+            // Soft rose breeding pellet (distinct from grower's hotter magenta).
+            ctx.shadowColor = "rgba(255,140,200,0.95)";
+            ctx.shadowBlur = 15;
+            g.addColorStop(0, "#ffe8f4");
+            g.addColorStop(0.5, "#ff7eb6");
+            g.addColorStop(1, "#d63a7a");
         } else if (this.grower) {
             ctx.shadowColor = "rgba(255,120,160,0.95)";
             ctx.shadowBlur = 16;
@@ -3610,6 +3646,7 @@ class Food {
         this.rainbow = !!(flags && flags.rainbow);
         this.green = !!(flags && flags.green);
         this.grower = !!(flags && flags.grower);
+        this.pink = !!(flags && flags.pink);
         this.carcass = !!(flags && flags.carcass);
         this.rare = isRareFoodFlags(this);
         this.eaten = false;
@@ -3674,6 +3711,12 @@ class Food {
             g.addColorStop(0, "#c8f5b0");
             g.addColorStop(0.55, "#5db84a");
             g.addColorStop(1, "#2a6b2e");
+        } else if (this.pink) {
+            ctx.shadowColor = "rgba(255,140,200,0.95)";
+            ctx.shadowBlur = 13 * alpha;
+            g.addColorStop(0, "#ffe8f4");
+            g.addColorStop(0.5, "#ff7eb6");
+            g.addColorStop(1, "#d63a7a");
         } else if (this.grower) {
             ctx.shadowColor = "rgba(255,120,160,0.95)";
             ctx.shadowBlur = 13 * alpha;
@@ -3933,6 +3976,8 @@ class Fish {
         this.trailDrop = 0;
         this.erraticTimer = 0;
         this.golden = false;  // turned to gold and resting on the lakebed
+        this.isPink = false;  // breeding blush from pink food; stays until gold/rainbow/etc.
+        this.breedCooldown = 0;
         this.sinkTimer = 0;
         this.sinkDepth = 0;
         this.lifting = false; // being slowly lifted out for the hats unlock
@@ -4087,6 +4132,7 @@ class Fish {
         this.isHero = false;
         this.isRainbow = false;
         this.golden = false;
+        this.isPink = false;
         this.target = null;
         this.prey = null;
         this.size = Math.min(fishGrowCap(this, { huge: true }), this.size + 28);
@@ -4105,6 +4151,7 @@ class Fish {
         this.isPredator = false;
         this.isHero = false;
         this.isRainbow = false;
+        this.isPink = false;
         this.target = null;
         this.prey = null;
         this.sinkTimer = 0;
@@ -4121,6 +4168,7 @@ class Fish {
         this.isPredator = true;
         this.isHero = false; // hero behavior does not apply to rainbow fish
         this.golden = false;
+        this.isPink = false;
         this.target = null;
         this.prey = null;
         this.rainbowLeaving = false;
@@ -4133,6 +4181,24 @@ class Fish {
         Audio.rainbowChime(pan);
         water.disturb(this.x, this.y, this.size * 1.4, 360);
         spawnSplash(this.x, this.y, this.size * 0.7, 0.8);
+    }
+
+    // Eating pink breeding food: soft blush; stays pink after breeding.
+    turnPink() {
+        if (this.dead || this.golden || this.isRainbow || this.rainbowLeaving) return;
+        this.isPink = true;
+        const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+        Audio.fishNote({
+            freq: 360 * (this.type.register || 1),
+            wave: "sine",
+            pan,
+            dur: 0.45,
+            level: 0.12,
+            partialAmt: 0.3,
+            bright: 1.25,
+        });
+        water.disturb(this.x, this.y, this.size * 0.6, 140);
+        spawnSplash(this.x, this.y, this.size * 0.28, 0.35);
     }
 
     // Victory lap: swim a smooth cursive "Easter Egg" trail, then glide away.
@@ -4277,6 +4343,7 @@ class Fish {
     update(dt) {
         this.age += dt;
         if (this.petTimer > 0) this.petTimer = Math.max(0, this.petTimer - dt);
+        if (this.breedCooldown > 0) this.breedCooldown = Math.max(0, this.breedCooldown - dt);
 
         // Continuous stroking soothes evil fish even when quiet pet refreshes skip notes.
         if (this.petTimer > 0 && this.isPredator && !this.isMonster
@@ -4725,6 +4792,12 @@ class Fish {
             spawnSplash(this.x, this.y, this.size * 0.35, 0.45);
             return;
         }
+        if (food.pink) {
+            food.eaten = true;
+            this.target = null;
+            this.turnPink();
+            return;
+        }
 
         const chunk = Math.min(this.type.bite * (food.carcass ? 1.6 : 1), food.amount);
         food.amount -= chunk;
@@ -4909,6 +4982,10 @@ class Fish {
         } else if (this.isMonster) {
             body = "#2a1020";
             belly = "#6a2038";
+        } else if (this.isPink) {
+            // Soft pink wash over species colors; patterns still draw underneath.
+            body = washHexTowardPink(this.type.body, 0.58);
+            belly = washHexTowardPink(this.type.belly, 0.48);
         }
 
         ctx.save();
@@ -4931,6 +5008,9 @@ class Fish {
         } else if (this.isMonster) {
             ctx.shadowColor = "rgba(80,0,20,0.85)";
             ctx.shadowBlur = 20;
+        } else if (this.isPink) {
+            ctx.shadowColor = "rgba(255,130,190,0.7)";
+            ctx.shadowBlur = 12;
         } else if (this.isPredator) {
             ctx.shadowColor = "rgba(160,20,30,0.75)";
             ctx.shadowBlur = 14;
@@ -5068,6 +5148,12 @@ class Fish {
             pathFishFusiform(ctx, L, W, shape);
             ctx.fill();
         }
+        if (this.isPink && !this.golden && !this.isRainbow && !this.isMonster) {
+            // Extra blush so pink reads clearly while shape and pattern stay visible.
+            ctx.fillStyle = "rgba(255,120,180,0.2)";
+            pathFishFusiform(ctx, L, W, shape);
+            ctx.fill();
+        }
 
         ctx.shadowBlur = 0;
         const eyeX = L * (shape === "diamond" ? 0.22 : 0.3);
@@ -5187,6 +5273,146 @@ function initFish() {
     }
     // Always keep at least one hero in the starting school.
     if (!fishes.some((f) => f.isHero)) fishes[0].isHero = true;
+}
+
+function parseHexColor(hex) {
+    if (!hex || typeof hex !== "string" || hex[0] !== "#") return null;
+    let h = hex.slice(1);
+    if (h.length === 3) {
+        h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    }
+    if (h.length !== 6) return null;
+    const n = parseInt(h, 16);
+    if (Number.isNaN(n)) return null;
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+function mixHexColors(a, b, t) {
+    const A = parseHexColor(a);
+    const B = parseHexColor(b);
+    if (!A || !B) return Math.random() < 0.5 ? a : b;
+    const u = Math.max(0, Math.min(1, t));
+    const r = Math.round(A.r + (B.r - A.r) * u);
+    const g = Math.round(A.g + (B.g - A.g) * u);
+    const bl = Math.round(A.b + (B.b - A.b) * u);
+    return "#" + ((1 << 24) + (r << 16) + (g << 8) + bl).toString(16).slice(1);
+}
+
+function washHexTowardPink(hex, amount) {
+    return mixHexColors(hex, "#ff7eb6", amount == null ? 0.55 : amount);
+}
+
+function pickParentField(a, b) {
+    return Math.random() < 0.5 ? a : b;
+}
+
+function mixFishTypes(ta, tb) {
+    const slimA = ta.slim != null ? ta.slim : null;
+    const slimB = tb.slim != null ? tb.slim : null;
+    let slim = null;
+    if (slimA != null && slimB != null) slim = (slimA + slimB) * 0.5;
+    else slim = slimA != null ? slimA : slimB;
+
+    const sizeLo = Math.min(ta.size[0], tb.size[0]) * 0.55;
+    const sizeHi = Math.min(ta.size[1], tb.size[1]) * 0.7;
+    const speedLo = (ta.speed[0] + tb.speed[0]) * 0.5;
+    const speedHi = (ta.speed[1] + tb.speed[1]) * 0.5;
+
+    const type = {
+        name: "fry",
+        shape: pickParentField(ta.shape, tb.shape),
+        body: mixHexColors(ta.body, tb.body, 0.35 + Math.random() * 0.3),
+        belly: mixHexColors(ta.belly, tb.belly, 0.35 + Math.random() * 0.3),
+        pattern: pickParentField(ta.pattern, tb.pattern),
+        patternColor: (ta.patternColor && tb.patternColor)
+            ? mixHexColors(ta.patternColor, tb.patternColor, 0.5)
+            : (ta.patternColor || tb.patternColor || null),
+        size: [Math.max(8, sizeLo), Math.max(10, sizeHi)],
+        speed: [speedLo * 0.9, speedHi * 1.05],
+        wave: pickParentField(ta.wave, tb.wave),
+        register: (ta.register + tb.register) * 0.5,
+        bite: Math.max(2, Math.round((ta.bite + tb.bite) * 0.4)),
+        dur: (ta.dur + tb.dur) * 0.5,
+        turn: (ta.turn + tb.turn) * 0.5,
+        wiggle: (ta.wiggle + tb.wiggle) * 0.5,
+        scale: pickParentField(ta.scale, tb.scale),
+        petWave: pickParentField(ta.petWave || ta.wave, tb.petWave || tb.wave),
+        petFreq: ((ta.petFreq || 300) + (tb.petFreq || 300)) * 0.5,
+        petDur: ((ta.petDur || 0.35) + (tb.petDur || 0.35)) * 0.5,
+        bitePartial: ((ta.bitePartial != null ? ta.bitePartial : 0.18)
+            + (tb.bitePartial != null ? tb.bitePartial : 0.18)) * 0.5,
+        biteBright: ((ta.biteBright != null ? ta.biteBright : 1)
+            + (tb.biteBright != null ? tb.biteBright : 1)) * 0.5,
+    };
+    if (slim != null) type.slim = slim;
+    if (ta.whiskers || tb.whiskers) type.whiskers = Math.random() < 0.55;
+    if (ta.dart || tb.dart) type.dart = Math.random() < 0.45;
+    if (ta.odd || tb.odd) type.odd = pickParentField(ta.odd || null, tb.odd || null);
+    if (ta.exotic || tb.exotic) type.exotic = Math.random() < 0.4;
+    if (ta.ghost != null || tb.ghost != null) {
+        type.ghost = ((ta.ghost != null ? ta.ghost : 1) + (tb.ghost != null ? tb.ghost : 1)) * 0.5;
+    }
+    // Drop null odd so habits stay clean.
+    if (!type.odd) delete type.odd;
+    if (!type.pattern) type.patternColor = null;
+    return type;
+}
+
+function canBreedFish(f) {
+    return !!(f && f.isPink && !f.dead && !f.golden && !f.isRainbow
+        && !f.rainbowLeaving && !f.isMonster && f.breedCooldown <= 0);
+}
+
+function spawnBreedOffspring(a, b) {
+    const living = fishes.filter((f) => !f.dead).length;
+    if (living >= CONFIG.maxBreedPop) return null;
+    const type = mixFishTypes(a.type, b.type);
+    const baby = new Fish(type);
+    baby.isHero = false;
+    baby.isPredator = false;
+    baby.isPink = false;
+    baby.isRainbow = false;
+    baby.isMonster = false;
+    baby.redeemed = false;
+    const midSize = (a.size + b.size) * 0.5;
+    baby.size = Math.max(8, Math.min(midSize * 0.42, type.size[1]));
+    baby.baseSpeed = (a.baseSpeed + b.baseSpeed) * 0.5 * (0.88 + Math.random() * 0.2);
+    baby.x = (a.x + b.x) * 0.5 + (Math.random() - 0.5) * 10;
+    baby.y = (a.y + b.y) * 0.5 + (Math.random() - 0.5) * 10;
+    baby.dir = Math.atan2(b.y - a.y, b.x - a.x) + (Math.random() - 0.5) * 0.8;
+    fishes.push(baby);
+    a.breedCooldown = CONFIG.breedCooldown;
+    b.breedCooldown = CONFIG.breedCooldown;
+    const pan = Math.max(-1, Math.min(1, (baby.x / viewW) * 2 - 1));
+    Audio.fishNote({
+        freq: 480 * (type.register || 1),
+        wave: "sine",
+        pan,
+        dur: 0.35,
+        level: 0.1,
+        partialAmt: 0.35,
+        bright: 1.35,
+    });
+    water.disturb(baby.x, baby.y, baby.size * 0.8, 100);
+    spawnSplash(baby.x, baby.y, baby.size * 0.4, 0.3);
+    return baby;
+}
+
+function updateBreeding() {
+    const pinks = fishes.filter(canBreedFish);
+    if (pinks.length < 2) return;
+    if (fishes.filter((f) => !f.dead).length >= CONFIG.maxBreedPop) return;
+    for (let i = 0; i < pinks.length; i++) {
+        for (let j = i + 1; j < pinks.length; j++) {
+            const a = pinks[i];
+            const b = pinks[j];
+            const touch = (a.size + b.size) * 0.52;
+            if (Math.hypot(a.x - b.x, a.y - b.y) <= touch) {
+                spawnBreedOffspring(a, b);
+                return;
+            }
+        }
+    }
 }
 
 // ===========================================================================
@@ -5547,6 +5773,24 @@ class Reptile {
             });
             water.disturb(this.x, this.y, this.size * 0.7, 220);
             spawnSplash(this.x, this.y, this.size * 0.35, 0.45);
+            return;
+        }
+        if (food.pink) {
+            // Breeding blush is for fish only; reptiles just snack on the pellet.
+            food.eaten = true;
+            this.foodTarget = null;
+            this.grow(5);
+            Audio.fishNote({
+                freq: 300,
+                wave: "sine",
+                pan,
+                dur: 0.4,
+                level: 0.1,
+                partialAmt: 0.25,
+                bright: 1.15,
+            });
+            water.disturb(this.x, this.y, this.size * 0.5, 140);
+            spawnSplash(this.x, this.y, this.size * 0.25, 0.3);
             return;
         }
 
@@ -6774,18 +7018,174 @@ let netMode = false;
 let netSweeping = false;
 const NET_RADIUS = 44;
 
+// Special pellets scooped by the net are saved here for later redeploy.
+const FOOD_STASH_KEY = "ripple-food-stash";
+const foodStash = [];
+let armedStashIndex = null;
+
+const STASH_SWATCH = {
+    rainbow: { from: "#ff9ad8", mid: "#6ec8ff", to: "#b48cff", label: "Rainbow food" },
+    golden: { from: "#fff3b0", mid: "#f0c437", to: "#a9791a", label: "Golden food" },
+    green: { from: "#c8f5b0", mid: "#5db84a", to: "#2a6b2e", label: "Green food" },
+    grower: { from: "#ffe0f0", mid: "#ff6fa0", to: "#b03060", label: "Grower food" },
+    pink: { from: "#ffe8f4", mid: "#ff7eb6", to: "#d63a7a", label: "Breeding food" },
+    carcass: { from: "#d07060", mid: "#8a3030", to: "#4a1818", label: "Carcass" },
+};
+
+function loadFoodStash() {
+    foodStash.length = 0;
+    try {
+        const raw = localStorage.getItem(FOOD_STASH_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return;
+        for (const item of parsed) {
+            if (typeof item === "string" && STASH_SWATCH[item]) foodStash.push(item);
+            else if (item && typeof item.variant === "string" && STASH_SWATCH[item.variant]) {
+                foodStash.push(item.variant);
+            }
+            if (foodStash.length >= CONFIG.foodStashMax) break;
+        }
+    } catch (err) {
+        // Ignore corrupt stash data.
+    }
+}
+
+function saveFoodStash() {
+    try {
+        localStorage.setItem(FOOD_STASH_KEY, JSON.stringify(foodStash.slice(0, CONFIG.foodStashMax)));
+    } catch (err) {
+        // Private mode / quota: stash still works for this session.
+    }
+}
+
+function stashSpecialFood(variant) {
+    const key = normalizeFoodVariant(variant);
+    if (!key || !STASH_SWATCH[key]) return false;
+    if (foodStash.length >= CONFIG.foodStashMax) foodStash.shift();
+    foodStash.push(key);
+    saveFoodStash();
+    renderFoodStashUI();
+    return true;
+}
+
+function flagsFromStashVariant(variant) {
+    const v = normalizeFoodVariant(variant);
+    return {
+        rainbow: v === "rainbow",
+        golden: v === "golden",
+        green: v === "green",
+        grower: v === "grower",
+        pink: v === "pink",
+        carcass: v === "carcass",
+    };
+}
+
+function placeStashedFood(x, y, variant) {
+    const flags = flagsFromStashVariant(variant);
+    while (foods.length >= CONFIG.maxFoods) {
+        const common = foods.findIndex((f) => !isRareFoodFlags(f));
+        if (common >= 0) foods.splice(common, 1);
+        else foods.shift();
+    }
+    const size = 10 + Math.random() * 8;
+    const ox = (Math.random() - 0.5) * 18;
+    const oy = (Math.random() - 0.5) * 18;
+    const fx = Math.max(20, Math.min(viewW - 20, x + ox));
+    const fy = Math.max(20, Math.min(viewH - 20, y + oy));
+    foods.push(new Food(fx, fy, size, flags));
+    water.disturb(fx, fy, size * 0.8, 90);
+    spawnSplash(fx, fy, size * 0.35, 0.35);
+    if (typeof Audio !== "undefined" && Audio.ensure) {
+        Audio.ensure();
+        if (Audio.playDrop) {
+            Audio.playDrop({ freq: 340, decay: 0.85, velocity: 0.28, pan: 0, plunk: false });
+        }
+    }
+    markFirstInteraction();
+}
+
+function armStashSlot(index) {
+    if (index < 0 || index >= foodStash.length) {
+        armedStashIndex = null;
+        renderFoodStashUI();
+        return;
+    }
+    armedStashIndex = (armedStashIndex === index) ? null : index;
+    renderFoodStashUI();
+}
+
+function placeArmedStashAt(x, y) {
+    if (armedStashIndex == null || armedStashIndex < 0 || armedStashIndex >= foodStash.length) {
+        armedStashIndex = null;
+        return false;
+    }
+    const variant = foodStash[armedStashIndex];
+    foodStash.splice(armedStashIndex, 1);
+    armedStashIndex = null;
+    saveFoodStash();
+    placeStashedFood(x, y, variant);
+    renderFoodStashUI();
+    return true;
+}
+
+function renderFoodStashUI() {
+    const el = document.getElementById("food-stash");
+    if (!el) return;
+    el.innerHTML = "";
+    if (!foodStash.length) {
+        el.classList.remove("has-items", "armed");
+        el.setAttribute("aria-hidden", "true");
+        return;
+    }
+    el.classList.add("has-items");
+    el.setAttribute("aria-hidden", "false");
+    el.classList.toggle("armed", armedStashIndex != null);
+    foodStash.forEach((variant, i) => {
+        const sw = STASH_SWATCH[variant] || STASH_SWATCH.golden;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "stash-slot" + (armedStashIndex === i ? " armed" : "");
+        btn.title = armedStashIndex === i
+            ? "Click the pond to drop this food"
+            : (sw.label + ": click, then click the pond to drop");
+        btn.setAttribute("aria-label", btn.title);
+        btn.setAttribute("aria-pressed", armedStashIndex === i ? "true" : "false");
+        btn.style.setProperty("--stash-from", sw.from);
+        btn.style.setProperty("--stash-mid", sw.mid);
+        btn.style.setProperty("--stash-to", sw.to);
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            armStashSlot(i);
+        });
+        el.appendChild(btn);
+    });
+}
+
+loadFoodStash();
+renderFoodStashUI();
+
 function sweepFoodNear(x, y) {
     let scooped = 0;
+    let stashed = 0;
     for (const f of foods) {
         if (f.eaten || f.sinkProgress > 0.85) continue;
         const reach = NET_RADIUS + f.radius();
         if (Math.hypot(f.x - x, f.y - y) > reach) continue;
+        const variant = foodVariantKey(f);
+        if (variant && stashSpecialFood(variant)) stashed++;
         f.eaten = true;
         scooped++;
         water.disturb(f.x, f.y, Math.max(4, f.size * 0.45), 55);
         if (scooped <= 4) spawnSplash(f.x, f.y, 3 + f.size * 0.15, 0.28);
     }
     if (scooped) markFirstInteraction();
+    if (stashed && typeof Audio !== "undefined" && Audio.ensure) {
+        Audio.ensure();
+        if (Audio.playDrop) {
+            Audio.playDrop({ freq: 420, decay: 0.7, velocity: 0.22, pan: 0, plunk: false });
+        }
+    }
     return scooped;
 }
 
@@ -6935,11 +7335,22 @@ function updateGoldHold(dt) {
 
 function onPointerDown(ev) {
     Audio.ensure();
+    // Armed stash: left-click places the saved special pellet in the pond.
+    if (ev.button === 0 && mode === "pond" && armedStashIndex != null) {
+        pointerNow = { x: ev.clientX, y: ev.clientY };
+        placeArmedStashAt(ev.clientX, ev.clientY);
+        pointerDownAt = null;
+        return;
+    }
     // Right click: net scoop, hold gold, drag debris, scare reptile snout, or pet.
     if (ev.button === 2) {
         ev.preventDefault();
         if (mode !== "pond") return;
         pointerNow = { x: ev.clientX, y: ev.clientY };
+        if (armedStashIndex != null) {
+            armedStashIndex = null;
+            renderFoodStashUI();
+        }
         if (netMode) {
             netSweeping = true;
             sweepFoodNear(ev.clientX, ev.clientY);
@@ -7238,6 +7649,10 @@ const toggle = document.getElementById("mode-toggle");
 toggle.addEventListener("click", () => {
     mode = mode === "window" ? "pond" : "window";
     document.body.classList.toggle("pond", mode === "pond");
+    if (mode !== "pond" && armedStashIndex != null) {
+        armedStashIndex = null;
+        renderFoodStashUI();
+    }
     Audio.onModeChange();
 });
 toggle.addEventListener("dblclick", (e) => {
@@ -7347,6 +7762,7 @@ function frame(now) {
         // Fish live beneath the surface, so draw them first.
         if (!povAttack && !giantEnding) {
             for (const fish of fishes) fish.update(dt);
+            updateBreeding();
         }
         manageEcosystem(dt); // predators, shark, reptiles, POV / giant finales
         for (let i = fishes.length - 1; i >= 0; i--) {
