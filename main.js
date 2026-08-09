@@ -376,8 +376,14 @@ const MINOR_PENT = [1, 6 / 5, 4 / 3, 3 / 2, 9 / 5];
 // Voice fields: wave/register/dur for bites; petWave/petFreq/petDur for pets;
 // bitePartial and biteBright shape each species' chew timbre.
 const FISH_TYPES = [
-    { name: "koi",      shape: "koi",     body: "#e8853a", belly: "#fff1dc", pattern: "blotches", patternColor: "#f5f0e6", size: [18, 26], speed: [24, 40], wave: "sine",     register: 1.0,  bite: 6, dur: 0.4,  turn: 2.8, wiggle: 1.15, scale: PENTATONIC, petWave: "sine",     petFreq: 300, petDur: 0.42, bitePartial: 0.22, biteBright: 1.0 },
-    { name: "shiro",    shape: "koi",     body: "#f4f0e8", belly: "#ffffff", pattern: "blotches", patternColor: "#c23b3b", size: [17, 24], speed: [24, 38], wave: "sine",     register: 1.1,  bite: 5, dur: 0.38, turn: 2.9, wiggle: 1.1,  scale: PENTATONIC, petWave: "triangle", petFreq: 340, petDur: 0.38, bitePartial: 0.28, biteBright: 1.15 },
+    // Traditional koi varieties: fuller bodies, barbels, slower graceful glide.
+    { name: "kohaku",   shape: "koi", koi: true, body: "#f7f2ea", belly: "#ffffff", pattern: "hi",      patternColor: "#c23a2e", size: [22, 32], speed: [20, 32], wave: "sine",     register: 1.0,  bite: 6, dur: 0.42, turn: 2.4, wiggle: 1.05, scale: PENTATONIC, petWave: "sine",     petFreq: 300, petDur: 0.42, bitePartial: 0.22, biteBright: 1.0, whiskers: true },
+    { name: "sanke",    shape: "koi", koi: true, body: "#f5f0e6", belly: "#fffaf2", pattern: "sanke",   patternColor: "#c23a2e", size: [21, 30], speed: [20, 34], wave: "sine",     register: 1.05, bite: 6, dur: 0.4,  turn: 2.5, wiggle: 1.08, scale: PENTATONIC, petWave: "triangle", petFreq: 320, petDur: 0.4,  bitePartial: 0.25, biteBright: 1.05, whiskers: true },
+    { name: "showa",    shape: "koi", koi: true, body: "#2a2a2c", belly: "#f0e6dc", pattern: "showa",   patternColor: "#c23a2e", size: [22, 31], speed: [19, 31], wave: "sine",     register: 0.95, bite: 6, dur: 0.42, turn: 2.3, wiggle: 1.0,  scale: PENTATONIC, petWave: "sine",     petFreq: 290, petDur: 0.44, bitePartial: 0.2,  biteBright: 0.95, whiskers: true },
+    { name: "asagi",    shape: "koi", koi: true, body: "#6a8fa8", belly: "#f2d5c0", pattern: "asagi",   patternColor: "#d8e6f0", size: [20, 29], speed: [22, 34], wave: "triangle", register: 1.1,  bite: 5, dur: 0.38, turn: 2.6, wiggle: 1.12, scale: PENTATONIC, petWave: "triangle", petFreq: 340, petDur: 0.38, bitePartial: 0.28, biteBright: 1.1, whiskers: true },
+    { name: "ogon",     shape: "koi", koi: true, body: "#e0b24a", belly: "#fff0c4", pattern: "scales",  patternColor: "#f0d080", size: [20, 28], speed: [21, 33], wave: "sine",     register: 1.15, bite: 5, dur: 0.4,  turn: 2.5, wiggle: 1.1,  scale: PENTATONIC, petWave: "sine",     petFreq: 350, petDur: 0.4,  bitePartial: 0.3,  biteBright: 1.2, whiskers: true },
+    { name: "koi",      shape: "koi", koi: true, body: "#e8853a", belly: "#fff1dc", pattern: "blotches", patternColor: "#f5f0e6", size: [20, 30], speed: [22, 36], wave: "sine",     register: 1.0,  bite: 6, dur: 0.4,  turn: 2.6, wiggle: 1.12, scale: PENTATONIC, petWave: "sine",     petFreq: 300, petDur: 0.42, bitePartial: 0.22, biteBright: 1.0, whiskers: true },
+    { name: "shiro",    shape: "koi", koi: true, body: "#f4f0e8", belly: "#ffffff", pattern: "blotches", patternColor: "#c23b3b", size: [19, 28], speed: [22, 35], wave: "sine",     register: 1.1,  bite: 5, dur: 0.38, turn: 2.7, wiggle: 1.1,  scale: PENTATONIC, petWave: "triangle", petFreq: 340, petDur: 0.38, bitePartial: 0.28, biteBright: 1.15, whiskers: true },
     { name: "carp",     shape: "oval",    body: "#5f7d8f", belly: "#c3dbe8", pattern: "scales",   patternColor: "#7a9aaa", size: [23, 31], speed: [18, 30], wave: "triangle", register: 0.5,  bite: 9, dur: 0.6,  turn: 2.0, wiggle: 0.8,  scale: PENTATONIC, petWave: "triangle", petFreq: 180, petDur: 0.55, bitePartial: 0.12, biteBright: 0.7 },
     { name: "goldfish", shape: "round",   body: "#e07a2f", belly: "#ffd7a8", pattern: null,       patternColor: null,      size: [14, 20], speed: [22, 34], wave: "sine",     register: 1.15, bite: 4, dur: 0.35, turn: 3.2, wiggle: 1.2,  scale: PENTATONIC, petWave: "sine",     petFreq: 380, petDur: 0.32, bitePartial: 0.32, biteBright: 1.25 },
     { name: "minnow",   shape: "slim",    body: "#d6e6f2", belly: "#ffffff", pattern: null,       patternColor: null,      size: [10, 14], speed: [42, 62], wave: "sine",     register: 2.0,  bite: 3, dur: 0.22, turn: 5.0, wiggle: 1.4,  dart: true, scale: PENTATONIC, petWave: "sine",     petFreq: 520, petDur: 0.22, bitePartial: 0.4,  biteBright: 1.4 },
@@ -429,11 +435,10 @@ function resize() {
 
     if (water) water.resize();
     if (typeof rebuildScenery === "function") rebuildScenery();
-    // Keep bank frogs inside the new viewport after resize.
+    // Keep swimming frogs inside the new viewport after resize.
     for (const g of frogGroups) {
-        g.frog.x = Math.max(viewW * 0.06, Math.min(viewW * 0.94, g.frog.x));
-        g.frog.baseY = Math.max(viewH * 0.72, Math.min(viewH * 0.94, g.frog.baseY));
-        if (g.frog.state === "idle" || g.frog.state === "land") g.frog.y = g.frog.baseY;
+        g.frog.x = Math.max(viewW * 0.08, Math.min(viewW * 0.92, g.frog.x));
+        g.frog.y = Math.max(viewH * 0.42, Math.min(viewH * 0.88, g.frog.y));
     }
 }
 window.addEventListener("resize", resize);
@@ -1414,7 +1419,7 @@ const scenery = {
     debris: true, // solid movable lake clutter (logs, rocks, driftwood, pots, and more)
     bed: true,    // rocky / sandy pond floor seen through the water
     sun: true,    // warm golden-hour light, soft floor caustics, and sharp shadows
-    frogs: true,  // bank frogs jumping with tadpole clusters (background)
+    frogs: true,  // underwater frogs swimming with tadpole clusters (background)
 };
 let sceneryItems = {
     stones: [], sticks: [], reeds: [], lilies: [],
@@ -2736,9 +2741,9 @@ function drawLeaves(ctx, t, dt) {
 }
 
 // ===========================================================================
-// FROGS + TADPOLES (background bank life)
-// Occasional frog groups along the lower pond with six tadpoles each. Smooth
-// jump arcs and detailed silhouettes; they do not interact with fish gameplay.
+// FROGS + TADPOLES (underwater background life)
+// Occasional frog groups swimming mid-depth with six tadpoles each. Quiet
+// breaststroke kicks; they do not interact with fish gameplay.
 // ===========================================================================
 let frogGroups = [];
 let frogCheckTimer = 0;
@@ -2757,40 +2762,41 @@ function easeInQuad(t) {
 }
 
 function spawnFrogGroup() {
-    const x = viewW * (0.12 + Math.random() * 0.76);
-    const baseY = viewH * (0.76 + Math.random() * 0.16);
-    const facing = Math.random() < 0.5 ? 1 : -1;
+    const x = viewW * (0.15 + Math.random() * 0.7);
+    // Swim in the lower half of the water column, under the surface.
+    const y = viewH * (0.55 + Math.random() * 0.28);
+    const dir = Math.random() < 0.5 ? 0 : Math.PI;
     const frog = {
         x,
-        y: baseY,
-        baseY,
-        size: 13 + Math.random() * 9,
-        facing,
-        tone: Math.random(), // green / olive variation
-        state: "idle",
+        y,
+        size: 12 + Math.random() * 8,
+        dir,
+        tone: Math.random(),
+        state: "glide", // glide | kick | rest
         stateT: 0,
-        idleFor: 1.8 + Math.random() * 4.5,
-        jump: null,
+        stateFor: 0.8 + Math.random() * 1.4,
+        kick: 0, // 0 tucked, 1 fully extended hind kick
+        speed: 18 + Math.random() * 14,
         breath: Math.random() * Math.PI * 2,
         blink: 0,
         nextBlink: 1.5 + Math.random() * 3,
-        crouch: 0,
-        stretch: 0,
-        landSquash: 0,
+        pitch: 0,
+        bobPhase: Math.random() * Math.PI * 2,
         age: 0,
+        turnTo: null,
     };
     const tadpoles = [];
     for (let i = 0; i < 6; i++) {
-        const ang = (i / 6) * Math.PI * 2 + Math.random() * 0.5;
+        const ang = (i / 6) * Math.PI * 2 + Math.random() * 0.4;
         tadpoles.push({
-            x: x + Math.cos(ang) * (22 + Math.random() * 28),
-            y: baseY + Math.sin(ang) * (10 + Math.random() * 16) + 6,
+            x: x + Math.cos(ang) * (18 + Math.random() * 24),
+            y: y + Math.sin(ang) * (10 + Math.random() * 14),
             ang,
-            orbit: 20 + Math.random() * 34,
-            orbitY: 0.45 + Math.random() * 0.35,
-            speed: 0.55 + Math.random() * 0.7,
+            orbit: 16 + Math.random() * 28,
+            orbitY: 0.55 + Math.random() * 0.4,
+            speed: 0.6 + Math.random() * 0.75,
             phase: Math.random() * Math.PI * 2,
-            size: 4.6 + Math.random() * 3.2,
+            size: 4.4 + Math.random() * 3,
             dir: Math.random() * Math.PI * 2,
             tone: Math.random(),
         });
@@ -2798,43 +2804,24 @@ function spawnFrogGroup() {
     frogGroups.push({
         frog,
         tadpoles,
-        life: 36 + Math.random() * 48,
+        life: 40 + Math.random() * 50,
         fade: 0,
         leaving: false,
     });
 }
 
-function beginFrogJump(frog) {
-    const span = 36 + Math.random() * 70;
-    const dir = Math.random() < 0.55 ? frog.facing : -frog.facing;
-    frog.facing = dir;
-    let tx = frog.x + dir * span;
-    tx = Math.max(viewW * 0.06, Math.min(viewW * 0.94, tx));
-    const ty = Math.max(viewH * 0.72, Math.min(viewH * 0.94, frog.baseY + (Math.random() - 0.5) * 28));
-    frog.jump = {
-        x0: frog.x,
-        y0: frog.y,
-        x1: tx,
-        y1: ty,
-        peak: 28 + Math.random() * 34,
-        dur: 0.48 + Math.random() * 0.18,
-        t: 0,
-    };
-    frog.baseY = ty;
-    frog.state = "crouch";
-    frog.stateT = 0;
-    frog.crouch = 0;
-    frog.stretch = 0;
-}
-
 function updateFrogGroups(dt) {
     if (!scenery.frogs) return;
+    const padX = viewW * 0.08;
+    const yMin = viewH * 0.42;
+    const yMax = viewH * 0.88;
+
     for (let i = frogGroups.length - 1; i >= 0; i--) {
         const g = frogGroups[i];
         g.life -= dt;
         if (g.life <= 0 && !g.leaving) g.leaving = true;
         if (g.leaving) {
-            g.fade += dt * 0.7;
+            g.fade += dt * 0.65;
             if (g.fade >= 1) {
                 frogGroups.splice(i, 1);
                 continue;
@@ -2842,84 +2829,96 @@ function updateFrogGroups(dt) {
         }
         const frog = g.frog;
         frog.age += dt;
-        frog.breath += dt * 2.4;
+        frog.breath += dt * 1.8;
+        frog.bobPhase += dt * 1.1;
         frog.nextBlink -= dt;
         if (frog.nextBlink <= 0) {
-            frog.blink = 0.14;
-            frog.nextBlink = 1.8 + Math.random() * 3.4;
+            frog.blink = 0.12;
+            frog.nextBlink = 2 + Math.random() * 3.5;
         }
         if (frog.blink > 0) frog.blink = Math.max(0, frog.blink - dt);
-        frog.landSquash = Math.max(0, frog.landSquash - dt * 3.2);
 
-        if (frog.state === "idle") {
-            frog.stateT += dt;
-            frog.crouch = Math.sin(frog.breath) * 0.04;
-            frog.stretch = 0;
-            if (frog.stateT >= frog.idleFor) beginFrogJump(frog);
-        } else if (frog.state === "crouch") {
-            frog.stateT += dt;
-            const u = clamp01(frog.stateT / 0.22);
-            frog.crouch = easeInQuad(u) * 0.42;
-            frog.stretch = -easeInQuad(u) * 0.15;
-            if (u >= 1) {
-                frog.state = "air";
+        frog.stateT += dt;
+        if (frog.state === "rest") {
+            frog.kick = Math.max(0, frog.kick - dt * 2.5);
+            frog.speed *= 1 - 1.8 * dt;
+            if (frog.stateT >= frog.stateFor) {
+                frog.state = "kick";
                 frog.stateT = 0;
-                frog.crouch = 0;
-                if (water) water.disturb(frog.x, frog.y, 6, 28);
+                frog.stateFor = 0.28 + Math.random() * 0.12;
+                // Pick a new heading for the next kick-glide.
+                const wander = (Math.random() - 0.5) * 1.1;
+                frog.turnTo = frog.dir + wander;
+                if (frog.x < padX) frog.turnTo = 0;
+                if (frog.x > viewW - padX) frog.turnTo = Math.PI;
+                if (frog.y < yMin) frog.turnTo = Math.atan2(0.6, Math.cos(frog.dir));
+                if (frog.y > yMax) frog.turnTo = Math.atan2(-0.55, Math.cos(frog.dir));
             }
-        } else if (frog.state === "air" && frog.jump) {
-            const j = frog.jump;
-            j.t += dt;
-            const u = clamp01(j.t / j.dur);
-            const fly = easeInOutCubic(u);
-            frog.x = j.x0 + (j.x1 - j.x0) * fly;
-            const arc = Math.sin(Math.PI * fly) * j.peak;
-            frog.y = j.y0 + (j.y1 - j.y0) * fly - arc;
-            // Legs tuck mid-air, extend near landing.
-            frog.stretch = 0.55 * Math.sin(Math.PI * fly);
-            frog.crouch = fly > 0.75 ? easeInQuad((fly - 0.75) / 0.25) * 0.2 : -0.08 * Math.sin(Math.PI * fly);
+        } else if (frog.state === "kick") {
+            const u = clamp01(frog.stateT / frog.stateFor);
+            frog.kick = easeOutQuad(u);
+            if (frog.turnTo != null) {
+                const diff = normAngle(frog.turnTo - frog.dir);
+                frog.dir += Math.max(-2.8 * dt, Math.min(2.8 * dt, diff));
+            }
+            frog.speed = 38 + 55 * easeOutQuad(u);
             if (u >= 1) {
-                frog.x = j.x1;
-                frog.y = j.y1;
-                frog.jump = null;
-                frog.state = "land";
+                frog.state = "glide";
                 frog.stateT = 0;
-                frog.landSquash = 1;
-                frog.stretch = 0;
-                if (water) {
-                    water.disturb(frog.x, frog.y, 10, 55);
-                    spawnSplash(frog.x, frog.y, 5, 0.25);
+                frog.stateFor = 1.1 + Math.random() * 1.6;
+                frog.turnTo = null;
+                if (water && Math.random() < 0.45) {
+                    water.disturb(frog.x, frog.y, 5, 22);
                 }
             }
-        } else if (frog.state === "land") {
-            frog.stateT += dt;
-            const u = clamp01(frog.stateT / 0.28);
-            frog.crouch = (1 - easeOutQuad(u)) * 0.35;
-            frog.stretch = -0.08 * (1 - u);
-            if (u >= 1) {
-                frog.state = "idle";
-                frog.stateT = 0;
-                frog.idleFor = 2.2 + Math.random() * 5;
-                frog.crouch = 0;
-                frog.stretch = 0;
+        } else {
+            // Glide: legs tuck, coast, then rest or kick again.
+            const u = clamp01(frog.stateT / Math.max(0.2, frog.stateFor));
+            frog.kick = Math.max(0, 1 - easeInQuad(u * 1.4));
+            frog.speed = Math.max(6, frog.speed * (1 - 0.55 * dt));
+            if (frog.stateT >= frog.stateFor) {
+                if (Math.random() < 0.35) {
+                    frog.state = "rest";
+                    frog.stateT = 0;
+                    frog.stateFor = 0.9 + Math.random() * 2.2;
+                    frog.speed *= 0.4;
+                } else {
+                    frog.state = "kick";
+                    frog.stateT = 0;
+                    frog.stateFor = 0.26 + Math.random() * 0.14;
+                    frog.turnTo = frog.dir + (Math.random() - 0.5) * 0.9;
+                }
             }
         }
 
-        // Tadpoles circle and weave near the frog's bank spot.
-        const cx = frog.state === "air" ? (frog.jump ? frog.jump.x0 : frog.x) : frog.x;
-        const cy = frog.baseY + 8;
+        frog.x += Math.cos(frog.dir) * frog.speed * dt;
+        frog.y += Math.sin(frog.dir) * frog.speed * dt * 0.55
+            + Math.sin(frog.bobPhase) * 4.5 * dt;
+        frog.x = Math.max(padX * 0.5, Math.min(viewW - padX * 0.5, frog.x));
+        frog.y = Math.max(yMin, Math.min(yMax, frog.y));
+        // Slight body pitch follows vertical motion intent.
+        const desiredPitch = Math.sin(frog.dir) * 0.35 + Math.sin(frog.bobPhase) * 0.08;
+        frog.pitch += (desiredPitch - frog.pitch) * Math.min(1, 4 * dt);
+
+        // Tadpoles trail and orbit the swimming frog.
         for (const t of g.tadpoles) {
             t.phase += dt * t.speed;
-            t.ang += dt * t.speed * 0.55;
-            const ox = Math.cos(t.ang) * t.orbit + Math.sin(t.phase * 1.7) * 5;
-            const oy = Math.sin(t.ang * 1.15) * t.orbit * t.orbitY + Math.cos(t.phase * 1.3) * 3;
-            const tx = cx + ox;
-            const ty = cy + oy;
+            t.ang += dt * t.speed * 0.65;
+            const trail = 14 + t.orbit * 0.35;
+            const ox = Math.cos(t.ang) * t.orbit * 0.55
+                - Math.cos(frog.dir) * trail
+                + Math.sin(t.phase * 1.6) * 4;
+            const oy = Math.sin(t.ang * 1.2) * t.orbit * t.orbitY
+                - Math.sin(frog.dir) * trail * 0.4
+                + Math.cos(t.phase * 1.4) * 3;
+            const tx = frog.x + ox;
+            const ty = frog.y + oy;
             const dx = tx - t.x;
             const dy = ty - t.y;
-            t.x += dx * Math.min(1, 3.2 * dt);
-            t.y += dy * Math.min(1, 3.2 * dt);
-            if (Math.hypot(dx, dy) > 0.4) t.dir = Math.atan2(dy, dx);
+            t.x += dx * Math.min(1, 2.8 * dt);
+            t.y += dy * Math.min(1, 2.8 * dt);
+            t.y = Math.max(yMin * 0.95, Math.min(yMax, t.y));
+            if (Math.hypot(dx, dy) > 0.35) t.dir = Math.atan2(dy, dx);
         }
     }
 }
@@ -3001,162 +3000,136 @@ function drawTadpole(ctx, t, alpha) {
 }
 
 function drawFrogModel(ctx, frog, alpha) {
+    // Side-profile swimmer: head forward, hind legs tuck/kick behind.
     const S = frog.size;
-    const crouch = frog.crouch || 0;
-    const stretch = frog.stretch || 0;
-    const squash = 1 - frog.landSquash * 0.18;
-    const tall = (1 + stretch * 0.35) * squash;
-    const wide = (1 + crouch * 0.35) / squash;
-    const breath = 1 + Math.sin(frog.breath) * 0.03;
+    const kick = frog.kick || 0;
+    const breath = 1 + Math.sin(frog.breath) * 0.04;
     const tone = frog.tone;
-    const r = 55 + Math.floor(tone * 35);
-    const g = 110 + Math.floor(tone * 55);
-    const b = 55 + Math.floor(tone * 25);
-    const bellyR = 150 + Math.floor(tone * 40);
-    const bellyG = 170 + Math.floor(tone * 30);
-    const bellyB = 90 + Math.floor(tone * 20);
+    const r = 50 + Math.floor(tone * 30);
+    const g = 105 + Math.floor(tone * 50);
+    const b = 70 + Math.floor(tone * 30);
+    const bellyR = 130 + Math.floor(tone * 35);
+    const bellyG = 155 + Math.floor(tone * 28);
+    const bellyB = 100 + Math.floor(tone * 20);
 
     ctx.save();
     ctx.translate(frog.x, frog.y);
-    ctx.scale(frog.facing, 1);
-    ctx.globalAlpha = 0.88 * alpha;
+    ctx.rotate(frog.dir + (frog.pitch || 0));
+    // Submerged look: cooler, a bit translucent.
+    ctx.globalAlpha = 0.62 * alpha;
 
-    // Contact shadow.
-    ctx.fillStyle = "rgba(15,22,18,0.22)";
+    // Soft underwater shadow beneath the body.
+    ctx.fillStyle = "rgba(10,25,30,0.2)";
     ctx.beginPath();
-    ctx.ellipse(0, S * 0.42, S * 0.85 * wide, S * 0.22, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.scale(wide, tall);
-
-    // Hind legs (folded / extended).
-    const hindExt = 0.35 + stretch * 0.9 - crouch * 0.25;
-    ctx.fillStyle = `rgb(${r - 15},${g - 20},${b - 10})`;
-    // Left hind thigh + calf + webbed foot.
-    ctx.beginPath();
-    ctx.moveTo(-S * 0.15, S * 0.05);
-    ctx.quadraticCurveTo(-S * (0.55 + hindExt * 0.15), S * 0.15, -S * (0.7 + hindExt * 0.35), S * (0.35 - stretch * 0.1));
-    ctx.quadraticCurveTo(-S * (0.85 + hindExt * 0.4), S * 0.48, -S * (0.55 + hindExt * 0.2), S * 0.42);
-    ctx.quadraticCurveTo(-S * 0.35, S * 0.28, -S * 0.1, S * 0.12);
-    ctx.closePath();
-    ctx.fill();
-    // Webbing
-    ctx.fillStyle = `rgba(${r},${g + 10},${b},0.55)`;
-    ctx.beginPath();
-    ctx.moveTo(-S * (0.72 + hindExt * 0.35), S * 0.38);
-    ctx.lineTo(-S * (0.95 + hindExt * 0.45), S * 0.52);
-    ctx.lineTo(-S * (0.7 + hindExt * 0.25), S * 0.55);
-    ctx.lineTo(-S * (0.55 + hindExt * 0.15), S * 0.45);
-    ctx.closePath();
-    ctx.fill();
-    // Right hind (mirrored slightly back)
-    ctx.fillStyle = `rgb(${r - 20},${g - 25},${b - 12})`;
-    ctx.beginPath();
-    ctx.moveTo(-S * 0.05, S * 0.08);
-    ctx.quadraticCurveTo(-S * (0.4 + hindExt * 0.1), S * 0.22, -S * (0.55 + hindExt * 0.3), S * (0.4 - stretch * 0.08));
-    ctx.quadraticCurveTo(-S * (0.7 + hindExt * 0.35), S * 0.55, -S * (0.4 + hindExt * 0.15), S * 0.5);
-    ctx.quadraticCurveTo(-S * 0.2, S * 0.32, 0, S * 0.14);
-    ctx.closePath();
+    ctx.ellipse(-S * 0.05, S * 0.45, S * 1.1, S * 0.22, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Forelegs.
-    const foreReach = 0.15 + stretch * 0.25 + crouch * 0.1;
-    ctx.fillStyle = `rgb(${r - 10},${g - 15},${b - 8})`;
+    // Hind legs: tucked along the body when kick~0, swept back when kick~1.
+    const tuckX = -S * (0.35 + kick * 0.85);
+    const tuckY = S * (0.2 - kick * 0.05);
+    const footSpread = S * (0.15 + kick * 0.55);
+    for (const side of [-1, 1]) {
+        ctx.fillStyle = `rgba(${r - 10},${g - 15},${b - 8},0.9)`;
+        ctx.beginPath();
+        ctx.moveTo(-S * 0.2, side * S * 0.08);
+        ctx.quadraticCurveTo(-S * (0.45 + kick * 0.35), side * S * (0.28 + kick * 0.1), tuckX, side * tuckY);
+        ctx.quadraticCurveTo(-S * (0.55 + kick * 0.5), side * S * 0.05, -S * 0.25, 0);
+        ctx.closePath();
+        ctx.fill();
+        // Webbed foot flare at the end of the kick.
+        ctx.fillStyle = `rgba(${r},${g + 15},${b + 10},0.5)`;
+        ctx.beginPath();
+        ctx.moveTo(tuckX, side * tuckY * 0.85);
+        ctx.lineTo(tuckX - S * (0.2 + kick * 0.35), side * (tuckY + footSpread));
+        ctx.lineTo(tuckX - S * (0.35 + kick * 0.4), side * tuckY * 0.2);
+        ctx.lineTo(tuckX - S * (0.15 + kick * 0.2), side * (tuckY - footSpread * 0.4));
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    // Forelimbs tucked under the chest while swimming.
+    ctx.fillStyle = `rgba(${r - 5},${g - 10},${b - 5},0.75)`;
     ctx.beginPath();
-    ctx.moveTo(S * 0.25, S * 0.05);
-    ctx.quadraticCurveTo(S * (0.45 + foreReach), S * 0.2, S * (0.55 + foreReach), S * 0.38);
-    ctx.quadraticCurveTo(S * (0.4 + foreReach), S * 0.4, S * 0.28, S * 0.18);
-    ctx.closePath();
+    ctx.moveTo(S * 0.15, S * 0.1);
+    ctx.quadraticCurveTo(S * 0.35, S * 0.28, S * 0.22, S * 0.32);
+    ctx.quadraticCurveTo(S * 0.08, S * 0.22, S * 0.1, S * 0.08);
     ctx.fill();
     ctx.beginPath();
-    ctx.moveTo(S * 0.15, S * 0.08);
-    ctx.quadraticCurveTo(S * (0.3 + foreReach * 0.7), S * 0.25, S * (0.38 + foreReach), S * 0.4);
-    ctx.quadraticCurveTo(S * (0.25 + foreReach), S * 0.38, S * 0.12, S * 0.16);
-    ctx.closePath();
+    ctx.moveTo(S * 0.12, -S * 0.05);
+    ctx.quadraticCurveTo(S * 0.28, -S * 0.22, S * 0.18, -S * 0.28);
+    ctx.quadraticCurveTo(S * 0.05, -S * 0.15, S * 0.08, -S * 0.02);
     ctx.fill();
 
-    // Body.
-    const bodyG = ctx.createLinearGradient(0, -S * 0.45, 0, S * 0.35);
-    bodyG.addColorStop(0, `rgb(${r + 25},${g + 20},${b + 10})`);
-    bodyG.addColorStop(0.45, `rgb(${r},${g},${b})`);
-    bodyG.addColorStop(1, `rgb(${bellyR},${bellyG},${bellyB})`);
+    // Streamlined body.
+    const bodyG = ctx.createLinearGradient(0, -S * 0.35, 0, S * 0.35);
+    bodyG.addColorStop(0, `rgba(${r + 15},${g + 25},${b + 20},0.95)`);
+    bodyG.addColorStop(0.45, `rgba(${r},${g},${b},0.92)`);
+    bodyG.addColorStop(1, `rgba(${bellyR},${bellyG},${bellyB},0.9)`);
     ctx.fillStyle = bodyG;
     ctx.beginPath();
-    ctx.moveTo(S * 0.55, -S * 0.05);
-    ctx.bezierCurveTo(S * 0.65, -S * 0.4 * breath, -S * 0.05, -S * 0.55 * breath, -S * 0.55, -S * 0.1);
-    ctx.bezierCurveTo(-S * 0.7, S * 0.25, -S * 0.2, S * 0.42, S * 0.35, S * 0.28);
-    ctx.bezierCurveTo(S * 0.55, S * 0.18, S * 0.62, S * 0.05, S * 0.55, -S * 0.05);
+    ctx.moveTo(S * 0.75, 0);
+    ctx.bezierCurveTo(S * 0.55, -S * 0.38 * breath, -S * 0.1, -S * 0.42 * breath, -S * 0.55, -S * 0.12);
+    ctx.bezierCurveTo(-S * 0.72, 0, -S * 0.55, S * 0.14, -S * 0.2, S * 0.32);
+    ctx.bezierCurveTo(S * 0.2, S * 0.4, S * 0.55, S * 0.28, S * 0.75, 0);
     ctx.closePath();
     ctx.fill();
 
-    // Dorsal ridges / spots.
-    ctx.fillStyle = `rgba(${r - 30},${g - 40},${b - 20},0.35)`;
-    for (const [sx, sy, sr] of [[-0.1, -0.2, 0.1], [0.15, -0.15, 0.08], [-0.25, 0.05, 0.07], [0.05, 0.08, 0.06]]) {
+    // Mottling.
+    ctx.fillStyle = `rgba(${r - 25},${g - 35},${b - 15},0.28)`;
+    for (const [sx, sy, sr] of [[0.1, -0.12, 0.1], [-0.15, 0.08, 0.08], [0.35, 0.05, 0.06], [-0.35, -0.05, 0.07]]) {
         ctx.beginPath();
-        ctx.ellipse(S * sx, S * sy, S * sr, S * sr * 0.7, 0.3, 0, Math.PI * 2);
+        ctx.ellipse(S * sx, S * sy, S * sr, S * sr * 0.65, 0.2, 0, Math.PI * 2);
         ctx.fill();
     }
 
-    // Head.
-    ctx.fillStyle = `rgb(${r + 10},${g + 15},${b + 5})`;
+    // Head / snout.
+    ctx.fillStyle = `rgba(${r + 10},${g + 18},${b + 12},0.95)`;
     ctx.beginPath();
-    ctx.ellipse(S * 0.42, -S * 0.22, S * 0.38, S * 0.32 * breath, -0.15, 0, Math.PI * 2);
+    ctx.ellipse(S * 0.55, -S * 0.06, S * 0.32, S * 0.26 * breath, -0.1, 0, Math.PI * 2);
     ctx.fill();
-    // Tympanum.
-    ctx.strokeStyle = `rgba(${r - 20},${g - 30},${b - 15},0.55)`;
+    ctx.strokeStyle = `rgba(${r - 20},${g - 25},${b - 10},0.4)`;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.arc(S * 0.28, -S * 0.18, S * 0.1, 0, Math.PI * 2);
+    ctx.arc(S * 0.42, -S * 0.02, S * 0.09, 0, Math.PI * 2);
     ctx.stroke();
 
-    // Snout.
-    ctx.fillStyle = `rgb(${r + 5},${g + 8},${b})`;
+    // Eye on the upper head.
+    const ex = S * 0.58;
+    const ey = -S * 0.22;
+    ctx.fillStyle = `rgba(${r + 20},${g + 30},${b + 15},0.95)`;
     ctx.beginPath();
-    ctx.ellipse(S * 0.68, -S * 0.18, S * 0.18, S * 0.14, 0.1, 0, Math.PI * 2);
+    ctx.ellipse(ex, ey, S * 0.11, S * 0.1, 0, 0, Math.PI * 2);
     ctx.fill();
-    // Nostrils.
-    ctx.fillStyle = "rgba(30,40,28,0.55)";
-    ctx.beginPath();
-    ctx.arc(S * 0.78, -S * 0.22, S * 0.025, 0, Math.PI * 2);
-    ctx.arc(S * 0.74, -S * 0.14, S * 0.022, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Eyes (bulging).
-    const eyeY = -S * 0.42;
-    for (const ex of [S * 0.38, S * 0.55]) {
-        ctx.fillStyle = `rgb(${r + 20},${g + 25},${b + 10})`;
+    if (frog.blink > 0.02) {
+        ctx.strokeStyle = "rgba(25,35,30,0.85)";
+        ctx.lineWidth = Math.max(1.1, S * 0.05);
+        ctx.lineCap = "round";
         ctx.beginPath();
-        ctx.ellipse(ex, eyeY, S * 0.13, S * 0.12, 0, 0, Math.PI * 2);
+        ctx.moveTo(ex - S * 0.07, ey);
+        ctx.quadraticCurveTo(ex, ey + S * 0.03, ex + S * 0.07, ey);
+        ctx.stroke();
+    } else {
+        ctx.fillStyle = "rgba(245,248,240,0.92)";
+        ctx.beginPath();
+        ctx.ellipse(ex, ey, S * 0.07, S * 0.065, 0, 0, Math.PI * 2);
         ctx.fill();
-        if (frog.blink > 0.02) {
-            ctx.strokeStyle = "rgba(30,40,28,0.85)";
-            ctx.lineWidth = Math.max(1.2, S * 0.06);
-            ctx.lineCap = "round";
-            ctx.beginPath();
-            ctx.moveTo(ex - S * 0.08, eyeY);
-            ctx.quadraticCurveTo(ex, eyeY + S * 0.04, ex + S * 0.08, eyeY);
-            ctx.stroke();
-        } else {
-            ctx.fillStyle = "rgba(250,250,240,0.95)";
-            ctx.beginPath();
-            ctx.ellipse(ex, eyeY - S * 0.01, S * 0.08, S * 0.075, 0, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = "rgba(20,28,22,0.95)";
-            ctx.beginPath();
-            ctx.arc(ex + S * 0.015, eyeY - S * 0.01, S * 0.045, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = "rgba(255,255,255,0.7)";
-            ctx.beginPath();
-            ctx.arc(ex, eyeY - S * 0.03, S * 0.018, 0, Math.PI * 2);
-            ctx.fill();
-        }
+        ctx.fillStyle = "rgba(18,26,22,0.95)";
+        ctx.beginPath();
+        ctx.arc(ex + S * 0.012, ey, S * 0.038, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.65)";
+        ctx.beginPath();
+        ctx.arc(ex, ey - S * 0.02, S * 0.015, 0, Math.PI * 2);
+        ctx.fill();
     }
 
-    // Throat pulse.
-    ctx.fillStyle = `rgba(${bellyR},${bellyG},${bellyB},0.55)`;
-    ctx.beginPath();
-    ctx.ellipse(S * 0.35, S * 0.02, S * 0.22 * breath, S * 0.12 * breath, 0, 0, Math.PI * 2);
-    ctx.fill();
+    // Small bubble trail while kicking.
+    if (kick > 0.35 && Math.sin(frog.age * 14) > 0.4) {
+        ctx.fillStyle = `rgba(200,230,240,${0.25 * kick * alpha})`;
+        ctx.beginPath();
+        ctx.arc(-S * (0.7 + kick * 0.3), -S * 0.15, 1.2 + kick, 0, Math.PI * 2);
+        ctx.fill();
+    }
 
     ctx.restore();
 }
@@ -3165,8 +3138,7 @@ function drawFrogGroups(ctx) {
     if (!scenery.frogs) return;
     for (const g of frogGroups) {
         const alpha = g.leaving ? 1 - clamp01(g.fade) : 1;
-        // Tadpoles under the frog so it reads as a cluster at the bank.
-        for (const t of g.tadpoles) drawTadpole(ctx, t, alpha);
+        for (const t of g.tadpoles) drawTadpole(ctx, t, alpha * 0.9);
         drawFrogModel(ctx, g.frog, alpha);
     }
 }
@@ -5471,6 +5443,70 @@ class Fish {
             ctx.beginPath();
             ctx.ellipse(L * 0.2, W * 0.1, L * 0.12, W * 0.22, -0.4, 0, Math.PI * 2);
             ctx.fill();
+        } else if (kind === "hi") {
+            // Kohaku-style red hi plates on white.
+            ctx.globalAlpha *= 0.92;
+            const plates = [
+                [0.18, -0.05, 0.22, 0.42, 0.2],
+                [-0.12, 0.08, 0.2, 0.36, -0.25],
+                [-0.32, -0.12, 0.14, 0.28, 0.4],
+            ];
+            for (const [sx, sy, rx, ry, rot] of plates) {
+                ctx.beginPath();
+                ctx.ellipse(L * sx, W * sy, L * rx, W * ry, rot, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        } else if (kind === "sanke") {
+            // Red hi plus sparse black sumi.
+            ctx.globalAlpha *= 0.9;
+            ctx.beginPath();
+            ctx.ellipse(L * 0.15, -W * 0.08, L * 0.2, W * 0.4, 0.15, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(-L * 0.18, W * 0.05, L * 0.16, W * 0.32, -0.3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "rgba(28,26,30,0.78)";
+            ctx.beginPath();
+            ctx.ellipse(L * 0.02, -W * 0.2, L * 0.08, W * 0.14, 0.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(-L * 0.28, W * 0.18, L * 0.07, W * 0.12, -0.2, 0, Math.PI * 2);
+            ctx.fill();
+        } else if (kind === "showa") {
+            // Black base with red and white wraps.
+            ctx.globalAlpha *= 0.88;
+            ctx.fillStyle = col;
+            ctx.beginPath();
+            ctx.ellipse(L * 0.12, 0, L * 0.18, W * 0.38, 0.1, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(-L * 0.22, -W * 0.05, L * 0.15, W * 0.3, -0.35, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "rgba(245,240,230,0.82)";
+            ctx.beginPath();
+            ctx.ellipse(L * 0.28, W * 0.12, L * 0.12, W * 0.22, 0.4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(-L * 0.05, -W * 0.22, L * 0.1, W * 0.16, -0.5, 0, Math.PI * 2);
+            ctx.fill();
+        } else if (kind === "asagi") {
+            // Blue scaled back, soft orange belly wrap.
+            ctx.globalAlpha *= 0.55;
+            ctx.lineWidth = Math.max(0.7, L * 0.03);
+            for (let row = -2; row <= 1; row++) {
+                for (let colI = -3; colI <= 3; colI++) {
+                    const ox = colI * L * 0.09 + (row % 2) * L * 0.045;
+                    const oy = -W * 0.15 + row * W * 0.22;
+                    ctx.beginPath();
+                    ctx.arc(ox, oy, L * 0.045, Math.PI * 0.15, Math.PI * 1.85);
+                    ctx.stroke();
+                }
+            }
+            ctx.globalAlpha = 0.35;
+            ctx.fillStyle = "rgba(230,150,100,0.55)";
+            ctx.beginPath();
+            ctx.ellipse(0, W * 0.35, L * 0.35, W * 0.28, 0, 0, Math.PI * 2);
+            ctx.fill();
         } else if (kind === "scales") {
             ctx.lineWidth = 0.8;
             ctx.globalAlpha *= 0.45;
@@ -5496,13 +5532,14 @@ class Fish {
             : shape === "round" ? 0.72
             : shape === "diamond" ? 0.85
             : shape === "longfin" ? 0.55
-            : shape === "koi" ? 0.62
+            : shape === "koi" ? (this.type.koi ? 0.68 : 0.62)
             : 0.5;
         const L = this.size;
         const W = this.size * 0.5 * slim;
         const wigAmt = this.golden ? 0 : (this.type.wiggle || 1);
         const wig = Math.sin(this.tailPhase) * 0.5 * wigAmt;
         const sink = this.golden ? (this.sinkDepth || 0) : 0;
+        const isKoi = !!(this.type.koi || shape === "koi");
 
         let body = this.type.body;
         let belly = this.type.belly;
@@ -5556,6 +5593,9 @@ class Fish {
             ctx.shadowColor = (giantGlow || remorseGlow)
                 ? "rgba(160,220,255,0.95)" : "rgba(70,160,220,0.8)";
             ctx.shadowBlur = (giantGlow || remorseGlow) ? 26 : 14;
+        } else if (isKoi) {
+            ctx.shadowColor = "rgba(40,70,90,0.45)";
+            ctx.shadowBlur = 10;
         } else if (this.type.exotic) {
             ctx.shadowColor = "rgba(120,180,200,0.55)";
             ctx.shadowBlur = 12;
@@ -5568,11 +5608,13 @@ class Fish {
         ctx.fillStyle = body;
         ctx.beginPath();
         if (shape === "koi" || shape === "longfin") {
+            // Broader, softer koi twin lobes with trailing veil.
+            const spread = isKoi ? 1.15 : 1;
             ctx.moveTo(-L * 0.4, 0);
-            ctx.bezierCurveTo(-L * 0.62, -W * (0.9 + wig * 0.3), -L * 0.85, -W * (1.35 + wig), -L * 1.08, -W * (1.05 + wig));
-            ctx.quadraticCurveTo(-L * 0.78, -W * 0.15, -L * 0.55, 0);
-            ctx.quadraticCurveTo(-L * 0.78, W * 0.15, -L * 1.08, W * (1.05 + wig));
-            ctx.bezierCurveTo(-L * 0.85, W * (1.35 + wig), -L * 0.62, W * (0.9 + wig * 0.3), -L * 0.4, 0);
+            ctx.bezierCurveTo(-L * 0.62, -W * (0.95 + wig * 0.3) * spread, -L * 0.9, -W * (1.45 + wig) * spread, -L * 1.15, -W * (1.15 + wig) * spread);
+            ctx.quadraticCurveTo(-L * 0.82, -W * 0.12, -L * 0.55, 0);
+            ctx.quadraticCurveTo(-L * 0.82, W * 0.12, -L * 1.15, W * (1.15 + wig) * spread);
+            ctx.bezierCurveTo(-L * 0.9, W * (1.45 + wig) * spread, -L * 0.62, W * (0.95 + wig * 0.3) * spread, -L * 0.4, 0);
         } else if (shape === "diamond") {
             ctx.moveTo(-L * 0.34, 0);
             ctx.quadraticCurveTo(-L * 0.55, -W * 0.9, -L * 0.78, -W * 1.45);
@@ -5642,16 +5684,20 @@ class Fish {
         ctx.arc(L * 0.18, 0, W * 0.55, -1.1, 1.1);
         ctx.stroke();
 
-        // Koi / catfish whiskers.
+        // Koi / catfish whiskers (barbels).
         if ((shape === "koi" || this.type.whiskers) && !this.golden) {
-            ctx.strokeStyle = "rgba(40,30,20,0.55)";
-            ctx.lineWidth = Math.max(0.8, L * 0.03);
+            ctx.strokeStyle = isKoi ? "rgba(50,35,25,0.65)" : "rgba(40,30,20,0.55)";
+            ctx.lineWidth = Math.max(0.8, L * (isKoi ? 0.035 : 0.03));
             ctx.lineCap = "round";
             ctx.beginPath();
-            ctx.moveTo(L * 0.35, W * 0.15);
-            ctx.quadraticCurveTo(L * 0.55, W * 0.45, L * 0.48, W * 0.7);
-            ctx.moveTo(L * 0.35, -W * 0.05);
-            ctx.quadraticCurveTo(L * 0.55, W * 0.15, L * 0.52, W * 0.35);
+            ctx.moveTo(L * 0.38, W * 0.18);
+            ctx.quadraticCurveTo(L * 0.58, W * 0.5, L * 0.5, W * 0.78);
+            ctx.moveTo(L * 0.38, W * 0.02);
+            ctx.quadraticCurveTo(L * 0.6, W * 0.22, L * 0.55, W * 0.42);
+            if (isKoi) {
+                ctx.moveTo(L * 0.36, -W * 0.08);
+                ctx.quadraticCurveTo(L * 0.52, -W * 0.02, L * 0.48, W * 0.12);
+            }
             ctx.stroke();
         }
 
@@ -5665,6 +5711,33 @@ class Fish {
             ctx.quadraticCurveTo(L * 0.05, -W * 0.9, -L * 0.15, -W * 0.5);
             ctx.fill();
             ctx.globalAlpha /= 0.45;
+        }
+
+        // Koi: soft scale shimmer and pelvic fin for a fuller carp silhouette.
+        if (isKoi && !this.golden && !this.isRainbow && !this.isMonster) {
+            ctx.save();
+            ctx.globalAlpha *= 0.28;
+            ctx.strokeStyle = "rgba(255,255,255,0.55)";
+            ctx.lineWidth = Math.max(0.5, L * 0.02);
+            for (let row = -2; row <= 2; row++) {
+                for (let colI = -3; colI <= 3; colI++) {
+                    const ox = colI * L * 0.09 + (row % 2) * L * 0.045;
+                    const oy = row * W * 0.24;
+                    if (Math.hypot(ox / L, oy / W) > 0.55) continue;
+                    ctx.beginPath();
+                    ctx.arc(ox, oy, L * 0.04, Math.PI * 0.2, Math.PI * 1.8);
+                    ctx.stroke();
+                }
+            }
+            ctx.restore();
+            ctx.globalAlpha *= 0.5;
+            ctx.fillStyle = body;
+            ctx.beginPath();
+            ctx.moveTo(-L * 0.05, W * 0.35);
+            ctx.quadraticCurveTo(-L * 0.02, W * 0.85, -L * 0.2, W * 0.95);
+            ctx.quadraticCurveTo(-L * 0.18, W * 0.55, -L * 0.05, W * 0.35);
+            ctx.fill();
+            ctx.globalAlpha /= 0.5;
         }
 
         if (!this.golden && !this.isRainbow && !this.isMonster) this.drawPattern(ctx, L, W);
@@ -8887,7 +8960,7 @@ function frame(now) {
         drawSticks(ctx, dt);
         drawReeds(ctx, sceneryTime, dt);
         drawCattails(ctx, sceneryTime, dt);
-        // Frogs and tadpoles live along the lower bank as quiet background life.
+        // Frogs and tadpoles swim mid-depth as quiet background life.
         drawFrogGroups(ctx);
         updateObstacles(dt);
         drawObstacles(ctx, dt);
