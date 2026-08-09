@@ -55,6 +55,9 @@
         <button type="button" class="scenery-btn on" data-scenery="sun" title="Harsh overhead sun" aria-pressed="true">
             <span class="ico ico-sun"></span>
         </button>
+        <button type="button" id="night-btn" class="scenery-btn" title="Night pond" aria-pressed="false" hidden>
+            <span class="ico ico-moon"></span>
+        </button>
         <button type="button" class="scenery-btn on" data-scenery="frogs" title="Swimming frogs and tadpoles" aria-pressed="true">
             <span class="ico ico-frog"></span>
         </button>
@@ -86,8 +89,10 @@
         </div>
         <button type="button" id="market-buy-magnet" class="market-row" disabled>Magnet · 3 gold</button>
         <button type="button" id="market-buy-catcher" class="market-row" disabled>Rainbow catcher · 4 gold</button>
+        <button type="button" id="market-buy-catcher-up" class="market-row" disabled hidden>Wider catcher · 3 rainbow food</button>
         <button type="button" id="market-buy-rainbow" class="market-row" disabled>Rainbow fish · 10 gold</button>
         <button type="button" id="market-buy-goldfood" class="market-row" disabled>Gold food · 20 fish food</button>
+        <button type="button" id="market-buy-platinum" class="market-row" disabled hidden>Platinum food · 5 rainbow food</button>
     </div>
 
     <!-- Food saved from the net: click a pellet, then click the pond to drop it. -->

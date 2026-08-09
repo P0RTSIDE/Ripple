@@ -434,6 +434,15 @@ body.pond #pond-controls {
         4px 0 0 -2.5px currentColor;
 }
 
+.ico-moon {
+    width: 11px;
+    height: 11px;
+    border: 1.4px solid currentColor;
+    border-radius: 50%;
+    box-shadow: inset -3px -1px 0 -1px currentColor;
+    background: transparent;
+}
+
 .ico-frog {
     width: 12px;
     height: 10px;
