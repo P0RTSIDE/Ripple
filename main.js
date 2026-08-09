@@ -117,7 +117,15 @@ let devMenuOpen = false;
 let devMenuBuilt = false;
 let devMenuPos = null; // { left, top } after the panel has been dragged
 let devCodeBuffer = "";
+let devKillTool = false; // secret Dev panel only: click to instantly kill pond life
 const DEV_MENU_CODE = "devcodefartgoblin"; // typed form; spaces optional, case ignored
+
+// Swordfish bill in body lengths (shorter spear): trophies must stay on this segment.
+const SF_BILL_BASE = 0.34;
+const SF_BILL_TIP = 0.62;
+const SF_STUCK_MIN = 0.385;
+const SF_STUCK_MAX = 0.555;
+const SF_STUCK_GAP = 0.032;
 
 function normalizeFoodVariant(variant) {
     if (variant === "breed") return "pink";
@@ -3246,9 +3254,11 @@ function frogFindPrey(frog) {
 function frogEatPrey(frog, prey) {
     if (!prey) return;
     if (prey.kind === "shark" && shark && !shark.dead) {
+        const wasOrca = !!shark.isOrca;
         shark.dead = true;
         shark = null;
         Audio.sharkStrike(0);
+        if (wasOrca) tryBeginSwordfishSpearFromOrcaLoss();
     } else if (prey.kind === "whale" && whale && !whale.dead) {
         whale.dead = true;
         whale = null;
@@ -5649,7 +5659,7 @@ class Fish {
         if (dist < this.size * 0.22 + best.size * 0.35) {
             best.dead = true;
             this.stuckPrey.push({
-                along: 0.4 + this.stuckPrey.length * 0.12,
+                along: Math.min(0.88, 0.42 + this.stuckPrey.length * 0.07),
                 side: this.stuckPrey.length % 2 === 0 ? 1 : -1,
                 size: Math.max(7, best.size * 0.6),
                 body: best.type ? best.type.body : "#8899aa",
@@ -6535,8 +6545,10 @@ class Fish {
         shark.dead = true;
         shark = null;
         if (wasOrca) {
-            // Night orca kill: a different finale than the day shark POV lunge.
-            beginOrcaFeastEnding(this);
+            // Swordfish hunt wins over the fish-eats-orca feast when it was ready.
+            if (!tryBeginSwordfishSpearFromOrcaLoss()) {
+                beginOrcaFeastEnding(this);
+            }
         } else if (this.isMonster) {
             beginPovAttack(this);
         } else if (this.isRainbow) {
@@ -7445,6 +7457,7 @@ function beginApexDuel() {
 
 function finishApexDuel() {
     const spots = [];
+    const wasOrca = !!(shark && shark.isOrca);
     if (shark && !shark.dead) {
         spots.push({ x: shark.x, y: shark.y, size: shark.size });
     } else if (shark) {
@@ -7465,6 +7478,8 @@ function finishApexDuel() {
     }
     reptiles = reptiles.filter((r) => !r.dead);
     apexDuel = null;
+    // Croc duel KO'd a night orca: let a ready swordfish still take the screen spear.
+    if (wasOrca) tryBeginSwordfishSpearFromOrcaLoss();
 
     for (const s of spots) {
         water.disturb(s.x, s.y, s.size * 0.8, 700);
@@ -7832,6 +7847,62 @@ class Reptile {
         }
     }
 
+    // Wild crocs that outgrow apex swimmers can bite them (including night orca).
+    findEdibleApex() {
+        if (this.tamed || this.isHero || this.golden || this.leaving || this.duelMode) return null;
+        let best = null;
+        let bd = CONFIG.huntRange * 1.65;
+        if (shark && !shark.dead && !shark.leaving && !shark.isHero
+            && this.size > shark.size * 0.92) {
+            const d = Math.hypot(shark.x - this.x, shark.y - this.y);
+            if (d < bd) {
+                bd = d;
+                best = {
+                    kind: "shark",
+                    ent: shark,
+                    x: shark.x,
+                    y: shark.y,
+                    size: shark.size,
+                    wasOrca: !!shark.isOrca,
+                };
+            }
+        }
+        if (whale && !whale.dead && !whale.isHero && this.size > whale.size * 0.85) {
+            const d = Math.hypot(whale.x - this.x, whale.y - this.y);
+            if (d < bd) {
+                bd = d;
+                best = {
+                    kind: "whale",
+                    ent: whale,
+                    x: whale.x,
+                    y: whale.y,
+                    size: whale.size,
+                    wasOrca: false,
+                };
+            }
+        }
+        return best;
+    }
+
+    eatApexPrey(apex) {
+        if (!apex || !apex.ent || apex.ent.dead) return;
+        const wasOrca = !!(apex.wasOrca || (apex.kind === "shark" && apex.ent.isOrca));
+        const x = apex.ent.x;
+        const y = apex.ent.y;
+        const size = apex.ent.size;
+        apex.ent.dead = true;
+        if (apex.kind === "shark") shark = null;
+        else if (apex.kind === "whale") whale = null;
+        this.apexTarget = null;
+        this.grow(Math.max(10, size * 0.12));
+        const pan = Math.max(-1, Math.min(1, (x / viewW) * 2 - 1));
+        Audio.predatorEat(pan);
+        Audio.sharkStrike(pan);
+        water.disturb(x, y, size * 0.7, 720);
+        spawnSplash(x, y, 28, 0.95);
+        if (wasOrca) tryBeginSwordfishSpearFromOrcaLoss();
+    }
+
     // Local snout zone matching draw(): forward along facing dir, not the body.
     hitSnout(wx, wy) {
         const L = this.size;
@@ -7992,47 +8063,62 @@ class Reptile {
             const specialFood = this.tryBiteFood(dt);
             if (specialFood) {
                 this.target = null;
+                this.apexTarget = null;
                 desired = specialFood.desired;
                 speed = specialFood.speed;
             } else {
-                if (!this.target || this.target.dead || this.target.golden
-                    || this.target.isRainbow || this.target.isPlatinum || this.target.isMonster
-                    || this.target.size >= this.size) {
+                // Oversized wild crocs/gators can also take shark, orca, or whale.
+                const apex = this.findEdibleApex();
+                if (apex) {
                     this.target = null;
-                    let best = null, bd = CONFIG.huntRange * 1.5;
-                    for (const f of fishes) {
-                        if (f.dead || f.golden || f.isRainbow || f.isPlatinum || f.isMonster) continue;
-                        if (f.size >= this.size) continue; // cannot eat bigger fish
-                        const d = Math.hypot(f.x - this.x, f.y - this.y);
-                        if (d < bd) { bd = d; best = f; }
-                    }
-                    this.target = best;
-                }
-
-                if (this.target) {
-                    desired = Math.atan2(this.target.y - this.y, this.target.x - this.x);
-                    speed = this.speed;
-                    const dist = Math.hypot(this.target.x - this.x, this.target.y - this.y);
-                    if (dist < this.size * 0.45 + this.target.size * 0.5 + 6) {
-                        this.target.dead = true;
-                        if (this.eatPulse <= 0) {
-                            const pan = Math.max(-1, Math.min(1, (this.target.x / viewW) * 2 - 1));
-                            Audio.predatorEat(pan);
-                            this.eatPulse = 0.2;
-                        }
-                        water.disturb(this.target.x, this.target.y, 22, 260);
-                        spawnSplash(this.target.x, this.target.y, 14, 0.6);
-                        this.target = null;
+                    this.apexTarget = apex;
+                    desired = Math.atan2(apex.y - this.y, apex.x - this.x);
+                    speed = this.speed * 1.05;
+                    const dist = Math.hypot(apex.x - this.x, apex.y - this.y);
+                    if (dist < this.size * 0.48 + apex.size * 0.42 + 8) {
+                        this.eatApexPrey(apex);
                     }
                 } else {
-                    this.wanderTimer = (this.wanderTimer || 0) - dt;
-                    if (this.wanderTimer <= 0) {
-                        this.wanderTimer = 1.5 + Math.random() * 2;
-                        desired = this.dir + (Math.random() - 0.5) * 1.2;
-                    } else {
-                        desired = this._wanderDir != null ? this._wanderDir : this.dir;
+                    this.apexTarget = null;
+                    if (!this.target || this.target.dead || this.target.golden
+                        || this.target.isRainbow || this.target.isPlatinum || this.target.isMonster
+                        || this.target.size >= this.size) {
+                        this.target = null;
+                        let best = null, bd = CONFIG.huntRange * 1.5;
+                        for (const f of fishes) {
+                            if (f.dead || f.golden || f.isRainbow || f.isPlatinum || f.isMonster) continue;
+                            if (f.size >= this.size) continue; // cannot eat bigger fish
+                            const d = Math.hypot(f.x - this.x, f.y - this.y);
+                            if (d < bd) { bd = d; best = f; }
+                        }
+                        this.target = best;
                     }
-                    this._wanderDir = desired;
+
+                    if (this.target) {
+                        desired = Math.atan2(this.target.y - this.y, this.target.x - this.x);
+                        speed = this.speed;
+                        const dist = Math.hypot(this.target.x - this.x, this.target.y - this.y);
+                        if (dist < this.size * 0.45 + this.target.size * 0.5 + 6) {
+                            this.target.dead = true;
+                            if (this.eatPulse <= 0) {
+                                const pan = Math.max(-1, Math.min(1, (this.target.x / viewW) * 2 - 1));
+                                Audio.predatorEat(pan);
+                                this.eatPulse = 0.2;
+                            }
+                            water.disturb(this.target.x, this.target.y, 22, 260);
+                            spawnSplash(this.target.x, this.target.y, 14, 0.6);
+                            this.target = null;
+                        }
+                    } else {
+                        this.wanderTimer = (this.wanderTimer || 0) - dt;
+                        if (this.wanderTimer <= 0) {
+                            this.wanderTimer = 1.5 + Math.random() * 2;
+                            desired = this.dir + (Math.random() - 0.5) * 1.2;
+                        } else {
+                            desired = this._wanderDir != null ? this._wanderDir : this.dir;
+                        }
+                        this._wanderDir = desired;
+                    }
                 }
             }
         }
@@ -8473,7 +8559,7 @@ class Swordfish {
 
     // Shorter bill: tip of the spear.
     tipPos() {
-        const blade = this.size * 0.62;
+        const blade = this.size * SF_BILL_TIP;
         return {
             x: this.x + Math.cos(this.dir) * blade,
             y: this.y + Math.sin(this.dir) * blade,
@@ -8482,11 +8568,19 @@ class Swordfish {
 
     // Root of the sword at the snout (where the bill begins).
     swordBasePos() {
-        const base = this.size * 0.34;
+        const base = this.size * SF_BILL_BASE;
         return {
             x: this.x + Math.cos(this.dir) * base,
             y: this.y + Math.sin(this.dir) * base,
         };
+    }
+
+    stuckAlongForIndex(i) {
+        return Math.min(SF_STUCK_MAX, SF_STUCK_MIN + Math.max(0, i) * SF_STUCK_GAP);
+    }
+
+    clampStuckAlong(along) {
+        return Math.max(SF_STUCK_MIN, Math.min(SF_STUCK_MAX, along));
     }
 
     // Whole bill is the spear hitbox, not only the tip point.
@@ -8508,11 +8602,18 @@ class Swordfish {
         if (!this.stuck.length || this.golden || this.plantMorph || this.tamed || this.isHero) {
             return;
         }
-        // Slide trophies toward the snout, then eat the innermost one first.
+        // Slide trophies toward the snout along the blade, keeping them on the sword.
         for (const s of this.stuck) {
-            s.along = Math.max(0.36, s.along - 0.04 * dt);
+            s.along = this.clampStuckAlong(s.along - 0.035 * dt);
         }
         this.stuck.sort((a, b) => a.along - b.along);
+        // Keep consecutive trophies packed tight without stacking on one point.
+        for (let i = 1; i < this.stuck.length; i++) {
+            const minAlong = this.stuck[i - 1].along + SF_STUCK_GAP;
+            if (this.stuck[i].along < minAlong) {
+                this.stuck[i].along = this.clampStuckAlong(minAlong);
+            }
+        }
         const meal = this.stuck[0];
         if (!meal) return;
         const maxSize = meal.maxSize || meal.size;
@@ -8537,9 +8638,9 @@ class Swordfish {
             this.stuck.shift();
             const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
             Audio.predatorEat(pan * 0.6);
-            // Re-space remaining trophies along the bill.
+            // Re-space remaining trophies tightly along the short bill.
             for (let i = 0; i < this.stuck.length; i++) {
-                this.stuck[i].along = 0.38 + i * 0.07;
+                this.stuck[i].along = this.stuckAlongForIndex(i);
             }
         }
     }
@@ -8612,6 +8713,12 @@ class Swordfish {
                 this.spearOrca();
                 return;
             }
+        } else if (this.orcaHunt && (!shark || shark.dead || !shark.isOrca)) {
+            // Orca died mid-hunt (croc, duel, feast race, etc.): still run the screen spear.
+            this.orcaHunt = false;
+            this.target = null;
+            beginSwordfishSpearEnding(this, { force: true });
+            return;
         } else {
             this.orcaHunt = false;
             if (!this.target || this.target.dead || this.target.golden
@@ -8678,7 +8785,7 @@ class Swordfish {
         prey.dead = true;
         const trophySize = Math.max(8, prey.size * 0.7);
         this.stuck.push({
-            along: 0.4 + this.stuck.length * 0.07,
+            along: this.stuckAlongForIndex(this.stuck.length),
             side: this.stuck.length % 2 === 0 ? 1 : -1,
             size: trophySize,
             maxSize: trophySize,
@@ -8702,12 +8809,13 @@ class Swordfish {
         Audio.predatorEat(pan);
         water.disturb(shark.x, shark.y, shark.size * 0.85, 1100);
         spawnSplash(shark.x, shark.y, 40, 1.1);
-        // Brief trophy flash on the bill, then the screen-spear finale.
+        // Brief trophy flash mid-blade, then the screen-spear finale.
+        const trophySize = Math.min(42, shark.size * 0.18);
         this.stuck.push({
-            along: 0.62,
+            along: this.clampStuckAlong(0.5),
             side: 1,
-            size: Math.min(42, shark.size * 0.18),
-            maxSize: Math.min(42, shark.size * 0.18),
+            size: trophySize,
+            maxSize: trophySize,
             body: "#0c1018",
             belly: "#f2f4f8",
             wobble: 0,
@@ -8717,7 +8825,7 @@ class Swordfish {
         this.orcaHunt = false;
         this.target = null;
         this.spearCooldown = 99;
-        beginSwordfishSpearEnding(this);
+        beginSwordfishSpearEnding(this, { force: true });
     }
 
     draw(ctx) {
@@ -9029,6 +9137,7 @@ class Octopus {
         if (!wrap || !wrap.ent || this.tamed || this.isHero || this.golden) return;
         const prey = wrap.ent;
         const gain = Math.max(18, prey.size * 0.22);
+        const wasOrca = wrap.kind === "shark" && prey && prey.isOrca;
         prey.octopusWrap = null;
         prey.dead = true;
         if (wrap.kind === "swordfish") {
@@ -9042,6 +9151,7 @@ class Octopus {
             const idx = reptiles.indexOf(prey);
             if (idx >= 0) reptiles.splice(idx, 1);
         }
+        if (wasOrca) tryBeginSwordfishSpearFromOrcaLoss();
         this.clearApexWrap();
         this.size = Math.min(Math.min(viewW, viewH) * 0.48, this.size + gain);
         for (const leg of this.legs) {
@@ -9343,7 +9453,8 @@ class Octopus {
         if (!this.tamed && !this.isHero && !this.apexWrap && this.grabCooldown <= 0
             && this.huntTarget && this.huntLockT >= 0.85) {
             const prey = this.huntTarget;
-            if (prey && !prey.dead && !prey.tentacleGrab && prey.size < this.size * 1.05) {
+            if (prey && !prey.dead && !prey.tentacleGrab && !prey.isPlatinum
+                && !prey.isRainbow && !prey.isMonster && prey.size < this.size * 1.05) {
                 const d = Math.hypot(prey.x - this.x, prey.y - this.y);
                 if (d < this.size * 1.85) {
                     let free = null;
@@ -12354,6 +12465,7 @@ canvas.addEventListener("pointermove", onPointerMove);
 window.addEventListener("pointerup", onPointerUp);
 window.addEventListener("pointercancel", () => {
     cancelGoldLift();
+    clearPickerHold(false);
     netSweeping = false;
     catcherDrag = null;
     grabbedObstacle = null;
