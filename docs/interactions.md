@@ -39,6 +39,9 @@ Platinum food makes an invulnerable glowing fish. Apex predators never hunt, spe
 ### Grower
 Grower food gives a large size surge and raises the size ceiling. Used for giant endings and for outgrowing apex threats.
 
+### Sword trait
+Inherited when a fish (or tamed / hero apex) eats a wild swordfish. The bill spears prey while swimming; trophies stay stacked on the bill. Size gates: pond fish (including large golden, evil, and monster fish) need hunter size at least about 95 percent of prey size; wild crocs, swordfish, octopus, shark, and orca need the hunter to be strictly larger. Sword-bearers do not spear platinum, rainbow, hero or tamed allies, or already-dead prey. Heroes and peaceful sword-bearers spear golden, evil, monster, and eligible apex; evil and monster sword-bearers can also spear ordinary smaller pond fish. Spearing a wild croc still makes a non-hero into a monster (heroes just grow). Spearing a wild night predator still grants the matching trait. Spearing a shark or orca uses the same endings as eating them.
+
 ## Apex visitors
 
 ### Crocodiles and alligators (day)
@@ -121,10 +124,10 @@ Hats unlock separately in Looks for 5 gold and put little hats on fish.
 - **POV**: A monster eats the day shark. First-person choke attack, then pond reset.
 - **Giant**: A fish reaches about half the shorter screen side. Peaceful heroes ease to center, gently come apart into light, wash to white, then fade back into a friendly hero school for the current day or night pond. Shadow giants keep the darker close, then reset.
 - **Orca feast**: A fish (monster, rainbow, large hero, or large enough platinum) eats the night orca. Cool breach celebration, then reset.
-- **Swordfish screen spear**: A wild swordfish that is strictly larger than the orca spears it. Bill fills the view, then reset.
+- **Swordfish screen spear**: A wild swordfish that is strictly larger than the orca spears it. POV tip and eyes thrust toward the viewer, then pierce, blackout, and reset.
 - **Octopus-whale**: Wild octopus alone in an empty countable pond summons a whale fight spectacle. The whale thrashes while wrapped, then a dark ship-pull beat plays before a soft fade back into a restocked pond.
 - **Remorse**: A large hero eats a whale that already swallowed someone. One-shot per session: surge, close eyes, burst into one of every fish type, with a friendly whale afterward.
-- **Rainbow exit**: A rainbow that finishes the day shark (not orca) writes a trail and leaves.
+- **Rainbow exit**: A rainbow fish swims a fish logo trail, eases to the center, then bursts into 2 rainbow food pellets.
 - **Frog finale**: Giant hero frog bursts into tadpoles.
 - **Apex duel**: Day-only croc-versus-shark clash when wild reptiles clear the pond. Night never starts this fight; moonlight uses swordfish, octopus, and orca stories instead.
 
@@ -140,8 +143,9 @@ When a fish eats another fish that is still smaller than the eater, size gain sc
 - Heroes never hunt rainbow fish.
 - Heroes never eat tamed or hero swordfish / octopus allies.
 - Hero size must be greater than wild swordfish or octopus size to hunt them; kill grants sword or tentacle.
+- Inherited sword can spear large golden, evil, monster, and wild apex prey when size allows; never platinum, rainbow, or hero / tamed allies.
 - Rainbow catcher only catches rainbow fish (including rainbow night predators).
 - Fish picker never moves rainbow or platinum fish.
-- Golden fish are inert on the lakebed until collected or the page refreshes.
+- Golden fish are inert on the lakebed until collected or the page refreshes (sword-bearers large enough can still spear them).
 - Tamed apex and redeemed heroes stop hunting pond fish.
 - Platinum and gold do not count toward last-fish shark / orca spawns.
