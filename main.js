@@ -8579,11 +8579,20 @@ function drawTaperTentacle(ctx, bx, by, mx, my, tipX, tipY, baseW, tipW, fillSty
     ctx.fill();
     if (suckerStyle) {
         ctx.fillStyle = suckerStyle;
-        for (let k = 4; k < pts.length; k += 2) {
+        for (let k = 3; k < pts.length - 1; k++) {
+            const prev = pts[k - 1];
+            const next = pts[k + 1];
+            const dx = next.x - prev.x;
+            const dy = next.y - prev.y;
+            const len = Math.hypot(dx, dy) || 1;
+            const nx = -dy / len;
+            const ny = dx / len;
             const p = pts[k];
-            const rad = Math.max(1.1, (baseW * (1 - p.t) + tipW * p.t) * 0.22);
+            const rad = Math.max(1.0, (baseW * (1 - p.t) + tipW * p.t) * 0.2);
+            const off = rad * 0.85;
             ctx.beginPath();
-            ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
+            ctx.arc(p.x + nx * off, p.y + ny * off, rad, 0, Math.PI * 2);
+            ctx.arc(p.x - nx * off, p.y - ny * off, rad * 0.9, 0, Math.PI * 2);
             ctx.fill();
         }
     }
@@ -8598,6 +8607,9 @@ class Octopus {
         this.grabCooldown = 0;
         this.eatPulse = 0;
         this.apexWrap = null; // { kind, ent, reel }
+        this.huntTarget = null;
+        this.wanderTimer = 0;
+        this._wanderDir = 0;
         initNightPredatorSocial(this);
         this.tamed = false;
         this.isHero = false;
@@ -8608,26 +8620,52 @@ class Octopus {
         else { this.x = Math.random() * viewW; this.y = viewH + this.size; }
         this.vx = 0;
         this.vy = 0;
-        this.dir = 0;
-        this.speed = 70 + Math.random() * 18;
+        this.dir = Math.atan2(viewH * 0.5 - this.y, viewW * 0.5 - this.x);
+        this.speed = 78 + Math.random() * 20;
         this.legs = [];
+        // Arms fan from the rear of the elliptical mantle (heading-relative).
         for (let i = 0; i < 8; i++) {
-            const ang = (i / 8) * Math.PI * 2 + Math.random() * 0.2;
+            const t = i / 7;
+            const rearOffset = -Math.PI * 0.9 + t * Math.PI * 1.8;
+            const ang = this.dir + Math.PI + rearOffset * 0.55;
             this.legs.push({
+                slot: i,
+                rearOffset,
                 baseAng: ang,
                 phase: Math.random() * Math.PI * 2,
-                len: this.size * (1.05 + Math.random() * 0.55),
-                tipX: this.x + Math.cos(ang) * this.size,
-                tipY: this.y + Math.sin(ang) * this.size,
+                len: this.size * (1.15 + Math.random() * 0.55),
+                tipX: this.x + Math.cos(ang) * this.size * 1.1,
+                tipY: this.y + Math.sin(ang) * this.size * 1.1,
                 planted: false,
-                grab: null, // { prey, reel, apex? }
-                autonomy: 0.7 + Math.random() * 0.9,
+                grab: null,
+                autonomy: 0.75 + Math.random() * 0.85,
             });
         }
         Audio.predatorEat(this.x < viewW * 0.5 ? -0.2 : 0.2);
     }
 
     pet(quiet) { nightPredatorPet(this, quiet); }
+
+    // Prefer nearer fish ahead of the mantle; lead their swim a little.
+    findHuntFish() {
+        let best = null, bestScore = CONFIG.huntRange * 2.6;
+        for (const f of fishes) {
+            if (f.dead || f.golden || f.isRainbow || f.isPlatinum || f.isMonster) continue;
+            if (f.size >= this.size * 1.08) continue;
+            if (f.tentacleGrab) continue;
+            const lead = 0.35;
+            const fx = f.x + Math.cos(f.dir || 0) * (f.baseSpeed || 24) * lead;
+            const fy = f.y + Math.sin(f.dir || 0) * (f.baseSpeed || 24) * lead;
+            const d = Math.hypot(fx - this.x, fy - this.y);
+            if (d > bestScore * 1.15) continue;
+            const ang = Math.atan2(fy - this.y, fx - this.x);
+            const facing = Math.abs(normAngle(ang - this.dir));
+            // Strong bias to chase what the elliptical head is already facing.
+            const score = d * (0.55 + 0.45 * (facing / Math.PI));
+            if (score < bestScore) { bestScore = score; best = f; }
+        }
+        return best;
+    }
 
     findApexWrapTarget() {
         const candidates = [];
@@ -8754,11 +8792,13 @@ class Octopus {
             return;
         }
 
+        let desired = this.dir;
         const foodChase = nightPredatorTryBiteFood(this, dt);
         if (foodChase) {
-            const pull = foodChase.speed * 0.055;
-            this.vx += Math.cos(foodChase.desired) * pull;
-            this.vy += Math.sin(foodChase.desired) * pull;
+            desired = foodChase.desired;
+            const pull = foodChase.speed * 0.07;
+            this.vx += Math.cos(desired) * pull;
+            this.vy += Math.sin(desired) * pull;
         }
 
         // Apex wrap: several arms coil around a larger predator and reel it in.
@@ -8771,14 +8811,15 @@ class Octopus {
                 } else {
                     wrap.reel += dt;
                     prey.octopusWrap = this;
-                    prey.x += (this.x - prey.x) * Math.min(1, 1.6 * dt);
-                    prey.y += (this.y - prey.y) * Math.min(1, 1.6 * dt);
+                    desired = Math.atan2(prey.y - this.y, prey.x - this.x);
+                    prey.x += (this.x - prey.x) * Math.min(1, 1.7 * dt);
+                    prey.y += (this.y - prey.y) * Math.min(1, 1.7 * dt);
                     let wrapLegs = 0;
                     for (let i = 0; i < this.legs.length; i++) {
                         const leg = this.legs[i];
                         if (!leg.grab || !leg.grab.apex || leg.grab.prey !== prey) continue;
                         wrapLegs++;
-                        const ang = leg.baseAng + wrap.reel * 2.4 + i * 0.4;
+                        const ang = this.dir + Math.PI + leg.rearOffset + wrap.reel * 2.2;
                         const rad = prey.size * (0.28 + 0.12 * Math.sin(wrap.reel * 3 + i));
                         const gx = prey.x + Math.cos(ang) * rad;
                         const gy = prey.y + Math.sin(ang) * rad * 0.75;
@@ -8795,6 +8836,7 @@ class Octopus {
                 const apex = this.findApexWrapTarget();
                 if (apex) {
                     const d = Math.hypot(apex.ent.x - this.x, apex.ent.y - this.y);
+                    desired = Math.atan2(apex.ent.y - this.y, apex.ent.x - this.x);
                     if (d < this.size * 2.8) {
                         this.apexWrap = { kind: apex.kind, ent: apex.ent, reel: 0 };
                         apex.ent.octopusWrap = this;
@@ -8808,9 +8850,9 @@ class Octopus {
                         this.grabCooldown = 1.1;
                         Audio.sharkStrike(Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1)));
                     } else {
-                        const pull = 0.09 * this.speed;
-                        this.vx += ((apex.ent.x - this.x) / (d || 1)) * pull;
-                        this.vy += ((apex.ent.y - this.y) / (d || 1)) * pull;
+                        const pull = 0.11 * this.speed;
+                        this.vx += Math.cos(desired) * pull;
+                        this.vy += Math.sin(desired) * pull;
                     }
                 }
             }
@@ -8818,43 +8860,110 @@ class Octopus {
             this.clearApexWrap();
         }
 
-        // Autonomous leg motion + strong yank toward planted tips.
+        // Hunt fish: lock on, face the elliptical head toward them, crawl that way.
+        if (!this.tamed && !this.isHero && !this.apexWrap && !foodChase) {
+            if (!this.huntTarget || this.huntTarget.dead || this.huntTarget.golden
+                || this.huntTarget.isRainbow || this.huntTarget.isPlatinum
+                || this.huntTarget.tentacleGrab
+                || this.huntTarget.size >= this.size * 1.08) {
+                this.huntTarget = this.findHuntFish();
+            }
+            if (this.huntTarget) {
+                const f = this.huntTarget;
+                const lead = 0.4;
+                const tx = f.x + Math.cos(f.dir || 0) * (f.baseSpeed || 24) * lead;
+                const ty = f.y + Math.sin(f.dir || 0) * (f.baseSpeed || 24) * lead;
+                desired = Math.atan2(ty - this.y, tx - this.x);
+                const chase = this.speed * 0.12;
+                this.vx += Math.cos(desired) * chase;
+                this.vy += Math.sin(desired) * chase;
+            } else {
+                this.wanderTimer -= dt;
+                if (this.wanderTimer <= 0) {
+                    this.wanderTimer = 1.4 + Math.random() * 2;
+                    this._wanderDir = this.dir + (Math.random() - 0.5) * 1.2;
+                }
+                desired = this._wanderDir;
+            }
+        } else if (this.tamed || this.isHero) {
+            this.huntTarget = null;
+            this.wanderTimer -= dt;
+            if (this.wanderTimer <= 0) {
+                this.wanderTimer = 1.8 + Math.random() * 2.2;
+                this._wanderDir = this.dir + (Math.random() - 0.5) * 0.9;
+            }
+            desired = this._wanderDir;
+        }
+
+        const margin = 46;
+        if (this.x < margin) desired = 0;
+        else if (this.x > viewW - margin) desired = Math.PI;
+        if (this.y < margin) desired = Math.PI / 2;
+        else if (this.y > viewH - margin) desired = -Math.PI / 2;
+
+        const turn = this.huntTarget ? 3.6 : 2.6;
+        const diff = normAngle(desired - this.dir);
+        this.dir += Math.max(-turn * dt, Math.min(turn * dt, diff));
+
+        // Arms sprout from the rear hub and plant forward to drag the mantle ahead.
         let pullX = 0, pullY = 0, pulls = 0;
+        const hx = Math.cos(this.dir);
+        const hy = Math.sin(this.dir);
+        const rearX = this.x - hx * this.size * 0.32;
+        const rearY = this.y - hy * this.size * 0.32;
         for (let i = 0; i < this.legs.length; i++) {
             const leg = this.legs[i];
-            leg.phase += dt * (2.1 + leg.autonomy * 1.2);
-            const reach = this.size * (1.15 + 0.4 * Math.sin(leg.phase));
-            const wanderAng = leg.baseAng + Math.sin(leg.phase * 0.85 + i) * 0.85
-                + Math.sin(this.phase + i * 0.4) * 0.4;
+            leg.phase += dt * (2.3 + leg.autonomy * 1.3);
+            leg.baseAng = this.dir + Math.PI + leg.rearOffset * 0.55;
+            const reach = this.size * (1.2 + 0.45 * Math.sin(leg.phase));
 
             if (leg.grab && leg.grab.apex) {
                 // Tip motion handled in apex wrap block.
             } else if (leg.grab && leg.grab.prey && !leg.grab.prey.dead
                 && !this.tamed && !this.isHero) {
                 const prey = leg.grab.prey;
-                leg.tipX += (prey.x - leg.tipX) * Math.min(1, 6.5 * dt);
-                leg.tipY += (prey.y - leg.tipY) * Math.min(1, 6.5 * dt);
-                prey.x += (leg.tipX - prey.x) * Math.min(1, 4 * dt);
-                prey.y += (leg.tipY - prey.y) * Math.min(1, 4 * dt);
+                leg.tipX += (prey.x - leg.tipX) * Math.min(1, 7 * dt);
+                leg.tipY += (prey.y - leg.tipY) * Math.min(1, 7 * dt);
+                prey.x += (leg.tipX - prey.x) * Math.min(1, 4.2 * dt);
+                prey.y += (leg.tipY - prey.y) * Math.min(1, 4.2 * dt);
                 leg.grab.reel += dt;
                 const toBody = Math.hypot(this.x - prey.x, this.y - prey.y);
-                prey.x += (this.x - prey.x) * Math.min(1, 2.3 * dt);
-                prey.y += (this.y - prey.y) * Math.min(1, 2.3 * dt);
-                if (toBody < this.size * 0.55 || leg.grab.reel > 1.25) {
+                prey.x += (this.x - prey.x) * Math.min(1, 2.5 * dt);
+                prey.y += (this.y - prey.y) * Math.min(1, 2.5 * dt);
+                if (toBody < this.size * 0.55 || leg.grab.reel > 1.2) {
                     this.eatGrabbed(prey);
                     leg.grab = null;
                 }
             } else {
-                if (leg.grab && leg.grab.prey) {
-                    leg.grab.prey.tentacleGrab = null;
-                }
+                if (leg.grab && leg.grab.prey) leg.grab.prey.tentacleGrab = null;
                 leg.grab = null;
-                const goalX = this.x + Math.cos(wanderAng) * reach;
-                const goalY = this.y + Math.sin(wanderAng) * reach;
-                const tipSpeed = 3.4 + leg.autonomy * 1.4;
+                // Reach cycle: stretch ahead along travel, plant, then trail behind.
+                const plantWave = Math.sin(leg.phase * 1.35 + i * 0.4);
+                leg.planted = plantWave > 0.15;
+                let goalX, goalY;
+                if (leg.planted || this.huntTarget) {
+                    const reachAng = this.dir + leg.rearOffset * 0.28
+                        + Math.sin(leg.phase * 0.7) * 0.25;
+                    const stretch = reach * (leg.planted ? 1.15 : 0.95);
+                    goalX = this.x + Math.cos(reachAng) * stretch;
+                    goalY = this.y + Math.sin(reachAng) * stretch;
+                } else {
+                    const trailAng = this.dir + Math.PI + leg.rearOffset * 0.75
+                        + Math.sin(leg.phase) * 0.35;
+                    goalX = rearX + Math.cos(trailAng) * reach * 0.9;
+                    goalY = rearY + Math.sin(trailAng) * reach * 0.9;
+                }
+                // Curl a couple of tips for a live look.
+                if (i === 1 || i === 6) {
+                    const curl = 0.7 + 0.3 * Math.sin(this.phase * 1.5 + i);
+                    goalX = rearX + (goalX - rearX) * curl
+                        + Math.cos(this.dir + Math.PI * 0.5 * (i === 1 ? 1 : -1)) * this.size * 0.35;
+                    goalY = rearY + (goalY - rearY) * curl
+                        + Math.sin(this.dir + Math.PI * 0.5 * (i === 1 ? 1 : -1)) * this.size * 0.35;
+                }
+                const tipSpeed = 4.2 + leg.autonomy * 1.6;
                 leg.tipX += (goalX - leg.tipX) * Math.min(1, tipSpeed * dt);
                 leg.tipY += (goalY - leg.tipY) * Math.min(1, tipSpeed * dt);
-                leg.planted = Math.sin(leg.phase * 1.45) > 0.35;
                 if (leg.planted) {
                     pullX += leg.tipX;
                     pullY += leg.tipY;
@@ -8867,15 +8976,19 @@ class Octopus {
 
         this.shoveObstaclesWithArms(dt);
 
+        // Drag body toward planted tips, plus a strong glide along facing.
         if (pulls > 0) {
             const tx = pullX / pulls;
             const ty = pullY / pulls;
-            this.vx += (tx - this.x) * 3.4 * dt;
-            this.vy += (ty - this.y) * 3.4 * dt;
+            this.vx += (tx - this.x) * 3.8 * dt;
+            this.vy += (ty - this.y) * 3.8 * dt;
         }
-        this.vx *= Math.exp(-1.05 * dt);
-        this.vy *= Math.exp(-1.05 * dt);
-        const maxSpd = 105 + this.size * 0.4;
+        const cruise = (this.tamed || this.isHero ? 0.35 : 0.7) * this.speed;
+        this.vx += hx * cruise * dt * 2.2;
+        this.vy += hy * cruise * dt * 2.2;
+        this.vx *= Math.exp(-1.0 * dt);
+        this.vy *= Math.exp(-1.0 * dt);
+        const maxSpd = 120 + this.size * 0.45;
         const spd = Math.hypot(this.vx, this.vy);
         if (spd > maxSpd) {
             this.vx *= maxSpd / spd;
@@ -8887,31 +9000,28 @@ class Octopus {
         this.y = Math.max(20, Math.min(viewH - 20, this.y));
         resolveObstacleOverlap(this, this.size * 0.5);
 
-        // Free legs grab nearby fish (wild only); apex wrap uses its own path.
+        // Grab with leading arms when prey is in reach.
         if (!this.tamed && !this.isHero && !this.apexWrap && this.grabCooldown <= 0) {
-            let best = null, bd = this.size * 2.6;
-            for (const f of fishes) {
-                if (f.dead || f.golden || f.isRainbow || f.isPlatinum || f.isMonster) continue;
-                if (f.size >= this.size * 1.05) continue;
-                if (f.tentacleGrab) continue;
-                const d = Math.hypot(f.x - this.x, f.y - this.y);
-                if (d < bd) { bd = d; best = f; }
-            }
-            if (best) {
-                let free = null;
-                for (const leg of this.legs) {
-                    if (!leg.grab) { free = leg; break; }
-                }
-                if (free) {
-                    free.grab = { prey: best, reel: 0 };
-                    best.tentacleGrab = { owner: "octopus" };
-                    this.grabCooldown = 0.7;
+            const prey = this.huntTarget && !this.huntTarget.dead ? this.huntTarget : this.findHuntFish();
+            if (prey && !prey.tentacleGrab && prey.size < this.size * 1.08) {
+                const d = Math.hypot(prey.x - this.x, prey.y - this.y);
+                if (d < this.size * 2.9) {
+                    let free = null;
+                    for (const leg of this.legs) {
+                        if (!leg.grab) { free = leg; break; }
+                    }
+                    if (free) {
+                        free.grab = { prey, reel: 0 };
+                        prey.tentacleGrab = { owner: "octopus" };
+                        this.huntTarget = prey;
+                        this.grabCooldown = 0.55;
+                    }
                 }
             }
         }
 
-        if (Math.random() < (this.tamed || this.isHero ? 0.08 : 0.16)) {
-            water.disturb(this.x, this.y, this.size * 0.4, 40);
+        if (Math.random() < (this.tamed || this.isHero ? 0.08 : 0.18)) {
+            water.disturb(this.x - hx * this.size * 0.2, this.y - hy * this.size * 0.2, this.size * 0.35, 38);
         }
     }
 
@@ -8934,10 +9044,15 @@ class Octopus {
         if (this.dead) return;
         if (this.plantMorph) drawPlantMorphAura(ctx, this);
         const S = this.size;
-        const breath = 1 + Math.sin(this.pulse) * 0.06;
+        const breath = 1 + Math.sin(this.pulse) * 0.05;
         const sink = this.golden ? (this.sinkDepth || 0) : 0;
         const morphA = this.plantMorph && this._morphAlpha != null ? this._morphAlpha : 1;
         const drawY = this.y + sink * 6;
+        const hx = Math.cos(this.dir);
+        const hy = Math.sin(this.dir);
+        const rearX = this.x - hx * S * 0.34;
+        const rearY = drawY - hy * S * 0.34;
+
         ctx.save();
         ctx.globalAlpha = 0.96 * (1 - sink * 0.25) * morphA;
         if (this.isRainbow) {
@@ -8950,54 +9065,72 @@ class Octopus {
             ctx.shadowColor = "rgba(255,200,80,0.6)";
             ctx.shadowBlur = 14;
         } else {
-            ctx.shadowColor = "rgba(40,20,45,0.45)";
-            ctx.shadowBlur = 12;
+            ctx.shadowColor = "rgba(60,25,35,0.4)";
+            ctx.shadowBlur = 14;
         }
 
-        let armFill = "#6a3a62";
-        let armGrab = "#8a4068";
-        let sucker = "rgba(180,120,150,0.5)";
+        // Reference palette: mottled reddish-brown / purple.
+        let armFill = "#8a3a48";
+        let armGrab = "#a84858";
+        let sucker = "rgba(236,210,200,0.72)";
+        let mantleA = "#c46a58";
+        let mantleB = "#7a3040";
+        let mantleC = "#3a1824";
         if (this.golden) {
             armFill = "#c9a24b";
             armGrab = "#e0b030";
             sucker = "rgba(255,220,120,0.55)";
+            mantleA = "#fff3b0";
+            mantleB = "#e0b030";
+            mantleC = "#a9791a";
         } else if (this.isRainbow) {
             const hue = (performance.now() * 0.12) % 360;
             armFill = `hsl(${hue}, 55%, 42%)`;
             armGrab = `hsl(${(hue + 80) % 360}, 65%, 50%)`;
-            sucker = `hsla(${(hue + 160) % 360}, 60%, 65%, 0.5)`;
+            sucker = `hsla(${(hue + 160) % 360}, 60%, 70%, 0.55)`;
+            mantleA = `hsl(${hue}, 70%, 60%)`;
+            mantleB = `hsl(${(hue + 120) % 360}, 65%, 45%)`;
+            mantleC = `hsl(${(hue + 240) % 360}, 60%, 40%)`;
         } else if (this.isHero || this.tamed) {
             armFill = "#4a7a98";
             armGrab = "#6a9ab8";
-            sucker = "rgba(160,200,230,0.5)";
+            sucker = "rgba(200,230,245,0.65)";
+            mantleA = "#b4d8ec";
+            mantleB = "#5a8aaa";
+            mantleC = "#2a4a60";
         }
 
-        // Inter-arm webbing under the mantle.
+        // Soft web between arm roots at the rear hub.
         ctx.fillStyle = this.golden ? "rgba(180,140,50,0.35)"
             : this.isHero || this.tamed ? "rgba(60,100,130,0.35)"
-            : "rgba(70,40,70,0.4)";
+            : "rgba(90,40,50,0.42)";
         ctx.beginPath();
+        ctx.moveTo(rearX, rearY);
         for (let i = 0; i < this.legs.length; i++) {
             const leg = this.legs[i];
-            const ang = leg.baseAng + Math.sin(this.phase) * 0.08;
-            const wx = this.x + Math.cos(ang) * S * 0.62 * breath;
-            const wy = drawY + Math.sin(ang) * S * 0.5 * breath;
-            if (i === 0) ctx.moveTo(wx, wy);
-            else ctx.lineTo(wx, wy);
+            const ang = this.dir + Math.PI + leg.rearOffset * 0.55;
+            ctx.lineTo(
+                rearX + Math.cos(ang) * S * 0.38 * breath,
+                rearY + Math.sin(ang) * S * 0.38 * breath
+            );
         }
         ctx.closePath();
         ctx.fill();
 
-        // Tapered tentacles (wide root, thin tip).
+        // Tentacles sprout from the rear of the elliptical head and drag behind / plant ahead.
         for (let i = 0; i < this.legs.length; i++) {
             const leg = this.legs[i];
-            const bx = this.x + Math.cos(leg.baseAng + Math.sin(this.phase) * 0.1) * S * 0.42;
-            const by = drawY + Math.sin(leg.baseAng + Math.sin(this.phase) * 0.1) * S * 0.36;
+            const ang = this.dir + Math.PI + leg.rearOffset * 0.5;
+            const bx = rearX + Math.cos(ang) * S * 0.18;
+            const by = rearY + Math.sin(ang) * S * 0.18;
             const tipY = leg.tipY + (drawY - this.y);
-            const mx = (bx + leg.tipX) * 0.5 + Math.sin(leg.phase) * S * 0.28;
-            const my = (by + tipY) * 0.5 + Math.cos(leg.phase * 1.1) * S * 0.22;
-            const baseW = Math.max(7, S * 0.22);
-            const tipW = Math.max(1.4, S * 0.035);
+            const side = Math.sin(leg.rearOffset) || 0.2;
+            const mx = (bx + leg.tipX) * 0.5
+                + Math.cos(this.dir + Math.PI * 0.5) * side * S * 0.35 * Math.sin(leg.phase);
+            const my = (by + tipY) * 0.5
+                + Math.sin(this.dir + Math.PI * 0.5) * side * S * 0.35 * Math.sin(leg.phase);
+            const baseW = Math.max(8, S * 0.26);
+            const tipW = Math.max(1.2, S * 0.028);
             drawTaperTentacle(
                 ctx, bx, by, mx, my, leg.tipX, tipY,
                 baseW, tipW,
@@ -9006,113 +9139,88 @@ class Octopus {
             );
         }
 
-        // Mantle: bulbous pear shape with siphon, more octopus than plain oval.
-        const mantleW = S * 0.62 * breath;
-        const mantleH = S * 0.58 * breath;
-        const g = ctx.createRadialGradient(
-            this.x - mantleW * 0.2, drawY - mantleH * 0.25, S * 0.08,
-            this.x, drawY, S * 0.78
-        );
-        if (this.golden) {
-            g.addColorStop(0, "#fff3b0");
-            g.addColorStop(0.55, "#e0b030");
-            g.addColorStop(1, "#a9791a");
-        } else if (this.isRainbow) {
-            const hue = (performance.now() * 0.12) % 360;
-            g.addColorStop(0, `hsl(${hue}, 70%, 60%)`);
-            g.addColorStop(0.55, `hsl(${(hue + 120) % 360}, 65%, 45%)`);
-            g.addColorStop(1, `hsl(${(hue + 240) % 360}, 60%, 50%)`);
-        } else if (this.isHero || this.tamed) {
-            g.addColorStop(0, "#b4d8ec");
-            g.addColorStop(0.5, "#5a8aaa");
-            g.addColorStop(1, "#2a4a60");
-        } else {
-            g.addColorStop(0, "#d080a8");
-            g.addColorStop(0.45, "#7a3a6a");
-            g.addColorStop(1, "#2e1830");
-        }
+        // Elliptical mantle leading in the travel direction.
+        ctx.save();
+        ctx.translate(this.x, drawY);
+        ctx.rotate(this.dir);
+        const mL = S * 0.78 * breath;
+        const mW = S * 0.44 * breath;
+        const g = ctx.createRadialGradient(-mL * 0.15, -mW * 0.25, S * 0.08, 0, 0, S * 0.85);
+        g.addColorStop(0, mantleA);
+        g.addColorStop(0.5, mantleB);
+        g.addColorStop(1, mantleC);
         ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.moveTo(this.x, drawY - mantleH * 0.95);
-        ctx.bezierCurveTo(
-            this.x + mantleW * 0.95, drawY - mantleH * 0.7,
-            this.x + mantleW * 1.05, drawY + mantleH * 0.15,
-            this.x + mantleW * 0.55, drawY + mantleH * 0.7
-        );
-        ctx.bezierCurveTo(
-            this.x + mantleW * 0.15, drawY + mantleH * 0.95,
-            this.x - mantleW * 0.15, drawY + mantleH * 0.95,
-            this.x - mantleW * 0.55, drawY + mantleH * 0.7
-        );
-        ctx.bezierCurveTo(
-            this.x - mantleW * 1.05, drawY + mantleH * 0.15,
-            this.x - mantleW * 0.95, drawY - mantleH * 0.7,
-            this.x, drawY - mantleH * 0.95
-        );
+        ctx.ellipse(S * 0.06, 0, mL, mW, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        // Siphon funnel on the side.
-        ctx.fillStyle = this.golden ? "rgba(160,120,40,0.7)" : "rgba(50,30,50,0.7)";
-        ctx.beginPath();
-        ctx.ellipse(
-            this.x + mantleW * 0.55, drawY + mantleH * 0.15,
-            S * 0.12, S * 0.07, 0.4, 0, Math.PI * 2
-        );
-        ctx.fill();
-
-        // Soft mantle wrinkles.
-        ctx.strokeStyle = "rgba(255,255,255,0.12)";
-        ctx.lineWidth = Math.max(1, S * 0.02);
-        for (let w = -2; w <= 2; w++) {
-            ctx.beginPath();
-            ctx.moveTo(this.x + w * S * 0.08, drawY - mantleH * 0.55);
-            ctx.quadraticCurveTo(
-                this.x + w * S * 0.12, drawY,
-                this.x + w * S * 0.05, drawY + mantleH * 0.4
-            );
-            ctx.stroke();
+        // Mottled papillae / spots like the reference skin.
+        if (!this.isRainbow) {
+            ctx.fillStyle = "rgba(40,15,20,0.22)";
+            for (let i = 0; i < 14; i++) {
+                const px = -mL * 0.55 + (i % 5) * mL * 0.28 + Math.sin(this.pulse + i) * 2;
+                const py = -mW * 0.55 + Math.floor(i / 5) * mW * 0.4 + Math.cos(this.pulse * 0.7 + i) * 2;
+                if (Math.hypot(px / mL, py / mW) > 0.85) continue;
+                ctx.beginPath();
+                ctx.ellipse(px, py, S * (0.04 + (i % 3) * 0.015), S * 0.03, i, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.fillStyle = "rgba(255,200,170,0.12)";
+            for (let i = 0; i < 8; i++) {
+                const px = -mL * 0.3 + (i % 4) * mL * 0.22;
+                const py = -mW * 0.2 + Math.floor(i / 4) * mW * 0.35;
+                ctx.beginPath();
+                ctx.arc(px, py, S * 0.035, 0, Math.PI * 2);
+                ctx.fill();
+            }
         }
 
+        // Siphon under the mantle.
+        ctx.fillStyle = "rgba(40,20,28,0.65)";
+        ctx.beginPath();
+        ctx.ellipse(S * 0.05, mW * 0.55, S * 0.12, S * 0.06, 0.15, 0, Math.PI * 2);
+        ctx.fill();
+
         if (this.eatPulse > 0) {
-            ctx.fillStyle = `rgba(200,80,120,${this.eatPulse * 0.45})`;
+            ctx.fillStyle = `rgba(200,80,120,${this.eatPulse * 0.4})`;
             ctx.beginPath();
-            ctx.ellipse(this.x, drawY, mantleW, mantleH, 0, 0, Math.PI * 2);
+            ctx.ellipse(S * 0.06, 0, mL, mW, 0, 0, Math.PI * 2);
             ctx.fill();
         }
 
-        // Raised eye stalks / bulbous eyes with rectangular pupils.
+        // Side eye with gold iris and horizontal slit pupil.
+        const eyeX = S * 0.12;
+        const eyeY = -mW * 0.55;
         if (this.petTimer > 0) {
             ctx.strokeStyle = "rgba(20,15,25,0.85)";
             ctx.lineWidth = Math.max(1.4, S * 0.04);
             ctx.lineCap = "round";
             ctx.beginPath();
-            ctx.arc(this.x - S * 0.18, drawY - S * 0.12, S * 0.09, Math.PI * 1.15, Math.PI * 1.85);
-            ctx.arc(this.x + S * 0.18, drawY - S * 0.12, S * 0.09, Math.PI * 1.15, Math.PI * 1.85);
+            ctx.arc(eyeX, eyeY, S * 0.1, Math.PI * 1.15, Math.PI * 1.85);
             ctx.stroke();
         } else {
-            const eyes = [
-                { x: this.x - S * 0.2, y: drawY - S * 0.14 },
-                { x: this.x + S * 0.2, y: drawY - S * 0.14 },
-            ];
-            for (const eye of eyes) {
-                ctx.fillStyle = "rgba(40,25,40,0.55)";
-                ctx.beginPath();
-                ctx.ellipse(eye.x, eye.y + S * 0.02, S * 0.13, S * 0.1, 0, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.fillStyle = "rgba(245,235,210,0.96)";
-                ctx.beginPath();
-                ctx.ellipse(eye.x, eye.y, S * 0.11, S * 0.13, 0, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.fillStyle = "rgba(20,15,25,0.95)";
-                ctx.beginPath();
-                ctx.ellipse(eye.x + S * 0.015, eye.y, S * 0.035, S * 0.07, 0, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.fillStyle = "rgba(255,255,255,0.55)";
-                ctx.beginPath();
-                ctx.arc(eye.x - S * 0.03, eye.y - S * 0.035, S * 0.025, 0, Math.PI * 2);
-                ctx.fill();
-            }
+            ctx.fillStyle = "rgba(40,25,30,0.5)";
+            ctx.beginPath();
+            ctx.ellipse(eyeX, eyeY + S * 0.02, S * 0.14, S * 0.11, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#e8c878";
+            ctx.beginPath();
+            ctx.ellipse(eyeX, eyeY, S * 0.11, S * 0.13, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#f5e6b0";
+            ctx.beginPath();
+            ctx.ellipse(eyeX - S * 0.02, eyeY - S * 0.02, S * 0.05, S * 0.06, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "rgba(20,12,16,0.95)";
+            ctx.beginPath();
+            ctx.ellipse(eyeX + S * 0.01, eyeY, S * 0.07, S * 0.028, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "rgba(255,255,255,0.45)";
+            ctx.beginPath();
+            ctx.arc(eyeX - S * 0.04, eyeY - S * 0.04, S * 0.022, 0, Math.PI * 2);
+            ctx.fill();
         }
+        ctx.restore();
         ctx.restore();
     }
 }
