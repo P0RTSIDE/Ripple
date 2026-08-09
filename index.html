@@ -10,6 +10,11 @@
     <!-- The whole experience is a single full-viewport canvas surface. -->
     <canvas id="surface"></canvas>
 
+    <!-- Hide / show all on-screen menus. Stays available when the rest of the UI is off. -->
+    <button id="ui-toggle" type="button" aria-label="Hide menus" title="Hide menus" aria-pressed="false">
+        <span class="ico ico-ui"></span>
+    </button>
+
     <!-- Minimal mode toggle, tucked top-right, low opacity until hovered. -->
     <button id="mode-toggle" type="button" aria-label="Switch between window and pond" title="Switch surface">
         <span id="mode-icon"></span>
@@ -43,6 +48,15 @@
         </button>
         <button type="button" class="scenery-btn on" data-scenery="debris" title="Lake debris (drag with right click)" aria-pressed="true">
             <span class="ico ico-debris"></span>
+        </button>
+        <button type="button" class="scenery-btn on" data-scenery="bed" title="Pond bed" aria-pressed="true">
+            <span class="ico ico-bed"></span>
+        </button>
+        <button type="button" class="scenery-btn on" data-scenery="sun" title="Harsh overhead sun" aria-pressed="true">
+            <span class="ico ico-sun"></span>
+        </button>
+        <button type="button" id="net-btn" class="scenery-btn" title="Net: scoop food with right click" aria-pressed="false">
+            <span class="ico ico-net"></span>
         </button>
         <button type="button" id="hats-btn" class="locked" title="Hats: 5 gold fish" aria-disabled="true" aria-pressed="false">
             <span class="ico ico-hat"></span>

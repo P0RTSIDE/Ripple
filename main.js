@@ -51,9 +51,12 @@ const CONFIG = {
     repopInterval: 1.1,     // seconds between new fish swimming in
     fleeSpeedMult: 1.85,    // how much faster than cruising a fleeing fish is
     predatorChaseMult: 2.05,// predator chase: slightly faster than flee, so evil fish catch prey
-    goldenChance: 0.018,    // rare chance a piece of food is the golden kind
+    goldenChance: 0.04,     // chance a piece of food is the golden kind
     rainbowChance: 0.004,   // even rarer: rainbow food (must stay below goldenChance)
     greenChance: 0.005,     // rare green food: turns a fish into a lasting pond plant
+    growerChance: 0.007,    // rare grower food: surges a fish past normal size
+    growerBoost: 44,        // size gained from one grower pellet
+    growerMaxSize: 215,     // cap when growing from grower / carcass meals
     goldSinkTime: 2.4,      // seconds for a golden fish to settle on the lakebed
     rainbowSpeed: 2.35,     // rainbow chase speed (kept moderate so tracking stays stable)
     predatorFoodBoost: 1.045, // each food bite makes an evil fish a bit faster
@@ -63,17 +66,225 @@ const CONFIG = {
     petsForRainbow: 15,     // hidden: pet this many times with no throws to force rainbow food
     petsToRedeem: 5,        // discrete pets that help soothe an evil fish
     evilSootheTime: 2.6,    // seconds of continuous petting to fully redeem an evil fish
-    reptileInterval: 300,   // seconds between crocodile/alligator chance rolls
-    reptileChance: 0.12,    // small chance a reptile arrives on each roll
+    reptileInterval: 60,    // seconds between crocodile/alligator chance rolls
+    reptileChance: 0.18,    // chance a reptile arrives on each roll
     reptileSize: [88, 112], // croc/alligator body length range
     exoticInterval: 48,     // seconds between exotic visitor rolls (medium-rare)
     exoticChance: 0.32,     // much more common than crocs; still not every roll
     exoticEdgeChance: 0.14, // chance a repopulating fish is an exotic
+    heroChance: 0.24,       // chance a new fish is a hero (hunts smaller predators)
+    heroChaseMult: 2.1,     // hero chase: a bit faster than evil fish so they can catch them
 };
 
 // Hidden streak: consecutive pets with no food thrown unlock a guaranteed rainbow pellet.
 let petStreak = 0;
 let guaranteeRainbow = false;
+
+// Type a variant name (anywhere) to force that kind on the next food drop.
+// When adding a new food variant: append its keyword here and handle it in applyFoodVariant.
+const FOOD_VARIANT_KEYWORDS = ["rainbow", "golden", "green", "grower"];
+let nextFoodVariant = null;
+let foodTypeBuffer = "";
+
+function applyFoodVariant(target, variant) {
+    target.rainbow = false;
+    target.green = false;
+    target.golden = false;
+    target.grower = false;
+    if (!variant) return;
+    if (variant === "rainbow") target.rainbow = true;
+    else if (variant === "green") target.green = true;
+    else if (variant === "golden") target.golden = true;
+    else if (variant === "grower") target.grower = true;
+}
+
+function isRareFoodFlags(f) {
+    return !!(f && (f.golden || f.rainbow || f.green || f.grower || f.carcass));
+}
+
+function consumeNextFoodVariant() {
+    if (nextFoodVariant) {
+        const v = nextFoodVariant;
+        nextFoodVariant = null;
+        return v;
+    }
+    if (guaranteeRainbow) {
+        guaranteeRainbow = false;
+        return "rainbow";
+    }
+    return null;
+}
+
+function rollFoodVariant() {
+    const forced = consumeNextFoodVariant();
+    if (forced) return forced;
+    const roll = Math.random();
+    let edge = CONFIG.rainbowChance;
+    if (roll < edge) return "rainbow";
+    edge += CONFIG.greenChance;
+    if (roll < edge) return "green";
+    edge += CONFIG.growerChance;
+    if (roll < edge) return "grower";
+    edge += CONFIG.goldenChance;
+    if (roll < edge) return "golden";
+    return null;
+}
+
+function noteFoodVariantKeyword(ch) {
+    if (!ch || ch.length !== 1) return;
+    const letter = ch.toLowerCase();
+    if (letter !== " " && (letter < "a" || letter > "z")) return;
+    foodTypeBuffer = (foodTypeBuffer + letter).slice(-40);
+    const compact = foodTypeBuffer.replace(/\s+/g, "");
+
+    // Hidden fiesta: type "easter egg" (spaces optional, case ignored).
+    if (compact.endsWith("easteregg") || foodTypeBuffer.trimEnd().endsWith("easter egg")) {
+        foodTypeBuffer = "";
+        beginMariachiFiesta();
+        return;
+    }
+
+    let matched = null;
+    for (const word of FOOD_VARIANT_KEYWORDS) {
+        if (compact.endsWith(word)
+            && (!matched || word.length > matched.length)) {
+            matched = word;
+        }
+    }
+    if (!matched) return;
+    nextFoodVariant = matched;
+    foodTypeBuffer = "";
+    if (typeof Audio !== "undefined" && Audio.ensure) {
+        Audio.ensure();
+        if (matched === "rainbow" && Audio.rainbowChime) Audio.rainbowChime(0);
+        else if (matched === "golden" && Audio.goldChime) Audio.goldChime(0);
+        else if (matched === "grower" && Audio.playDrop) {
+            Audio.playDrop({ freq: 520, decay: 1.1, velocity: 0.4, pan: 0, plunk: true });
+        } else if (Audio.playDrop) {
+            Audio.playDrop({ freq: 380, decay: 0.9, velocity: 0.3, pan: 0, plunk: false });
+        }
+    }
+}
+
+// Public-domain folk melody (La Cucaracha), sung note-by-note by the school.
+// Rhythm uses short eighths and dotted "cha" notes so the tune reads clearly.
+const CUCARACHA_NOTES = (() => {
+    // One octave up from the sung folk register so pitches cut through small speakers.
+    const N = {
+        C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46, G5: 783.99,
+    };
+    const e = 0.16;   // eighth
+    const q = 0.32;   // quarter
+    const dq = 0.48;  // dotted quarter (the "cha")
+    const r = (d) => ({ freq: 0, d, rest: true });
+    const n = (freq, d) => ({ freq, d, rest: false });
+    return [
+        // La cucaracha, la cucaracha
+        n(N.C5, e), n(N.C5, e), n(N.C5, e), n(N.D5, e), n(N.E5, dq), n(N.C5, e), n(N.E5, e), n(N.D5, dq), r(e),
+        // Ya no puede caminar
+        n(N.C5, e), n(N.C5, e), n(N.C5, e), n(N.D5, e), n(N.E5, dq), n(N.C5, q), r(q),
+        // Porque no tiene, porque le falta
+        n(N.G5, e), n(N.G5, e), n(N.G5, e), n(N.G5, e), n(N.F5, e), n(N.E5, e), n(N.D5, q), r(e),
+        // Closing phrase
+        n(N.C5, e), n(N.C5, e), n(N.C5, e), n(N.D5, e), n(N.E5, dq), n(N.C5, q), r(q),
+    ];
+})();
+
+let mariachiMode = false;
+let mariachiNoteI = 0;
+let mariachiNoteT = 0;
+let mariachiCycles = 0;
+let mariachiSingerI = 0;
+
+function beginMariachiFiesta() {
+    mariachiMode = true;
+    mariachiNoteI = 0;
+    mariachiNoteT = 0.15;
+    mariachiCycles = 0;
+    mariachiSingerI = 0;
+    if (typeof Audio !== "undefined" && Audio.ensure) {
+        Audio.ensure();
+        if (Audio.rainbowChime) Audio.rainbowChime(0);
+    }
+}
+
+function endMariachiFiesta() {
+    mariachiMode = false;
+    mariachiNoteI = 0;
+    mariachiNoteT = 0;
+    mariachiCycles = 0;
+}
+
+function updateMariachiFiesta(dt) {
+    if (!mariachiMode) return;
+    mariachiNoteT -= dt;
+    if (mariachiNoteT > 0) return;
+
+    if (mariachiNoteI >= CUCARACHA_NOTES.length) {
+        mariachiCycles++;
+        if (mariachiCycles >= 2) {
+            endMariachiFiesta();
+            return;
+        }
+        mariachiNoteI = 0;
+    }
+
+    const note = CUCARACHA_NOTES[mariachiNoteI++];
+    mariachiNoteT = note.d;
+    if (note.rest || !note.freq) return;
+
+    const singers = fishes.filter((f) => !f.dead && !f.golden && !f.rainbowLeaving);
+    if (!singers.length) {
+        endMariachiFiesta();
+        return;
+    }
+    const f = singers[mariachiSingerI % singers.length];
+    mariachiSingerI++;
+    const pan = Math.max(-1, Math.min(1, (f.x / viewW) * 2 - 1));
+    // Fixed concert pitch + mariachi timbre so the tune stays recognizable.
+    // Fish still "sing" for pan / bob; bite/pet fishNote path is left alone.
+    if (Audio.mariachiNote) {
+        Audio.mariachiNote({
+            freq: note.freq,
+            pan,
+            dur: Math.max(0.09, note.d * 0.9),
+        });
+    }
+    // Tiny "singing" bob.
+    f.petTimer = Math.max(f.petTimer || 0, 0.22);
+    if (Math.random() < 0.35) water.disturb(f.x, f.y, f.size * 0.25, 18);
+}
+
+function drawMariachiHat(ctx, L, W) {
+    const hx = L * 0.02;
+    const hy = -W * 1.08;
+    ctx.save();
+    ctx.shadowBlur = 0;
+    // Wide brim.
+    ctx.fillStyle = "#6b3e1f";
+    ctx.beginPath();
+    ctx.ellipse(hx, hy + L * 0.02, L * 0.34, L * 0.1, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#8a5528";
+    ctx.beginPath();
+    ctx.ellipse(hx, hy, L * 0.3, L * 0.08, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Tall crown.
+    ctx.fillStyle = "#5a3218";
+    ctx.beginPath();
+    ctx.moveTo(hx - L * 0.12, hy);
+    ctx.lineTo(hx - L * 0.1, hy - L * 0.22);
+    ctx.quadraticCurveTo(hx, hy - L * 0.28, hx + L * 0.1, hy - L * 0.22);
+    ctx.lineTo(hx + L * 0.12, hy);
+    ctx.closePath();
+    ctx.fill();
+    // Colorful band.
+    ctx.fillStyle = "#c43c3c";
+    ctx.fillRect(hx - L * 0.11, hy - L * 0.04, L * 0.22, L * 0.035);
+    ctx.fillStyle = "#e8c84a";
+    ctx.fillRect(hx - L * 0.11, hy - L * 0.02, L * 0.22, L * 0.012);
+    ctx.restore();
+}
 
 // Hats unlock: hold right-click on a settled gold fish for 5 seconds to collect it.
 const HATS_GOLD_COST = 5;
@@ -555,6 +766,84 @@ const Audio = (() => {
         };
     }
 
+    // Fiesta melody voice: brighter brass-ish tone, dry and punchy so pitches read as a tune.
+    function mariachiNote({ freq, pan, dur }) {
+        ensure();
+        if (actx.state === "suspended") actx.resume();
+        if (voiceCount >= CONFIG.maxVoices) return;
+        const t0 = actx.currentTime;
+        const level = 0.28;
+        const attack = 0.01;
+        const release = Math.min(0.07, Math.max(0.04, dur * 0.22));
+        const body = Math.max(attack + 0.03, dur - release * 0.35);
+
+        const fund = actx.createOscillator();
+        fund.type = "triangle";
+        fund.frequency.value = freq;
+
+        const h2 = actx.createOscillator();
+        h2.type = "square";
+        h2.frequency.value = freq * 2;
+        const h2g = actx.createGain();
+        h2g.gain.value = level * 0.16;
+
+        const h3 = actx.createOscillator();
+        h3.type = "sine";
+        h3.frequency.value = freq * 3;
+        const h3g = actx.createGain();
+        h3g.gain.value = level * 0.1;
+
+        const filter = actx.createBiquadFilter();
+        filter.type = "lowpass";
+        filter.Q.value = 1.15;
+        filter.frequency.setValueAtTime(Math.min(4800, freq * 9 + 900), t0);
+        filter.frequency.exponentialRampToValueAtTime(Math.min(2600, freq * 4.5 + 500), t0 + body);
+
+        const g = actx.createGain();
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(level, t0 + attack);
+        g.gain.setValueAtTime(level * 0.82, t0 + body * 0.55);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+
+        const panner = actx.createStereoPanner();
+        panner.pan.value = pan == null ? 0 : pan;
+
+        const dry = actx.createGain();
+        dry.gain.value = 1;
+        const wet = actx.createGain();
+        wet.gain.value = 0.1;
+
+        fund.connect(filter);
+        h2.connect(h2g);
+        h2g.connect(filter);
+        h3.connect(h3g);
+        h3g.connect(filter);
+        filter.connect(g);
+        g.connect(panner);
+        panner.connect(dry);
+        dry.connect(master);
+        panner.connect(wet);
+        wet.connect(reverbSend);
+
+        fund.start(t0);
+        h2.start(t0);
+        h3.start(t0);
+        const stopAt = t0 + dur + 0.06;
+        fund.stop(stopAt);
+        h2.stop(stopAt);
+        h3.stop(stopAt);
+
+        voiceCount++;
+        fund.onended = () => {
+            voiceCount--;
+            try {
+                fund.disconnect(); h2.disconnect(); h2g.disconnect();
+                h3.disconnect(); h3g.disconnect(); filter.disconnect();
+                g.disconnect(); panner.disconnect(); dry.disconnect(); wet.disconnect();
+            } catch (e) {}
+        };
+    }
+
     // Soft contented whale purr when petted.
     function whalePurr(pan) {
         ensure();
@@ -750,6 +1039,7 @@ const Audio = (() => {
         playDrop,
         tick,
         fishNote,
+        mariachiNote,
         predatorEat,
         sharkStrike,
         sharkRoll,
@@ -846,7 +1136,9 @@ function sound(x, y, v, plunk, surface) {
 function pondSurfaceAt(x, y) {
     if (scenery.debris) {
         const o = obstacleAt(x, y);
-        if (o) return (o.kind === "log" || o.kind === "stump") ? "wood" : "stone";
+        if (o) {
+            return (o.kind === "boulder" || o.kind === "mossrock") ? "stone" : "wood";
+        }
     }
     if (scenery.lilies) {
         for (const L of sceneryItems.lilies) {
@@ -976,32 +1268,46 @@ class WaterSim {
         const field = this.prev;
         const { cols, rows } = this;
         const data = this.img.data;
+        const showBed = typeof scenery !== "undefined" && scenery.bed;
+        const sunOn = typeof scenery !== "undefined" && scenery.sun;
+        // Clearer water when the bed is visible; sun stays mostly clear so the floor reads.
+        const alpha = showBed ? (sunOn ? 118 : 132) : 255;
+        const sunWarm = sunOn ? 1 : 0;
+        const causticPhase = (typeof sceneryTime === "number" ? sceneryTime : 0) * 0.45;
         let p = 0;
         for (let y = 0; y < rows; y++) {
-            // Soft pond teal: darker in the distance, a little richer nearby.
+            // Soft pond teal; sun adds a mild golden-hour warmth, not harsh daylight.
             const ty = y / rows;
-            const baseR = 8 + ty * 5;
-            const baseG = 22 + ty * 14;
-            const baseB = 26 + ty * 12;
+            const baseR = (showBed ? 18 : 8) + ty * 5 + sunWarm * 14;
+            const baseG = (showBed ? 30 : 22) + ty * 11 + sunWarm * 8;
+            const baseB = (showBed ? 36 : 26) + ty * 9 + sunWarm * 2;
             for (let x = 0; x < cols; x++) {
                 const i = y * cols + x;
                 const l = x > 0 ? field[i - 1] : field[i];
                 const r = x < cols - 1 ? field[i + 1] : field[i];
                 const u = y > 0 ? field[i - cols] : field[i];
                 const d = y < rows - 1 ? field[i + cols] : field[i];
-                // Surface slope acts as a normal: light from the upper-left.
+                // Surface slope as a normal; kept gentle so the water stays calm.
                 const sx = l - r;
                 const sy = u - d;
-                const shade = (sx + sy) * 1.4;
-                // Sharp positive slopes sparkle (specular crest highlight).
+                const shade = (sx * (0.85 + sunWarm * 0.12) + sy * 0.8) * (0.75 + sunWarm * 0.08);
+                // Soft crest highlight only on steeper slopes.
                 let spec = 0;
-                const s = sx * 0.6 + sy;
-                if (s > 4) spec = Math.min(150, (s - 4) * (s - 4) * 0.5);
+                const s = sx * 0.55 + sy;
+                if (s > 5.5) spec = Math.min(55, (s - 5.5) * (s - 5.5) * (0.22 + sunWarm * 0.06));
+                // Very subtle surface shimmer when the sun is on (no lattice).
+                let caustic = 0;
+                if (sunOn) {
+                    const cx = x * 0.11 + causticPhase + y * 0.03;
+                    const cy = y * 0.09 - causticPhase * 0.55 + x * 0.02;
+                    const n = Math.sin(cx) * Math.sin(cy * 1.1) + Math.sin(cx * 0.37 + cy * 0.6) * 0.45;
+                    caustic = (n + 1.45) * 1.6 * sunWarm;
+                }
 
-                data[p] = clampByte(baseR + shade + spec * 0.7);
-                data[p + 1] = clampByte(baseG + shade * 1.1 + spec * 0.9);
-                data[p + 2] = clampByte(baseB + shade * 1.3 + spec);
-                data[p + 3] = 255;
+                data[p] = clampByte(baseR + shade + spec * 0.55 + caustic * 1.1);
+                data[p + 1] = clampByte(baseG + shade * 0.95 + spec * 0.65 + caustic * 0.75);
+                data[p + 2] = clampByte(baseB + shade * 1.05 + spec * 0.55 + caustic * 0.35);
+                data[p + 3] = alpha;
                 p += 4;
             }
         }
@@ -1026,12 +1332,16 @@ const scenery = {
     lilies: true,
     cattails: true,
     duckweed: true,
-    debris: true, // solid movable obstacles (boulders, logs, stumps)
+    debris: true, // solid movable lake clutter (logs, rocks, driftwood, pots, and more)
+    bed: true,    // rocky / sandy pond floor seen through the water
+    sun: true,    // warm golden-hour light, soft floor caustics, and sharp shadows
 };
 let sceneryItems = {
     stones: [], sticks: [], reeds: [], lilies: [],
     cattails: [], duckweed: [], leaves: [],
 };
+let pondBedCanvas = null;
+let sunPhase = 0;
 // Solid props fish cannot swim through. Right-click drag moves them (with water drag).
 let obstacles = [];
 let grabbedObstacle = null;
@@ -1145,40 +1455,559 @@ function rebuildScenery() {
 
     sceneryItems = { stones, sticks, reeds, lilies, cattails, duckweed, leaves };
     rebuildObstacles();
+    rebuildPondBed();
+}
+
+// Pond floor texture: dirt, mud, rocks, and settled debris, seen through the water.
+function rebuildPondBed() {
+    if (!viewW || !viewH) return;
+    const scale = 0.7;
+    const w = Math.max(96, Math.floor(viewW * scale));
+    const h = Math.max(96, Math.floor(viewH * scale));
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    const b = c.getContext("2d");
+
+    // Base dirt: mottled warm mud, no tiled wash.
+    const base = b.createLinearGradient(0, 0, w * 0.2, h);
+    base.addColorStop(0, "#3c3426");
+    base.addColorStop(0.4, "#4c402c");
+    base.addColorStop(0.75, "#322a20");
+    base.addColorStop(1, "#282218");
+    b.fillStyle = base;
+    b.fillRect(0, 0, w, h);
+
+    // Broad organic silt / clay stains (irregular blobs, not a lattice).
+    for (let i = 0; i < 55; i++) {
+        const x = seeded(i + 900) * w;
+        const y = seeded(i + 910) * h;
+        const rx = 18 + seeded(i + 920) * 85;
+        const ry = 12 + seeded(i + 930) * 58;
+        const g = b.createRadialGradient(x - rx * 0.15, y - ry * 0.1, 1, x, y, rx);
+        const kind = seeded(i + 940);
+        if (kind < 0.3) {
+            g.addColorStop(0, "rgba(24, 20, 14, 0.72)");
+            g.addColorStop(1, "rgba(24, 20, 14, 0)");
+        } else if (kind < 0.55) {
+            g.addColorStop(0, "rgba(98, 82, 50, 0.5)");
+            g.addColorStop(1, "rgba(72, 60, 38, 0)");
+        } else if (kind < 0.8) {
+            g.addColorStop(0, "rgba(58, 64, 42, 0.4)");
+            g.addColorStop(1, "rgba(40, 48, 34, 0)");
+        } else {
+            g.addColorStop(0, "rgba(120, 108, 78, 0.32)");
+            g.addColorStop(1, "rgba(90, 80, 55, 0)");
+        }
+        b.fillStyle = g;
+        b.beginPath();
+        b.ellipse(x, y, rx, ry, seeded(i + 950) * Math.PI, 0, Math.PI * 2);
+        b.fill();
+    }
+
+    // Fine silt dusting (soft noise, not a grid).
+    for (let i = 0; i < 2200; i++) {
+        const x = seeded(i + 980) * w;
+        const y = seeded(i + 990) * h;
+        const a = 0.05 + seeded(i + 1000) * 0.16;
+        const warm = seeded(i + 1010);
+        const c0 = 48 + warm * 78;
+        const sz = seeded(i + 1020) > 0.85 ? 2 + seeded(i + 1025) * 2 : 1;
+        b.fillStyle = `rgba(${c0},${c0 * (0.76 + warm * 0.12)},${c0 * (0.42 + warm * 0.18)},${a})`;
+        b.fillRect(x, y, sz, 1 + seeded(i + 1030) * 1.4);
+    }
+
+    // Short local sand streaks in clearer pockets (never full-width stripes).
+    for (let i = 0; i < 22; i++) {
+        const x0 = seeded(i + 960) * w;
+        const y0 = seeded(i + 965) * h;
+        const span = 28 + seeded(i + 968) * 70;
+        const ang = (seeded(i + 972) - 0.5) * 0.9;
+        b.save();
+        b.translate(x0, y0);
+        b.rotate(ang);
+        b.strokeStyle = `rgba(130, 112, 72, ${0.1 + seeded(i + 974) * 0.14})`;
+        b.lineWidth = 0.8 + seeded(i + 976) * 1.1;
+        b.lineCap = "round";
+        b.beginPath();
+        for (let t = 0; t <= 1.001; t += 0.08) {
+            const x = (t - 0.5) * span;
+            const y = Math.sin(t * 6.5 + i) * (1.2 + seeded(i + 978) * 2.4)
+                + Math.sin(t * 14 + i * 0.7) * 0.8;
+            if (t === 0) b.moveTo(x, y);
+            else b.lineTo(x, y);
+        }
+        b.stroke();
+        b.restore();
+    }
+
+    // Mixed gravel: pebbles of varied size, hue, and clustering.
+    for (let i = 0; i < 340; i++) {
+        const cluster = seeded(i + 1035) > 0.78;
+        const cx = seeded(i + 1040) * w;
+        const cy = seeded(i + 1050) * h;
+        const count = cluster ? 2 + Math.floor(seeded(i + 1052) * 4) : 1;
+        for (let j = 0; j < count; j++) {
+            const x = cx + (cluster ? (seeded(i * 9 + j + 1054) - 0.5) * 10 : 0);
+            const y = cy + (cluster ? (seeded(i * 9 + j + 1056) - 0.5) * 8 : 0);
+            const r = 0.6 + seeded(i * 9 + j + 1060) * (cluster ? 2.4 : 3.6);
+            const hue = seeded(i * 9 + j + 1070);
+            let cr, cg, cb;
+            if (hue < 0.35) {
+                cr = 70 + hue * 90; cg = cr * 0.9; cb = cr * 0.72;
+            } else if (hue < 0.65) {
+                cr = 55 + hue * 60; cg = cr * 0.82; cb = cr * 0.55;
+            } else if (hue < 0.85) {
+                cr = 90 + hue * 40; cg = 85 + hue * 35; cb = 70 + hue * 25;
+            } else {
+                cr = 50 + hue * 30; cg = 58 + hue * 28; cb = 48 + hue * 22;
+            }
+            b.fillStyle = `rgba(${cr},${cg},${cb},${0.4 + seeded(i * 9 + j + 1080) * 0.45})`;
+            b.beginPath();
+            b.ellipse(x, y, r, r * (0.55 + seeded(i * 9 + j + 1090) * 0.5), seeded(i * 9 + j + 1100) * Math.PI, 0, Math.PI * 2);
+            b.fill();
+            if (seeded(i * 9 + j + 1105) > 0.65) {
+                b.fillStyle = `rgba(${cr + 28},${cg + 22},${cb + 12},0.3)`;
+                b.beginPath();
+                b.ellipse(x - r * 0.22, y - r * 0.2, r * 0.32, r * 0.22, 0, 0, Math.PI * 2);
+                b.fill();
+            }
+        }
+    }
+
+    // Larger river stones: rounded cobbles, flat slabs, and a few angular chips.
+    for (let i = 0; i < 85; i++) {
+        const x = seeded(i + 1110) * w;
+        const y = seeded(i + 1120) * h;
+        const r = 3.5 + seeded(i + 1130) * 18;
+        const shape = seeded(i + 1135);
+        const facets = shape < 0.4 ? 0 : 5 + Math.floor(seeded(i + 1140) * 6);
+        const tone = seeded(i + 1150);
+        const c0 = 48 + tone * 70;
+        const mossy = seeded(i + 1155) > 0.7;
+        const wet = seeded(i + 1157) > 0.55;
+        b.save();
+        b.translate(x, y);
+        b.rotate(seeded(i + 1160) * Math.PI);
+        b.beginPath();
+        if (facets === 0) {
+            // Smooth cobble.
+            b.ellipse(0, 0, r, r * (0.55 + seeded(i + 1162) * 0.35), 0, 0, Math.PI * 2);
+        } else {
+            for (let k = 0; k < facets; k++) {
+                const a = (k / facets) * Math.PI * 2;
+                const rr = r * (0.62 + seeded(i * 13 + k + 1170) * 0.55);
+                const flat = shape > 0.75 ? 0.5 : 0.7;
+                const px = Math.cos(a) * rr;
+                const py = Math.sin(a) * rr * flat;
+                if (k === 0) b.moveTo(px, py);
+                else b.lineTo(px, py);
+            }
+            b.closePath();
+        }
+        const rg = b.createRadialGradient(-r * 0.28, -r * 0.32, 1, 0, 0, r);
+        if (tone < 0.25) {
+            rg.addColorStop(0, `rgba(${c0 + 40},${c0 + 34},${c0 + 22},0.92)`);
+            rg.addColorStop(0.55, `rgba(${c0 + 8},${c0},${c0 - 8},0.88)`);
+            rg.addColorStop(1, `rgba(${c0 - 18},${c0 - 16},${c0 - 14},0.82)`);
+        } else if (tone < 0.55) {
+            rg.addColorStop(0, `rgba(${c0 + 28},${c0 + 22},${c0 + 12},0.9)`);
+            rg.addColorStop(0.55, `rgba(${c0},${c0 - 6},${c0 - 14},0.86)`);
+            rg.addColorStop(1, `rgba(${c0 - 24},${c0 - 22},${c0 - 20},0.8)`);
+        } else if (tone < 0.8) {
+            rg.addColorStop(0, `rgba(${c0 + 18},${c0 + 24},${c0 + 16},0.88)`);
+            rg.addColorStop(0.55, `rgba(${c0 - 4},${c0},${c0 - 6},0.84)`);
+            rg.addColorStop(1, `rgba(${c0 - 20},${c0 - 16},${c0 - 18},0.8)`);
+        } else {
+            rg.addColorStop(0, `rgba(${c0 + 35},${c0 + 28},${c0 + 18},0.9)`);
+            rg.addColorStop(0.55, `rgba(${c0 + 10},${c0 + 4},${c0 - 6},0.85)`);
+            rg.addColorStop(1, `rgba(${c0 - 16},${c0 - 18},${c0 - 22},0.8)`);
+        }
+        b.fillStyle = rg;
+        b.fill();
+        b.strokeStyle = `rgba(${c0 - 30},${c0 - 26},${c0 - 22},${wet ? 0.55 : 0.35})`;
+        b.lineWidth = wet ? 1 : 0.7;
+        b.stroke();
+        if (seeded(i + 1175) > 0.4) {
+            b.strokeStyle = `rgba(${c0 - 38},${c0 - 32},${c0 - 30},0.3)`;
+            b.lineWidth = 0.6;
+            b.beginPath();
+            b.moveTo(-r * 0.45, -r * 0.08);
+            b.quadraticCurveTo(0, r * (seeded(i + 1176) - 0.35) * 0.35, r * 0.4, -r * 0.12);
+            b.stroke();
+        }
+        if (mossy) {
+            b.fillStyle = `rgba(${48 + seeded(i + 1178) * 20}, ${78 + seeded(i + 1179) * 25}, 40, 0.32)`;
+            b.beginPath();
+            b.ellipse(-r * 0.08, r * 0.12, r * (0.28 + seeded(i + 1181) * 0.2), r * 0.18, 0.35, 0, Math.PI * 2);
+            b.fill();
+        }
+        b.restore();
+    }
+
+    // Twigs and stick scraps on the mud.
+    for (let i = 0; i < 40; i++) {
+        const x = seeded(i + 1180) * w;
+        const y = seeded(i + 1190) * h;
+        const len = 5 + seeded(i + 1195) * 24;
+        const ang = seeded(i + 1198) * Math.PI;
+        const c0 = 42 + seeded(i + 1199) * 38;
+        b.save();
+        b.translate(x, y);
+        b.rotate(ang);
+        b.strokeStyle = `rgba(${c0},${c0 * 0.68},${c0 * 0.38},0.62)`;
+        b.lineWidth = 0.7 + seeded(i + 1201) * 1.5;
+        b.lineCap = "round";
+        b.beginPath();
+        b.moveTo(-len * 0.5, 0);
+        b.quadraticCurveTo(0, (seeded(i + 1202) - 0.5) * 5, len * 0.5, 0);
+        b.stroke();
+        if (seeded(i + 1203) > 0.55) {
+            b.beginPath();
+            b.moveTo(len * 0.1, 0);
+            b.lineTo(len * 0.35, -len * 0.25);
+            b.stroke();
+        }
+        b.restore();
+    }
+
+    // Leaf litter and soft debris flakes.
+    for (let i = 0; i < 52; i++) {
+        const x = seeded(i + 1210) * w;
+        const y = seeded(i + 1220) * h;
+        const len = 2.5 + seeded(i + 1230) * 9;
+        b.save();
+        b.translate(x, y);
+        b.rotate(seeded(i + 1240) * Math.PI * 2);
+        const brown = 65 + seeded(i + 1250) * 55;
+        b.fillStyle = `rgba(${brown},${brown * 0.62},${brown * 0.26},${0.3 + seeded(i + 1260) * 0.38})`;
+        b.beginPath();
+        b.ellipse(0, 0, len, len * (0.32 + seeded(i + 1262) * 0.2), 0, 0, Math.PI * 2);
+        b.fill();
+        b.strokeStyle = `rgba(${brown - 22},${brown * 0.42},18,0.3)`;
+        b.lineWidth = 0.5;
+        b.beginPath();
+        b.moveTo(-len * 0.7, 0);
+        b.lineTo(len * 0.7, 0);
+        b.stroke();
+        b.restore();
+    }
+
+    // Pale shell chips and bone-colored bits.
+    for (let i = 0; i < 26; i++) {
+        const x = seeded(i + 1270) * w;
+        const y = seeded(i + 1280) * h;
+        b.save();
+        b.translate(x, y);
+        b.rotate(seeded(i + 1290) * Math.PI * 2);
+        b.strokeStyle = `rgba(175, 158, 118, ${0.3 + seeded(i + 1300) * 0.32})`;
+        b.lineWidth = 1;
+        b.beginPath();
+        b.ellipse(0, 0, 2.2 + seeded(i + 1310) * 5.5, 1.2 + seeded(i + 1320) * 2.6, 0, 0.15, Math.PI * 1.45);
+        b.stroke();
+        b.restore();
+    }
+
+    // Darker sunk pockets in the silt.
+    for (let i = 0; i < 20; i++) {
+        const x = seeded(i + 1330) * w;
+        const y = seeded(i + 1340) * h;
+        const g = b.createRadialGradient(x, y, 1, x, y, 7 + seeded(i + 1350) * 16);
+        g.addColorStop(0, "rgba(16, 14, 10, 0.48)");
+        g.addColorStop(1, "rgba(16, 14, 10, 0)");
+        b.fillStyle = g;
+        b.beginPath();
+        b.ellipse(x, y, 9 + seeded(i + 1360) * 14, 5 + seeded(i + 1370) * 9, seeded(i + 1380) * Math.PI, 0, Math.PI * 2);
+        b.fill();
+    }
+
+    // Light water tint: keep the dirt readable, slight warm submerged cast.
+    const murk = b.createRadialGradient(w * 0.5, h * 0.4, w * 0.08, w * 0.5, h * 0.55, w * 0.8);
+    murk.addColorStop(0, "rgba(40, 68, 62, 0.07)");
+    murk.addColorStop(0.55, "rgba(22, 44, 46, 0.13)");
+    murk.addColorStop(1, "rgba(12, 26, 28, 0.26)");
+    b.fillStyle = murk;
+    b.fillRect(0, 0, w, h);
+
+    pondBedCanvas = c;
+}
+
+function drawPondBed(ctx) {
+    if (!scenery.bed || !pondBedCanvas) return;
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.globalAlpha = 1;
+    ctx.drawImage(pondBedCanvas, 0, 0, viewW, viewH);
+    // Thin water-column veil so it still feels submerged, without hiding the floor.
+    ctx.globalAlpha = 0.08;
+    ctx.fillStyle = "rgba(22, 48, 46, 1)";
+    ctx.fillRect(0, 0, viewW, viewH);
+    ctx.restore();
+}
+
+function sunShadowDir() {
+    // Golden-hour light from above-right: longer shadows fall left and a bit down.
+    return { x: -0.58, y: 0.52 };
+}
+
+// Hard contact shadow on the pond floor (crisp edge, clear offset).
+function drawFloorShadow(ctx, x, y, rx, ry, alpha) {
+    const d = sunShadowDir();
+    const len = 22 + Math.max(rx, ry) * 0.95;
+    const sx = x + d.x * len;
+    const sy = y + d.y * len;
+    const ang = Math.atan2(d.y, d.x);
+    // Solid dark core with a hard rim (minimal soft falloff).
+    ctx.fillStyle = `rgba(12, 10, 8, ${Math.min(0.78, alpha * 1.15)})`;
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, rx * 1.02, ry * 0.62, ang, 0, Math.PI * 2);
+    ctx.fill();
+    // Very tight penumbra so the silhouette stays sharp.
+    const g = ctx.createRadialGradient(sx, sy, Math.min(rx, ry) * 0.55, sx, sy, Math.max(rx, ry) * 1.12);
+    g.addColorStop(0, `rgba(18, 14, 10, ${alpha * 0.35})`);
+    g.addColorStop(0.75, `rgba(18, 14, 10, ${alpha * 0.08})`);
+    g.addColorStop(1, "rgba(18, 14, 10, 0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, rx * 1.12, ry * 0.72, ang, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function drawSoftShadowBlob(ctx, x, y, rx, ry, alpha) {
+    drawFloorShadow(ctx, x, y, rx, ry, alpha);
+}
+
+// Soft organic caustic shimmer on the pond bed (no lattice, no sun rays).
+function drawBedCaustics(ctx) {
+    if (!scenery.sun) return;
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    const t = sunPhase;
+
+    // Scattered warm light pools that drift slowly (organic, not a grid).
+    for (let n = 0; n < 18; n++) {
+        const x = ((n * 137.1 + Math.sin(t * 0.35 + n * 1.7) * 55 + Math.cos(t * 0.22 + n) * 30) % viewW + viewW) % viewW;
+        const y = ((n * 89.4 + Math.cos(t * 0.28 + n * 1.1) * 48 + Math.sin(t * 0.18 + n * 0.6) * 25) % viewH + viewH) % viewH;
+        const tw = 0.45 + 0.55 * Math.abs(Math.sin(t * 0.9 + n * 1.3));
+        const rr = 22 + tw * 28 + (n % 5) * 4;
+        const g = ctx.createRadialGradient(x, y, 0, x, y, rr);
+        g.addColorStop(0, `rgba(255, 220, 150, ${0.05 * tw})`);
+        g.addColorStop(0.4, `rgba(255, 200, 120, ${0.028 * tw})`);
+        g.addColorStop(1, "rgba(255, 180, 90, 0)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.ellipse(x, y, rr, rr * (0.55 + (n % 3) * 0.12), n * 0.7, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // A few short, irregular warm ribbons (never evenly spaced H/V lines).
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    for (let n = 0; n < 9; n++) {
+        const x0 = ((n * 211.7 + Math.sin(t * 0.4 + n) * 80) % viewW + viewW) % viewW;
+        const y0 = ((n * 163.3 + Math.cos(t * 0.33 + n * 1.4) * 70) % viewH + viewH) % viewH;
+        const len = 40 + (n % 4) * 28;
+        const ang = n * 0.9 + Math.sin(t * 0.25 + n) * 0.5;
+        const pulse = 0.5 + 0.5 * Math.sin(t * 0.75 + n * 1.1);
+        ctx.beginPath();
+        for (let i = 0; i <= 10; i++) {
+            const u = i / 10;
+            const x = x0 + Math.cos(ang) * (u - 0.5) * len
+                + Math.sin(u * 5 + t * 0.8 + n) * 8;
+            const y = y0 + Math.sin(ang) * (u - 0.5) * len * 0.65
+                + Math.cos(u * 4.2 + t * 0.6 + n) * 6;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = `rgba(255, 210, 140, ${0.035 + pulse * 0.03})`;
+        ctx.lineWidth = 1.4 + (n % 3) * 0.5;
+        ctx.stroke();
+    }
+    ctx.restore();
+}
+
+function drawSunContactShadows(ctx) {
+    if (!scenery.sun) return;
+    ctx.save();
+    ctx.globalCompositeOperation = "multiply";
+    ctx.globalAlpha = 0.95;
+
+    if (scenery.debris) {
+        for (const o of obstacles) {
+            const r = obstacleRadius(o);
+            if (isLongObstacle(o)) {
+                drawFloorShadow(ctx, o.x, o.y, o.len * 0.4, o.thick * 0.65, 0.58);
+            } else {
+                drawFloorShadow(ctx, o.x, o.y, r * 0.9, r * 0.62, 0.55);
+            }
+        }
+    }
+    if (scenery.stones) {
+        for (const s of sceneryItems.stones) {
+            drawFloorShadow(ctx, s.x, s.y, s.rx * 1.05, s.ry * 0.95, 0.5);
+        }
+    }
+    if (scenery.lilies) {
+        for (const L of sceneryItems.lilies) {
+            drawFloorShadow(ctx, L.x, L.y, L.r * 0.95, L.r * 0.55, 0.52);
+        }
+    }
+    ctx.restore();
+}
+
+function drawSunCreatureShadows(ctx) {
+    if (!scenery.sun) return;
+    ctx.save();
+    ctx.globalCompositeOperation = "multiply";
+    ctx.globalAlpha = 0.95;
+    for (const f of fishes) {
+        if (f.dead) continue;
+        const deep = f.golden ? 1.25 : 1;
+        drawFloorShadow(ctx, f.x, f.y, f.size * 0.5 * deep, f.size * 0.24 * deep, f.golden ? 0.45 : 0.6);
+    }
+    for (const r of reptiles) {
+        if (r.dead) continue;
+        drawFloorShadow(ctx, r.x, r.y, r.size * 0.42, r.size * 0.18, 0.58);
+    }
+    if (shark && !shark.dead) {
+        drawFloorShadow(ctx, shark.x, shark.y, shark.size * 0.48, shark.size * 0.2, 0.62);
+    }
+    if (whale && !whale.dead) {
+        drawFloorShadow(ctx, whale.x, whale.y, whale.size * 0.42, whale.size * 0.18, 0.52);
+    }
+    ctx.restore();
+}
+
+// Warm golden-hour wash from the viewer: amber light, no sun disc, no rays.
+function drawSunAmbience(ctx) {
+    if (!scenery.sun) return;
+    const shimmer = 0.5 + 0.5 * Math.sin(sunPhase * 0.55);
+
+    ctx.save();
+
+    // Golden-hour amber wash, a bit stronger toward the top of the frame.
+    ctx.globalCompositeOperation = "soft-light";
+    const wash = ctx.createLinearGradient(0, 0, 0, viewH);
+    wash.addColorStop(0, `rgba(255, 210, 140, ${0.24 + shimmer * 0.04})`);
+    wash.addColorStop(0.4, "rgba(255, 180, 100, 0.12)");
+    wash.addColorStop(1, "rgba(90, 55, 40, 0.12)");
+    ctx.fillStyle = wash;
+    ctx.fillRect(0, 0, viewW, viewH);
+
+    // Soft warm glow near the light source, still no beams.
+    ctx.globalCompositeOperation = "screen";
+    const hot = ctx.createRadialGradient(
+        viewW * 0.62, viewH * 0.18, 18,
+        viewW * 0.52, viewH * 0.42, Math.max(viewW, viewH) * 0.68
+    );
+    hot.addColorStop(0, `rgba(255, 220, 150, ${0.09 + shimmer * 0.025})`);
+    hot.addColorStop(0.45, "rgba(255, 170, 90, 0.035)");
+    hot.addColorStop(1, "rgba(200, 120, 60, 0)");
+    ctx.fillStyle = hot;
+    ctx.fillRect(0, 0, viewW, viewH);
+
+    // Warm edge shade so the glow reads without drawing a sun.
+    ctx.globalCompositeOperation = "multiply";
+    ctx.globalAlpha = 0.38;
+    const shade = ctx.createRadialGradient(
+        viewW * 0.55, viewH * 0.32, viewH * 0.14,
+        viewW * 0.5, viewH * 0.52, Math.max(viewW, viewH) * 0.74
+    );
+    shade.addColorStop(0, "rgba(255, 248, 230, 1)");
+    shade.addColorStop(0.6, "rgba(245, 220, 185, 1)");
+    shade.addColorStop(1, "rgba(70, 48, 38, 1)");
+    ctx.fillStyle = shade;
+    ctx.fillRect(0, 0, viewW, viewH);
+
+    ctx.restore();
+}
+
+function isLongObstacle(o) {
+    return o.kind === "log" || o.kind === "plank" || o.kind === "driftwood";
+}
+
+function makeObstacleDetail(i, n, scale) {
+    const pts = [];
+    for (let k = 0; k < n; k++) {
+        pts.push(0.65 + seeded(i * 17 + k * 3 + scale * 11) * 0.55);
+    }
+    return pts;
 }
 
 function rebuildObstacles() {
     const next = [];
-    const pad = Math.min(viewW, viewH) * 0.14;
-    const kinds = ["boulder", "log", "stump"];
-    for (let i = 0; i < 6; i++) {
+    const pad = Math.min(viewW, viewH) * 0.12;
+    // Shore and lake clutter: weathered wood, stone, and a few human remnants.
+    const kinds = [
+        "boulder", "log", "log", "stump", "plank", "driftwood",
+        "mossrock", "pot", "reedraft", "crate", "barrel",
+    ];
+    for (let i = 0; i < 13; i++) {
         const kind = kinds[Math.floor(seeded(i + 700) * kinds.length)];
         const x = pad + seeded(i + 710) * (viewW - pad * 2);
         const y = pad + seeded(i + 720) * (viewH - pad * 2);
-        if (kind === "boulder") {
+        const base = {
+            kind, x, y,
+            rot: seeded(i + 740) * Math.PI,
+            tone: 0.3 + seeded(i + 750) * 0.4,
+            moss: 0.15 + seeded(i + 755) * 0.55,
+            vx: 0, vy: 0, spin: 0,
+            profile: makeObstacleDetail(i, 10, 1),
+            knobs: makeObstacleDetail(i, 5, 2),
+        };
+        if (kind === "boulder" || kind === "mossrock") {
             next.push({
-                kind, x, y,
-                r: 18 + seeded(i + 730) * 16,
-                rot: seeded(i + 740) * Math.PI,
-                tone: 0.4 + seeded(i + 750) * 0.3,
-                vx: 0, vy: 0,
+                ...base,
+                r: 24 + seeded(i + 730) * 30,
+                facets: 7 + Math.floor(seeded(i + 735) * 4),
             });
         } else if (kind === "log") {
             next.push({
-                kind, x, y,
-                len: 46 + seeded(i + 730) * 40,
-                thick: 9 + seeded(i + 740) * 7,
-                rot: seeded(i + 750) * Math.PI,
-                tone: 0.35 + seeded(i + 760) * 0.3,
-                vx: 0, vy: 0,
+                ...base,
+                len: 78 + seeded(i + 730) * 78,
+                thick: 15 + seeded(i + 740) * 13,
+                broken: seeded(i + 745) > 0.45,
+            });
+        } else if (kind === "driftwood") {
+            next.push({
+                ...base,
+                len: 72 + seeded(i + 730) * 70,
+                thick: 10 + seeded(i + 740) * 8,
+                fork: 0.35 + seeded(i + 748) * 0.35,
+            });
+        } else if (kind === "plank") {
+            next.push({
+                ...base,
+                len: 80 + seeded(i + 730) * 90,
+                thick: 7 + seeded(i + 740) * 6,
+            });
+        } else if (kind === "crate") {
+            next.push({
+                ...base,
+                r: 20 + seeded(i + 730) * 16,
+                rot: seeded(i + 740) * Math.PI * 0.5,
+            });
+        } else if (kind === "barrel") {
+            next.push({
+                ...base,
+                r: 22 + seeded(i + 730) * 18,
+            });
+        } else if (kind === "pot") {
+            next.push({
+                ...base,
+                r: 16 + seeded(i + 730) * 14,
+            });
+        } else if (kind === "reedraft") {
+            next.push({
+                ...base,
+                r: 20 + seeded(i + 730) * 16,
+                stems: 5 + Math.floor(seeded(i + 742) * 4),
             });
         } else {
             next.push({
-                kind, x, y,
-                r: 14 + seeded(i + 730) * 10,
-                rot: seeded(i + 740) * Math.PI,
-                tone: 0.3 + seeded(i + 750) * 0.35,
-                vx: 0, vy: 0,
+                ...base,
+                kind: "stump",
+                r: 18 + seeded(i + 730) * 16,
             });
         }
     }
@@ -1188,7 +2017,15 @@ function rebuildObstacles() {
 }
 
 function obstacleMass(o) {
-    return o.kind === "boulder" ? 1.55 : o.kind === "log" ? 1.2 : 1;
+    if (o.kind === "boulder" || o.kind === "mossrock") return 1.85;
+    if (o.kind === "barrel") return 1.45;
+    if (o.kind === "crate") return 1.25;
+    if (o.kind === "log") return 1.35;
+    if (o.kind === "driftwood") return 1.05;
+    if (o.kind === "plank") return 0.95;
+    if (o.kind === "pot") return 1.15;
+    if (o.kind === "reedraft") return 0.85;
+    return 1.1;
 }
 
 // Heavy water resistance: debris lags behind a fast cursor, coasts, and yaws in the flow.
@@ -1223,23 +2060,23 @@ function updateObstacles(dt) {
                 o.vx *= 0.92;
                 o.vy *= 0.92;
             }
-            // Torque from the pull direction so it twists while being hauled.
+            // Light torque while hauled: slow yaw, not a spin cycle.
             if (dist > 4) {
                 const pullAng = Math.atan2(dy, dx);
-                const align = o.kind === "log" ? pullAng : pullAng + Math.PI * 0.35;
-                o.spin += normAngle(align - o.rot) * (2.8 / mass) * dt;
+                const align = isLongObstacle(o) ? pullAng : pullAng + Math.PI * 0.2;
+                o.spin += normAngle(align - o.rot) * (0.85 / mass) * dt;
             }
         } else if (o.vx * o.vx + o.vy * o.vy > 4) {
             // Coast and settle after release.
             const coast = Math.exp(-2.6 * dt);
             o.vx *= coast;
             o.vy *= coast;
-            o.spin *= Math.exp(-1.8 * dt);
+            o.spin *= Math.exp(-3.2 * dt);
         } else {
             o.vx = 0;
             o.vy = 0;
-            o.spin *= Math.exp(-4 * dt);
-            if (Math.abs(o.spin) < 0.02) o.spin = 0;
+            o.spin *= Math.exp(-5.5 * dt);
+            if (Math.abs(o.spin) < 0.01) o.spin = 0;
         }
 
         if (o.vx || o.vy || o.spin) {
@@ -1249,21 +2086,21 @@ function updateObstacles(dt) {
             const spd = Math.hypot(o.vx, o.vy);
             if (spd > 6) {
                 const travelAng = Math.atan2(o.vy, o.vx);
-                if (o.kind === "log") {
-                    // Long axis lines up with the current through the water.
+                if (isLongObstacle(o)) {
+                    // Long axis gently lines up with the current.
                     const diff = normAngle(travelAng - o.rot);
-                    o.rot += diff * Math.min(1, dt * 3.4);
-                    o.spin += diff * 0.8 * dt;
+                    o.rot += diff * Math.min(1, dt * 1.2);
+                    o.spin += diff * 0.18 * dt;
                 } else {
-                    // Boulders and stumps tumble with the flow.
-                    o.spin += (o.vx * 0.015 + o.vy * 0.01) * dt * 40;
+                    // Chunkier debris only drifts a little in yaw.
+                    o.spin += (o.vx * 0.004 + o.vy * 0.003) * dt * 10;
                     const diff = normAngle(travelAng - o.rot);
-                    o.rot += diff * Math.min(1, dt * 1.4);
+                    o.rot += diff * Math.min(1, dt * 0.45);
                 }
             }
-            o.spin = Math.max(-6, Math.min(6, o.spin));
+            o.spin = Math.max(-1.8, Math.min(1.8, o.spin));
             o.rot += o.spin * dt;
-            o.spin *= Math.exp(-1.2 * dt);
+            o.spin *= Math.exp(-2.6 * dt);
 
             if (spd > 18) {
                 const wake = Math.min(1, spd / 120);
@@ -1325,10 +2162,10 @@ function resolveObstacleCollisions() {
             b.vx = (b.vx || 0) + (impulse / mb) * nx;
             b.vy = (b.vy || 0) + (impulse / mb) * ny;
 
-            // Glancing hits add tumble.
+            // Glancing hits add a little yaw, kept mild in water.
             const tangent = rvx * (-ny) + rvy * nx;
-            a.spin = (a.spin || 0) - tangent * 0.035 / ma;
-            b.spin = (b.spin || 0) + tangent * 0.035 / mb;
+            a.spin = (a.spin || 0) - tangent * 0.01 / ma;
+            b.spin = (b.spin || 0) + tangent * 0.01 / mb;
 
             const impact = Math.abs(impulse);
             if (impact > 18) {
@@ -1364,7 +2201,9 @@ function scareFishFromDebris(o, spd) {
 }
 
 function obstacleRadius(o) {
-    if (o.kind === "log") return Math.max(o.thick, o.len * 0.28);
+    if (isLongObstacle(o)) return Math.max(o.thick, o.len * 0.28);
+    if (o.kind === "crate") return o.r * 0.95;
+    if (o.kind === "reedraft") return o.r * 1.05;
     return o.r;
 }
 
@@ -1373,12 +2212,20 @@ function obstacleAt(x, y) {
     let best = null, bd = 16;
     for (const o of obstacles) {
         let d;
-        if (o.kind === "log") {
+        if (isLongObstacle(o)) {
             const ca = Math.cos(o.rot), sa = Math.sin(o.rot);
             const lx = (x - o.x) * ca + (y - o.y) * sa;
             const ly = -(x - o.x) * sa + (y - o.y) * ca;
             const dx = Math.max(Math.abs(lx) - o.len * 0.5, 0);
             const dy = Math.max(Math.abs(ly) - o.thick * 0.55, 0);
+            d = Math.hypot(dx, dy);
+        } else if (o.kind === "crate") {
+            const ca = Math.cos(o.rot), sa = Math.sin(o.rot);
+            const lx = (x - o.x) * ca + (y - o.y) * sa;
+            const ly = -(x - o.x) * sa + (y - o.y) * ca;
+            const half = o.r * 0.85;
+            const dx = Math.max(Math.abs(lx) - half, 0);
+            const dy = Math.max(Math.abs(ly) - half, 0);
             d = Math.hypot(dx, dy);
         } else {
             d = Math.max(0, Math.hypot(x - o.x, y - o.y) - o.r);
@@ -1388,11 +2235,19 @@ function obstacleAt(x, y) {
     return best;
 }
 
-// Bias heading away from nearby solids.
-function obstacleAvoidDir(x, y, bodyR) {
+// Large enough swimmers can shoulder aside smaller debris instead of steering around it.
+function canShoveObstacle(ent, o) {
+    if (!ent || ent.size == null) return false;
+    if (o === grabbedObstacle) return false;
+    return ent.size >= obstacleRadius(o) * 1.05;
+}
+
+// Bias heading away from nearby solids (skip debris the swimmer can shove).
+function obstacleAvoidDir(x, y, bodyR, fishSize) {
     if (!scenery.debris || !obstacles.length) return null;
     let ax = 0, ay = 0, hits = 0;
     for (const o of obstacles) {
+        if (fishSize != null && fishSize >= obstacleRadius(o) * 1.05) continue;
         const rr = obstacleRadius(o) + bodyR;
         const dx = x - o.x, dy = y - o.y;
         const d = Math.hypot(dx, dy) || 0.001;
@@ -1407,11 +2262,14 @@ function obstacleAvoidDir(x, y, bodyR) {
     return Math.atan2(ay, ax);
 }
 
-// Push a swimmer out of solid debris.
+// Resolve overlap: small debris is shoved aside by large fish; otherwise the swimmer yields.
 function resolveObstacleOverlap(ent, bodyR) {
     if (!scenery.debris || !obstacles.length) return;
+    const pad = 24;
     for (const o of obstacles) {
-        if (o.kind === "log") {
+        const shove = canShoveObstacle(ent, o);
+        const shoveForce = shove ? Math.min(90, (ent.baseSpeed || ent.speed || 50) * 0.55) : 0;
+        if (isLongObstacle(o)) {
             const ca = Math.cos(o.rot), sa = Math.sin(o.rot);
             const lx = (ent.x - o.x) * ca + (ent.y - o.y) * sa;
             const ly = -(ent.x - o.x) * sa + (ent.y - o.y) * ca;
@@ -1422,23 +2280,53 @@ function resolveObstacleOverlap(ent, bodyR) {
                 const oy = hy - Math.abs(ly);
                 if (ox < oy) {
                     const nx = Math.sign(lx) || 1;
-                    ent.x += ca * nx * ox;
-                    ent.y += sa * nx * ox;
+                    if (shove) {
+                        o.x -= ca * nx * ox;
+                        o.y -= sa * nx * ox;
+                        o.vx = (o.vx || 0) - ca * nx * shoveForce;
+                        o.vy = (o.vy || 0) - sa * nx * shoveForce;
+                        o.spin = (o.spin || 0) + nx * 0.25;
+                    } else {
+                        ent.x += ca * nx * ox;
+                        ent.y += sa * nx * ox;
+                    }
                 } else {
                     const ny = Math.sign(ly) || 1;
-                    ent.x += -sa * ny * oy;
-                    ent.y += ca * ny * oy;
+                    if (shove) {
+                        o.x -= -sa * ny * oy;
+                        o.y -= ca * ny * oy;
+                        o.vx = (o.vx || 0) + sa * ny * shoveForce;
+                        o.vy = (o.vy || 0) - ca * ny * shoveForce;
+                        o.spin = (o.spin || 0) + ny * 0.2;
+                    } else {
+                        ent.x += -sa * ny * oy;
+                        ent.y += ca * ny * oy;
+                    }
                 }
             }
         } else {
-            const rr = o.r + bodyR;
+            const rr = obstacleRadius(o) + bodyR;
             const dx = ent.x - o.x, dy = ent.y - o.y;
             const d = Math.hypot(dx, dy) || 0.001;
             if (d < rr) {
-                const push = (rr - d) / d;
-                ent.x += dx * push;
-                ent.y += dy * push;
+                const overlap = rr - d;
+                const nx = dx / d;
+                const ny = dy / d;
+                if (shove) {
+                    o.x -= nx * overlap;
+                    o.y -= ny * overlap;
+                    o.vx = (o.vx || 0) - nx * shoveForce;
+                    o.vy = (o.vy || 0) - ny * shoveForce;
+                    o.spin = (o.spin || 0) + (nx - ny) * 0.15;
+                } else {
+                    ent.x += nx * overlap;
+                    ent.y += ny * overlap;
+                }
             }
+        }
+        if (shove) {
+            o.x = Math.max(pad, Math.min(viewW - pad, o.x));
+            o.y = Math.max(pad, Math.min(viewH - pad, o.y));
         }
     }
 }
@@ -1477,16 +2365,19 @@ function drawDuckweed(ctx, t, dt) {
         ctx.save();
         ctx.translate(d.x, d.y + bob);
         ctx.rotate(d.rot);
-        ctx.globalAlpha = 0.55;
+        ctx.globalAlpha = 0.58;
         for (let i = 0; i < d.density; i++) {
             const a = (i / d.density) * Math.PI * 2 + d.bob;
             const rr = d.r * (0.25 + (i % 3) * 0.12);
             const px = Math.cos(a) * d.r * 0.45;
             const py = Math.sin(a) * d.r * 0.35;
-            ctx.fillStyle = i % 2 ? "rgba(90,140,70,0.75)" : "rgba(60,110,55,0.7)";
-            ctx.beginPath();
-            ctx.ellipse(px, py, rr * 0.55, rr * 0.4, a, 0, Math.PI * 2);
+            ctx.fillStyle = i % 2 ? "rgba(90,140,70,0.78)" : "rgba(60,110,55,0.72)";
+            ctx.save();
+            ctx.translate(px, py);
+            ctx.rotate(a);
+            pathOrganicOval(ctx, rr * 0.55, rr * 0.38, 7, null, 0.22);
             ctx.fill();
+            ctx.restore();
         }
         ctx.restore();
     }
@@ -1501,19 +2392,300 @@ function drawLeaves(ctx, t, dt) {
         ctx.save();
         ctx.translate(L.x, L.y + bob);
         ctx.rotate(L.rot + lift * 0.06);
-        ctx.globalAlpha = 0.7;
+        ctx.globalAlpha = 0.72;
         const c = Math.floor(90 + L.tone * 70);
-        ctx.fillStyle = `rgba(${c},${Math.floor(c * 0.7)},${Math.floor(c * 0.25)},0.75)`;
+        ctx.fillStyle = `rgba(${c},${Math.floor(c * 0.7)},${Math.floor(c * 0.25)},0.8)`;
         ctx.beginPath();
-        ctx.ellipse(0, 0, L.len, L.len * 0.45, 0, 0, Math.PI * 2);
+        ctx.moveTo(-L.len * 0.85, 0);
+        ctx.quadraticCurveTo(-L.len * 0.2, -L.len * 0.55, L.len * 0.75, -L.len * 0.08);
+        ctx.quadraticCurveTo(L.len * 0.95, 0, L.len * 0.75, L.len * 0.1);
+        ctx.quadraticCurveTo(-L.len * 0.15, L.len * 0.5, -L.len * 0.85, 0);
+        ctx.closePath();
         ctx.fill();
-        ctx.strokeStyle = `rgba(${c - 30},${Math.floor(c * 0.5)},20,0.45)`;
+        ctx.strokeStyle = `rgba(${c - 30},${Math.floor(c * 0.5)},20,0.5)`;
         ctx.lineWidth = 0.8;
         ctx.beginPath();
         ctx.moveTo(-L.len * 0.7, 0);
-        ctx.lineTo(L.len * 0.7, 0);
+        ctx.quadraticCurveTo(0, L.len * 0.04, L.len * 0.7, 0);
+        ctx.moveTo(-L.len * 0.15, -L.len * 0.15);
+        ctx.quadraticCurveTo(L.len * 0.1, 0, L.len * 0.35, L.len * 0.12);
         ctx.stroke();
         ctx.restore();
+    }
+}
+
+function woodTone(tone, lift) {
+    const c = Math.floor(62 + tone * 48 + (lift || 0));
+    return {
+        c,
+        fill: `rgb(${c},${Math.floor(c * 0.7)},${Math.floor(c * 0.4)})`,
+        dark: `rgb(${c - 22},${Math.floor(c * 0.52)},${Math.floor(c * 0.28)})`,
+        light: `rgb(${Math.min(200, c + 28)},${Math.floor(c * 0.85)},${Math.floor(c * 0.52)})`,
+        line: `rgba(${c - 28},${Math.floor(c * 0.48)},${Math.floor(c * 0.22)},0.65)`,
+        moss: `rgba(${40 + Math.floor(tone * 30)},${95 + Math.floor(tone * 50)},${55 + Math.floor(tone * 20)},`,
+    };
+}
+
+// Irregular closed outline instead of a clean oval / circle.
+function pathOrganicOval(ctx, rx, ry, points, profile, wobble) {
+    const n = Math.max(6, points | 0);
+    const w = wobble == null ? 0.18 : wobble;
+    ctx.beginPath();
+    for (let i = 0; i <= n; i++) {
+        const t = i / n;
+        const a = t * Math.PI * 2 - Math.PI * 0.5;
+        const jag = profile && profile.length
+            ? 0.78 + profile[i % profile.length] * 0.35
+            : 0.88 + 0.12 * Math.sin(t * 11.3);
+        const bump = 1 + Math.sin(t * 6.2) * w * 0.45 + Math.sin(t * 13.7) * w * 0.25;
+        const x = Math.cos(a) * rx * jag * bump;
+        const y = Math.sin(a) * ry * jag * (0.92 + bump * 0.08);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+}
+
+// Weathered crate / box with bowed sides and chewed corners.
+function pathWornCrate(ctx, s, profile) {
+    const h = s * 0.5;
+    const bow = s * 0.04;
+    const p = profile || [];
+    ctx.beginPath();
+    ctx.moveTo(-h + s * 0.04, -h + s * 0.06);
+    ctx.quadraticCurveTo(0, -h - bow * (p[0] || 1), h - s * 0.05, -h + s * 0.04);
+    ctx.quadraticCurveTo(h + bow * 0.8, 0, h - s * 0.03, h - s * 0.05);
+    ctx.quadraticCurveTo(0, h + bow * (p[1] || 1), -h + s * 0.06, h - s * 0.04);
+    ctx.quadraticCurveTo(-h - bow, 0, -h + s * 0.04, -h + s * 0.06);
+    ctx.closePath();
+}
+
+// Barrel / drum silhouette with bulged staves.
+function pathBarrelSilhouette(ctx, rx, ry, profile) {
+    const n = 14;
+    ctx.beginPath();
+    for (let i = 0; i <= n; i++) {
+        const t = i / n;
+        const a = -Math.PI * 0.5 + t * Math.PI * 2;
+        const stave = 0.9 + 0.12 * Math.sin(t * Math.PI * 8);
+        const jag = profile ? 0.92 + (profile[i % profile.length] - 0.8) * 0.12 : 1;
+        // Slight waist / belly so it is not a perfect ellipse.
+        const belly = 1 + 0.08 * Math.cos(a * 2);
+        const x = Math.cos(a) * rx * stave * jag * belly;
+        const y = Math.sin(a) * ry * jag;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+}
+
+// Fusiform fish body: pointed head, fuller midsection, taper to the peduncle.
+function pathFishFusiform(ctx, L, W, shape) {
+    const head = shape === "round" ? L * 0.38 : shape === "diamond" ? L * 0.46 : L * 0.5;
+    const back = shape === "slim" ? W * 0.78 : shape === "round" ? W * 1.05 : W;
+    const belly = shape === "slim" ? W * 0.7 : shape === "round" ? W * 1.1 : W * 0.95;
+    const ped = shape === "diamond" ? -L * 0.36 : -L * 0.42;
+    ctx.beginPath();
+    ctx.moveTo(head, 0);
+    // Upper jaw / back to peduncle.
+    ctx.bezierCurveTo(head * 0.55, -back * 0.55, L * 0.05, -back * 1.05, ped * 0.15, -back * 0.85);
+    ctx.bezierCurveTo(ped * 0.55, -back * 0.55, ped * 0.9, -back * 0.35, ped, 0);
+    // Lower belly back to the snout.
+    ctx.bezierCurveTo(ped * 0.9, belly * 0.35, ped * 0.55, belly * 0.55, ped * 0.15, belly * 0.8);
+    ctx.bezierCurveTo(L * 0.05, belly * 1.0, head * 0.55, belly * 0.5, head, 0);
+    ctx.closePath();
+}
+
+function pathJaggedCapsule(ctx, len, thick, profile, endJags) {
+    const half = len * 0.5;
+    const n = profile.length || 8;
+    ctx.beginPath();
+    for (let i = 0; i <= n; i++) {
+        const t = i / n;
+        const x = -half + len * t;
+        const jag = profile[Math.min(n - 1, i)] || 1;
+        const y = -thick * 0.48 * jag;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    // Broken right end.
+    const ej = endJags || [1, 0.7, 1.1, 0.8];
+    for (let i = 0; i < ej.length; i++) {
+        const y = -thick * 0.45 + (thick * 0.9 * i) / (ej.length - 1);
+        ctx.lineTo(half + thick * 0.12 * (ej[i] - 0.9), y);
+    }
+    for (let i = n; i >= 0; i--) {
+        const t = i / n;
+        const x = -half + len * t;
+        const jag = profile[Math.min(n - 1, i)] || 1;
+        const y = thick * 0.48 * (0.85 + (1.15 - jag) * 0.5);
+        ctx.lineTo(x, y);
+    }
+    // Broken left end.
+    for (let i = ej.length - 1; i >= 0; i--) {
+        const y = thick * 0.45 - (thick * 0.9 * i) / (ej.length - 1);
+        ctx.lineTo(-half - thick * 0.1 * (ej[i] - 0.85), y);
+    }
+    ctx.closePath();
+}
+
+function drawMossPatches(ctx, o, w, spreadX, spreadY) {
+    const moss = o.moss || 0.3;
+    ctx.fillStyle = w.moss + (0.22 + moss * 0.35) + ")";
+    const knobs = o.knobs || [];
+    for (let i = 0; i < knobs.length; i++) {
+        const k = knobs[i];
+        const x = (i / Math.max(1, knobs.length - 1) - 0.5) * spreadX * 1.4;
+        const y = (k - 1) * spreadY * 1.8;
+        ctx.beginPath();
+        ctx.ellipse(x, y, 3 + k * 5, 2 + k * 3.2, k * 1.7, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+function drawLogBody(ctx, o) {
+    const w = woodTone(o.tone);
+    const profile = o.profile || makeObstacleDetail(1, 10, 1);
+    const endJags = o.knobs || [1, 0.75, 1.15, 0.85];
+    pathJaggedCapsule(ctx, o.len, o.thick, profile, endJags);
+    const g = ctx.createLinearGradient(0, -o.thick, 0, o.thick);
+    g.addColorStop(0, w.light);
+    g.addColorStop(0.45, w.fill);
+    g.addColorStop(1, w.dark);
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.strokeStyle = w.line;
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    // Bark ridges along the length.
+    ctx.strokeStyle = `rgba(${w.c - 30},${Math.floor(w.c * 0.45)},${Math.floor(w.c * 0.22)},0.45)`;
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 5; i++) {
+        const y = -o.thick * 0.32 + i * o.thick * 0.16;
+        ctx.beginPath();
+        for (let s = 0; s <= 10; s++) {
+            const t = s / 10;
+            const x = -o.len * 0.46 + o.len * 0.92 * t;
+            const wave = Math.sin(t * 9 + i * 1.3) * o.thick * 0.05
+                + (profile[Math.min(profile.length - 1, s)] - 1) * o.thick * 0.08;
+            if (s === 0) ctx.moveTo(x, y + wave);
+            else ctx.lineTo(x, y + wave);
+        }
+        ctx.stroke();
+    }
+
+    // Knots / burrs.
+    for (let i = 0; i < 3; i++) {
+        const t = 0.2 + (o.knobs[i] || 0.5) * 0.55;
+        const x = -o.len * 0.4 + o.len * t;
+        const y = ((i % 2) * 2 - 1) * o.thick * 0.18;
+        ctx.fillStyle = w.dark;
+        ctx.beginPath();
+        ctx.ellipse(x, y, o.thick * 0.16, o.thick * 0.12, 0.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = w.line;
+        ctx.beginPath();
+        ctx.ellipse(x, y, o.thick * 0.08, o.thick * 0.06, 0.4, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+
+    // End grain: broken rings, not clean ovals.
+    const drawEnd = (side) => {
+        const x = side * o.len * 0.47;
+        ctx.fillStyle = w.light;
+        ctx.beginPath();
+        ctx.ellipse(x, 0, o.thick * 0.2, o.thick * 0.42, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = `rgba(${w.c + 10},${Math.floor(w.c * 0.75)},${Math.floor(w.c * 0.45)},0.55)`;
+        for (let r = 1; r <= 3; r++) {
+            ctx.beginPath();
+            const rr = o.thick * (0.08 + r * 0.09);
+            for (let a = 0; a <= 12; a++) {
+                const ang = (a / 12) * Math.PI * 2;
+                const jag = 0.85 + (profile[a % profile.length] - 0.8) * 0.35;
+                const px = x + Math.cos(ang) * rr * 0.55 * jag;
+                const py = Math.sin(ang) * rr * jag;
+                if (a === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            ctx.stroke();
+        }
+        if (o.broken && side > 0) {
+            ctx.strokeStyle = w.line;
+            ctx.beginPath();
+            ctx.moveTo(x + o.thick * 0.05, -o.thick * 0.3);
+            ctx.lineTo(x + o.thick * 0.28, -o.thick * 0.05);
+            ctx.lineTo(x + o.thick * 0.1, o.thick * 0.25);
+            ctx.stroke();
+        }
+    };
+    drawEnd(-1);
+    drawEnd(1);
+    drawMossPatches(ctx, o, w, o.len * 0.35, o.thick * 0.25);
+}
+
+function drawDriftwood(ctx, o) {
+    const w = woodTone(o.tone, -6);
+    pathJaggedCapsule(ctx, o.len, o.thick * 0.85, o.profile, o.knobs);
+    ctx.fillStyle = w.fill;
+    ctx.fill();
+    ctx.strokeStyle = w.line;
+    ctx.lineWidth = 1.1;
+    ctx.stroke();
+    // Forked limb.
+    const fork = o.fork || 0.45;
+    ctx.beginPath();
+    ctx.moveTo(o.len * 0.05, -o.thick * 0.1);
+    ctx.quadraticCurveTo(o.len * 0.25, -o.thick * (0.8 + fork), o.len * 0.42, -o.thick * (1.1 + fork));
+    ctx.lineTo(o.len * 0.38, -o.thick * (0.7 + fork));
+    ctx.quadraticCurveTo(o.len * 0.2, -o.thick * 0.35, o.len * 0.02, 0);
+    ctx.closePath();
+    ctx.fillStyle = w.dark;
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = w.line;
+    ctx.beginPath();
+    ctx.moveTo(-o.len * 0.3, o.thick * 0.1);
+    ctx.quadraticCurveTo(0, o.thick * 0.25, o.len * 0.2, -o.thick * 0.05);
+    ctx.stroke();
+    drawMossPatches(ctx, o, w, o.len * 0.3, o.thick * 0.3);
+}
+
+function drawFacetRock(ctx, o, mossy) {
+    const c = Math.floor(70 + o.tone * 50);
+    const facets = o.facets || 8;
+    const profile = o.profile || makeObstacleDetail(2, facets, 3);
+    ctx.beginPath();
+    for (let i = 0; i < facets; i++) {
+        const a = (i / facets) * Math.PI * 2 - 0.4;
+        const rr = o.r * (0.72 + profile[i % profile.length] * 0.35);
+        const x = Math.cos(a) * rr;
+        const y = Math.sin(a) * rr * 0.72;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    const g = ctx.createRadialGradient(-o.r * 0.2, -o.r * 0.25, 2, 0, 0, o.r);
+    g.addColorStop(0, `rgb(${c + 22},${c + 18},${c + 14})`);
+    g.addColorStop(1, `rgb(${c - 30},${c - 26},${c - 24})`);
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.strokeStyle = "rgba(120,140,130,0.28)";
+    ctx.lineWidth = 1.1;
+    ctx.stroke();
+    // Crack lines.
+    ctx.strokeStyle = `rgba(${c - 25},${c - 20},${c - 18},0.4)`;
+    ctx.beginPath();
+    ctx.moveTo(-o.r * 0.35, -o.r * 0.1);
+    ctx.quadraticCurveTo(0, o.r * 0.05, o.r * 0.3, -o.r * 0.15);
+    ctx.moveTo(-o.r * 0.1, -o.r * 0.3);
+    ctx.lineTo(o.r * 0.05, o.r * 0.25);
+    ctx.stroke();
+    if (mossy) {
+        const w = woodTone(o.tone);
+        drawMossPatches(ctx, o, w, o.r * 0.7, o.r * 0.45);
     }
 }
 
@@ -1526,46 +2698,206 @@ function drawObstacles(ctx, dt) {
         ctx.save();
         ctx.translate(o.x, o.y - lift);
         ctx.rotate(o.rot);
-        ctx.globalAlpha = dragging ? 0.95 : 0.86;
+        ctx.globalAlpha = dragging ? 0.95 : 0.88;
         if (dragging) {
             ctx.shadowColor = "rgba(180,210,200,0.35)";
             ctx.shadowBlur = 14;
         }
         if (o.kind === "boulder") {
-            const c = Math.floor(75 + o.tone * 45);
-            const g = ctx.createRadialGradient(-o.r * 0.25, -o.r * 0.3, 2, 0, 0, o.r);
-            g.addColorStop(0, `rgb(${c + 18},${c + 14},${c + 10})`);
-            g.addColorStop(1, `rgb(${c - 28},${c - 24},${c - 22})`);
-            ctx.fillStyle = g;
+            drawFacetRock(ctx, o, false);
+        } else if (o.kind === "mossrock") {
+            drawFacetRock(ctx, o, true);
+        } else if (o.kind === "log") {
+            drawLogBody(ctx, o);
+        } else if (o.kind === "driftwood") {
+            drawDriftwood(ctx, o);
+        } else if (o.kind === "plank") {
+            const w = woodTone(o.tone, 8);
+            const profile = o.profile || [];
             ctx.beginPath();
-            ctx.ellipse(0, 0, o.r, o.r * 0.72, 0, 0, Math.PI * 2);
+            ctx.moveTo(-o.len * 0.5, -o.thick * 0.5);
+            for (let i = 0; i < 6; i++) {
+                const t = i / 5;
+                ctx.lineTo(-o.len * 0.5 + o.len * t, -o.thick * (0.45 + (profile[i] || 1) * 0.08));
+            }
+            ctx.lineTo(o.len * 0.5, o.thick * 0.5);
+            for (let i = 5; i >= 0; i--) {
+                const t = i / 5;
+                ctx.lineTo(-o.len * 0.5 + o.len * t, o.thick * (0.4 + (profile[i] || 1) * 0.1));
+            }
+            ctx.closePath();
+            ctx.fillStyle = w.fill;
             ctx.fill();
-            ctx.strokeStyle = "rgba(140,160,150,0.2)";
+            ctx.strokeStyle = w.line;
             ctx.lineWidth = 1;
             ctx.stroke();
-        } else if (o.kind === "log") {
-            const c = Math.floor(70 + o.tone * 40);
-            ctx.fillStyle = `rgb(${c},${Math.floor(c * 0.72)},${Math.floor(c * 0.42)})`;
             ctx.beginPath();
-            ctx.ellipse(0, 0, o.len * 0.5, o.thick * 0.5, 0, 0, Math.PI * 2);
+            ctx.moveTo(-o.len * 0.35, -o.thick * 0.12);
+            ctx.lineTo(o.len * 0.4, -o.thick * 0.08);
+            ctx.moveTo(-o.len * 0.28, o.thick * 0.15);
+            ctx.lineTo(o.len * 0.35, o.thick * 0.1);
+            ctx.stroke();
+            drawMossPatches(ctx, o, w, o.len * 0.3, o.thick);
+        } else if (o.kind === "crate") {
+            const w = woodTone(o.tone);
+            const s = o.r * 1.55;
+            const g = ctx.createLinearGradient(-s * 0.4, -s * 0.4, s * 0.4, s * 0.4);
+            g.addColorStop(0, w.light);
+            g.addColorStop(0.55, w.fill);
+            g.addColorStop(1, w.dark);
+            pathWornCrate(ctx, s, o.profile);
+            ctx.fillStyle = g;
             ctx.fill();
-            ctx.strokeStyle = `rgba(${c - 25},${Math.floor(c * 0.5)},${Math.floor(c * 0.25)},0.55)`;
-            ctx.lineWidth = 1.2;
-            for (let i = -2; i <= 2; i++) {
+            ctx.strokeStyle = w.line;
+            ctx.lineWidth = 1.3;
+            ctx.stroke();
+            // Warped plank seams.
+            ctx.beginPath();
+            ctx.moveTo(-s * 0.42, s * 0.02);
+            ctx.quadraticCurveTo(0, s * 0.06, s * 0.4, -s * 0.02);
+            ctx.moveTo(s * 0.02, -s * 0.4);
+            ctx.quadraticCurveTo(-s * 0.04, 0, s * 0.04, s * 0.4);
+            ctx.moveTo(-s * 0.28, -s * 0.28);
+            ctx.quadraticCurveTo(0, 0, s * 0.3, s * 0.26);
+            ctx.stroke();
+            // Missing corner notch.
+            ctx.fillStyle = w.dark;
+            ctx.beginPath();
+            ctx.moveTo(s * 0.32, -s * 0.48);
+            ctx.lineTo(s * 0.48, -s * 0.28);
+            ctx.lineTo(s * 0.28, -s * 0.22);
+            ctx.closePath();
+            ctx.fill();
+            drawMossPatches(ctx, o, w, s * 0.35, s * 0.35);
+        } else if (o.kind === "barrel") {
+            const w = woodTone(o.tone, -4);
+            const g = ctx.createLinearGradient(-o.r * 0.5, 0, o.r * 0.5, 0);
+            g.addColorStop(0, w.dark);
+            g.addColorStop(0.45, w.fill);
+            g.addColorStop(1, w.light);
+            pathBarrelSilhouette(ctx, o.r * 0.88, o.r, o.profile);
+            ctx.fillStyle = g;
+            ctx.fill();
+            ctx.strokeStyle = w.line;
+            ctx.lineWidth = 1.4;
+            ctx.stroke();
+            // Hoops follow the bulged outline.
+            for (const yy of [-o.r * 0.48, -o.r * 0.05, o.r * 0.38]) {
+                ctx.save();
+                ctx.translate(0, yy);
+                pathOrganicOval(ctx, o.r * 0.8, o.r * 0.11, 12, o.profile, 0.08);
+                ctx.stroke();
+                ctx.restore();
+            }
+            ctx.strokeStyle = `rgba(${w.c - 15},${Math.floor(w.c * 0.5)},${Math.floor(w.c * 0.25)},0.4)`;
+            for (let i = -3; i <= 3; i++) {
                 ctx.beginPath();
-                ctx.ellipse(i * o.len * 0.14, 0, o.len * 0.04, o.thick * 0.42, 0, 0, Math.PI * 2);
+                ctx.moveTo(i * o.r * 0.18, -o.r * 0.78);
+                ctx.quadraticCurveTo(i * o.r * 0.24, 0, i * o.r * 0.16, o.r * 0.78);
                 ctx.stroke();
             }
+            drawMossPatches(ctx, o, w, o.r * 0.5, o.r * 0.5);
+        } else if (o.kind === "pot") {
+            const c = Math.floor(95 + o.tone * 40);
+            const g = ctx.createLinearGradient(-o.r * 0.4, -o.r * 0.4, o.r * 0.5, o.r * 0.5);
+            g.addColorStop(0, `rgb(${c + 20},${Math.floor(c * 0.7)},${Math.floor(c * 0.48)})`);
+            g.addColorStop(1, `rgb(${c - 25},${Math.floor(c * 0.48)},${Math.floor(c * 0.3)})`);
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.moveTo(-o.r * 0.42, o.r * 0.58);
+            ctx.bezierCurveTo(-o.r * 0.95, o.r * 0.15, -o.r * 0.88, -o.r * 0.25, -o.r * 0.38, -o.r * 0.52);
+            ctx.quadraticCurveTo(-o.r * 0.1, -o.r * 0.62, o.r * 0.12, -o.r * 0.58);
+            ctx.bezierCurveTo(o.r * 0.55, -o.r * 0.52, o.r * 0.95, -o.r * 0.1, o.r * 0.62, o.r * 0.55);
+            ctx.quadraticCurveTo(0.1, o.r * 0.72, -o.r * 0.42, o.r * 0.58);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = `rgba(${c - 35},${Math.floor(c * 0.38)},${Math.floor(c * 0.22)},0.55)`;
+            ctx.lineWidth = 1.1;
+            ctx.stroke();
+            // Irregular rim opening.
+            ctx.fillStyle = `rgba(${c - 30},${Math.floor(c * 0.42)},${Math.floor(c * 0.25)},0.9)`;
+            ctx.save();
+            ctx.translate(0, -o.r * 0.52);
+            pathOrganicOval(ctx, o.r * 0.4, o.r * 0.14, 10, o.profile, 0.12);
+            ctx.fill();
+            ctx.restore();
+            // Chip on the rim.
+            ctx.beginPath();
+            ctx.moveTo(o.r * 0.15, -o.r * 0.62);
+            ctx.lineTo(o.r * 0.3, -o.r * 0.4);
+            ctx.lineTo(o.r * 0.02, -o.r * 0.46);
+            ctx.fillStyle = `rgba(${c - 45},${Math.floor(c * 0.32)},${Math.floor(c * 0.18)},0.75)`;
+            ctx.fill();
+            drawMossPatches(ctx, o, woodTone(o.tone), o.r * 0.45, o.r * 0.35);
+        } else if (o.kind === "reedraft") {
+            const stems = o.stems || 6;
+            for (let i = 0; i < stems; i++) {
+                const t = (i / (stems - 1) - 0.5) * o.r * 1.6;
+                const lean = (o.profile[i % o.profile.length] - 1) * 0.4;
+                const g = Math.floor(70 + o.tone * 60 + i * 3);
+                ctx.strokeStyle = `rgba(${40 + g * 0.2},${g},${55 + g * 0.15},0.8)`;
+                ctx.lineWidth = 2.2;
+                ctx.lineCap = "round";
+                ctx.beginPath();
+                ctx.moveTo(t * 0.3, o.r * 0.35);
+                ctx.quadraticCurveTo(t + lean * 8, 0, t * 1.1 + lean * 14, -o.r * 0.95);
+                ctx.stroke();
+            }
+            // Twine binding.
+            ctx.strokeStyle = "rgba(120,95,55,0.7)";
+            ctx.lineWidth = 1.4;
+            ctx.beginPath();
+            ctx.ellipse(0, o.r * 0.05, o.r * 0.7, o.r * 0.22, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.fillStyle = "rgba(55,80,50,0.35)";
+            ctx.beginPath();
+            ctx.ellipse(0, o.r * 0.25, o.r * 0.65, o.r * 0.28, 0, 0, Math.PI * 2);
+            ctx.fill();
         } else {
-            const c = Math.floor(65 + o.tone * 40);
-            ctx.fillStyle = `rgb(${c},${Math.floor(c * 0.7)},${Math.floor(c * 0.4)})`;
+            // Stump: bark sides + jagged ringed cut face.
+            const w = woodTone(o.tone);
+            const facets = 9;
+            const profile = o.profile || makeObstacleDetail(3, facets, 4);
             ctx.beginPath();
-            ctx.ellipse(0, 0, o.r, o.r * 0.7, 0, 0, Math.PI * 2);
+            for (let i = 0; i < facets; i++) {
+                const a = (i / facets) * Math.PI * 2;
+                const rr = o.r * (0.75 + profile[i % profile.length] * 0.3);
+                const x = Math.cos(a) * rr;
+                const y = Math.sin(a) * rr * 0.68;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.closePath();
+            ctx.fillStyle = w.dark;
             ctx.fill();
-            ctx.fillStyle = `rgba(${c - 15},${Math.floor(c * 0.55)},${Math.floor(c * 0.25)},0.7)`;
+            ctx.fillStyle = w.light;
             ctx.beginPath();
-            ctx.ellipse(0, -o.r * 0.15, o.r * 0.45, o.r * 0.55, 0, 0, Math.PI * 2);
+            ctx.ellipse(0, -o.r * 0.12, o.r * 0.52, o.r * 0.48, 0, 0, Math.PI * 2);
             ctx.fill();
+            ctx.strokeStyle = `rgba(${w.c + 20},${Math.floor(w.c * 0.8)},${Math.floor(w.c * 0.48)},0.5)`;
+            ctx.lineWidth = 1;
+            for (let i = 1; i <= 3; i++) {
+                ctx.beginPath();
+                for (let a = 0; a <= 14; a++) {
+                    const ang = (a / 14) * Math.PI * 2;
+                    const jag = 0.9 + (profile[a % profile.length] - 0.9) * 0.25;
+                    const px = Math.cos(ang) * o.r * 0.12 * i * jag;
+                    const py = -o.r * 0.12 + Math.sin(ang) * o.r * 0.11 * i * jag;
+                    if (a === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+                ctx.stroke();
+            }
+            // Root nubs.
+            ctx.fillStyle = w.fill;
+            for (let i = 0; i < 3; i++) {
+                const a = -0.6 + i * 0.7;
+                ctx.beginPath();
+                ctx.ellipse(Math.cos(a) * o.r * 0.7, Math.sin(a) * o.r * 0.45, o.r * 0.22, o.r * 0.12, a, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            drawMossPatches(ctx, o, w, o.r * 0.5, o.r * 0.35);
         }
         ctx.restore();
     }
@@ -1618,11 +2950,18 @@ function drawShoreStones(ctx, dt) {
         g.addColorStop(1, `rgb(${c - 25},${c - 20},${c - 18})`);
         ctx.fillStyle = g;
         ctx.globalAlpha = 0.78;
-        ctx.beginPath();
-        ctx.ellipse(0, 0, s.rx, s.ry, 0, 0, Math.PI * 2);
+        if (!s.profile) {
+            s.profile = makeObstacleDetail(Math.floor(s.x + s.y), 9, 5);
+        }
+        pathOrganicOval(ctx, s.rx, s.ry, 9, s.profile, 0.2);
         ctx.fill();
-        ctx.strokeStyle = "rgba(140,170,160,0.22)";
+        ctx.strokeStyle = "rgba(140,170,160,0.28)";
         ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.strokeStyle = `rgba(${c - 30},${c - 25},${c - 22},0.35)`;
+        ctx.beginPath();
+        ctx.moveTo(-s.rx * 0.35, -s.ry * 0.1);
+        ctx.quadraticCurveTo(0, s.ry * 0.1, s.rx * 0.3, -s.ry * 0.15);
         ctx.stroke();
         ctx.restore();
     }
@@ -1638,16 +2977,18 @@ function drawSticks(ctx, dt) {
         ctx.save();
         ctx.translate(s.x, s.y - lift);
         ctx.rotate(s.rot + tip);
-        ctx.strokeStyle = s.wet ? "rgba(90,70,45,0.55)" : "rgba(110,85,55,0.65)";
-        ctx.lineWidth = s.thick;
-        ctx.lineCap = "round";
+        const bend = (s.wet ? 2.5 : 0.5) + lift * 0.25;
+        ctx.fillStyle = s.wet ? "rgba(90,70,45,0.58)" : "rgba(110,85,55,0.68)";
         ctx.beginPath();
-        ctx.moveTo(-s.len * 0.5, 0);
-        ctx.quadraticCurveTo(0, (s.wet ? 2.5 : 0.5) + lift * 0.25, s.len * 0.5, 0);
-        ctx.stroke();
+        ctx.moveTo(-s.len * 0.5, -s.thick * 0.35);
+        ctx.quadraticCurveTo(0, bend - s.thick * 0.5, s.len * 0.48, -s.thick * 0.15);
+        ctx.lineTo(s.len * 0.52, s.thick * 0.2);
+        ctx.quadraticCurveTo(0, bend + s.thick * 0.55, -s.len * 0.5, s.thick * 0.45);
+        ctx.closePath();
+        ctx.fill();
         if (s.wet) {
-            ctx.strokeStyle = "rgba(160,200,190,0.15)";
-            ctx.lineWidth = Math.max(0.8, s.thick * 0.35);
+            ctx.strokeStyle = "rgba(160,200,190,0.18)";
+            ctx.lineWidth = Math.max(0.8, s.thick * 0.3);
             ctx.stroke();
         }
         ctx.restore();
@@ -1690,21 +3031,46 @@ function drawLilies(ctx, t, dt) {
         ctx.save();
         ctx.translate(L.x, L.y + bob);
         ctx.rotate(L.rot + tip);
-        ctx.globalAlpha = 0.8;
+        ctx.globalAlpha = 0.82;
         ctx.fillStyle = "rgba(0,0,0,0.18)";
-        ctx.beginPath();
-        ctx.ellipse(1, 2, L.r * 1.05, L.r * 0.85, 0, 0, Math.PI * 2);
+        ctx.save();
+        ctx.translate(1.5, 2.5);
+        pathOrganicOval(ctx, L.r * 1.05, L.r * 0.82, 10, null, 0.12);
         ctx.fill();
+        ctx.restore();
         const g = ctx.createRadialGradient(-L.r * 0.2, -L.r * 0.2, 2, 0, 0, L.r);
         g.addColorStop(0, "#6f9a5a");
-        g.addColorStop(0.7, "#3f6a3a");
+        g.addColorStop(0.55, "#4a7a42");
         g.addColorStop(1, "#2a4a2c");
         ctx.fillStyle = g;
+        // Lobed pad with a V-notch slit.
         ctx.beginPath();
-        ctx.arc(0, 0, L.r, 0.35, Math.PI * 2 - 0.35);
+        const lobes = 12;
+        for (let i = 0; i <= lobes; i++) {
+            const t0 = 0.28 + (i / lobes) * (Math.PI * 2 - 0.56);
+            const lobe = 0.9 + 0.1 * Math.sin(i * 2.2);
+            const x = Math.cos(t0) * L.r * lobe;
+            const y = Math.sin(t0) * L.r * 0.88 * lobe;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
         ctx.lineTo(0, 0);
         ctx.closePath();
         ctx.fill();
+        ctx.strokeStyle = "rgba(30, 60, 35, 0.35)";
+        ctx.lineWidth = 0.8;
+        for (let i = 0; i < 5; i++) {
+            const a = 0.5 + i * 0.9;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.quadraticCurveTo(
+                Math.cos(a) * L.r * 0.35,
+                Math.sin(a) * L.r * 0.3,
+                Math.cos(a) * L.r * 0.85,
+                Math.sin(a) * L.r * 0.75
+            );
+            ctx.stroke();
+        }
         ctx.restore();
     }
 }
@@ -1840,19 +3206,8 @@ class Rock {
         this.dur = this.thrown ? 0.34 + dist / 1700 : 0.42;
         this.arc = this.thrown ? 60 + dist * 0.35 + v * 60 : 120 + v * 60;
         this.dead = false;
-        // Rare special pellets are mutually exclusive. A pet-streak can force rainbow.
-        if (guaranteeRainbow) {
-            this.rainbow = true;
-            this.green = false;
-            this.golden = false;
-            guaranteeRainbow = false;
-        } else {
-            const roll = Math.random();
-            this.rainbow = roll < CONFIG.rainbowChance;
-            this.green = !this.rainbow && roll < CONFIG.rainbowChance + CONFIG.greenChance;
-            this.golden = !this.rainbow && !this.green
-                && roll < CONFIG.rainbowChance + CONFIG.greenChance + CONFIG.goldenChance;
-        }
+        // Rare special pellets are mutually exclusive. Typed keywords (or a pet streak) can force one.
+        applyFoodVariant(this, rollFoodVariant());
         // Slightly irregular pellet silhouette.
         this.shape = [];
         const pts = 8;
@@ -1895,7 +3250,7 @@ class Rock {
         // Always place it: if at the cap, drop the oldest common pellet first so
         // throws never silently vanish, and rare pellets stay until eaten.
         while (foods.length >= CONFIG.maxFoods) {
-            const common = foods.findIndex((f) => !f.golden && !f.rainbow && !f.green);
+            const common = foods.findIndex((f) => !isRareFoodFlags(f));
             if (common >= 0) foods.splice(common, 1);
             else foods.shift();
         }
@@ -1903,6 +3258,7 @@ class Rock {
             golden: this.golden,
             rainbow: this.rainbow,
             green: this.green,
+            grower: this.grower,
         }));
     }
 
@@ -1939,6 +3295,12 @@ class Rock {
             g.addColorStop(0, "#c8f5b0");
             g.addColorStop(0.55, "#5db84a");
             g.addColorStop(1, "#2a6b2e");
+        } else if (this.grower) {
+            ctx.shadowColor = "rgba(255,120,160,0.95)";
+            ctx.shadowBlur = 16;
+            g.addColorStop(0, "#ffe0f0");
+            g.addColorStop(0.45, "#ff6fa0");
+            g.addColorStop(1, "#b03060");
         } else if (this.golden) {
             ctx.shadowColor = "rgba(255,215,90,0.9)";
             ctx.shadowBlur = 14;
@@ -2045,11 +3407,13 @@ class Food {
         this.golden = !!(flags && flags.golden);
         this.rainbow = !!(flags && flags.rainbow);
         this.green = !!(flags && flags.green);
-        this.rare = this.golden || this.rainbow || this.green;
+        this.grower = !!(flags && flags.grower);
+        this.carcass = !!(flags && flags.carcass);
+        this.rare = isRareFoodFlags(this);
         this.eaten = false;
         this.age = 0;
         // Larger common pellets are heavier and sink sooner.
-        // Rare pellets (gold, rainbow, green) never sink: they wait to be eaten.
+        // Rare pellets never sink: they wait to be eaten.
         this.floatLife = this.rare ? Infinity : Math.max(3.2, 15.5 - size * 0.38);
         this.sinkProgress = 0;   // 0..1 while going under
         this.sinking = false;
@@ -2108,6 +3472,18 @@ class Food {
             g.addColorStop(0, "#c8f5b0");
             g.addColorStop(0.55, "#5db84a");
             g.addColorStop(1, "#2a6b2e");
+        } else if (this.grower) {
+            ctx.shadowColor = "rgba(255,120,160,0.95)";
+            ctx.shadowBlur = 13 * alpha;
+            g.addColorStop(0, "#ffe0f0");
+            g.addColorStop(0.45, "#ff6fa0");
+            g.addColorStop(1, "#b03060");
+        } else if (this.carcass) {
+            ctx.shadowColor = "rgba(120,30,30,0.7)";
+            ctx.shadowBlur = 10 * alpha;
+            g.addColorStop(0, "#d07060");
+            g.addColorStop(0.55, "#8a3030");
+            g.addColorStop(1, "#4a1818");
         } else if (this.golden) {
             ctx.shadowColor = "rgba(255,215,90,0.9)";
             ctx.shadowBlur = 12 * alpha;
@@ -2240,7 +3616,7 @@ function buildEasterEggPath(fromX, fromY) {
         } else {
             const prev = anchors[anchors.length - 1];
             const next = letterPts[0];
-            anchors.push(...cursiveConnector(prev, next, text[i] === " " ? 10 : 14));
+            anchors.push(...cursiveConnector(prev, next, text[i] === " " ? 5 : 7));
             anchors.push(...letterPts);
         }
     }
@@ -2248,22 +3624,29 @@ function buildEasterEggPath(fromX, fromY) {
     // Swim in from the fish's current spot with a cursive approach curve.
     if (fromX != null && fromY != null && anchors.length) {
         const start = { x: fromX, y: fromY, strokeId: 1 };
-        const approach = cursiveConnector(start, anchors[0], 18);
+        const approach = cursiveConnector(start, anchors[0], 8);
         anchors.unshift(start, ...approach);
     }
 
-    return smoothPolyline(anchors, 7);
+    // Fewer samples: still reads as cursive, much cheaper to follow and draw.
+    return smoothPolyline(anchors, 3);
 }
+
+const RAINBOW_TRAIL_CAP = 220;
 
 function pushRainbowTrail(x, y, life, pathIndex) {
     rainbowScriptTrail.push({
         x, y,
         age: 0,
-        life: life == null ? 6 : life,
-        hue: ((pathIndex || 0) * 2.4 + performance.now() * 0.12) % 360,
-        r: 4.5 + Math.random() * 2.8,
-        strokeId: 1, // one continuous cursive ribbon
+        life: life == null ? 5 : life,
+        hue: ((pathIndex || 0) * 3.1) % 360,
+        r: 4.2,
+        strokeId: 1,
     });
+    // Hard cap so a long write cannot balloon into thousands of draw calls.
+    if (rainbowScriptTrail.length > RAINBOW_TRAIL_CAP) {
+        rainbowScriptTrail.splice(0, rainbowScriptTrail.length - RAINBOW_TRAIL_CAP);
+    }
 }
 
 function updateRainbowTrail(dt) {
@@ -2272,50 +3655,42 @@ function updateRainbowTrail(dt) {
     if (!writing) {
         for (const p of rainbowScriptTrail) p.age += dt;
     }
-    for (let i = rainbowScriptTrail.length - 1; i >= 0; i--) {
-        if (rainbowScriptTrail[i].age >= rainbowScriptTrail[i].life) {
-            rainbowScriptTrail.splice(i, 1);
-        }
+    // Compact from the front when old; avoid splicing every point mid-array each frame.
+    let trim = 0;
+    while (trim < rainbowScriptTrail.length
+        && rainbowScriptTrail[trim].age >= rainbowScriptTrail[trim].life) {
+        trim++;
     }
+    if (trim) rainbowScriptTrail.splice(0, trim);
 }
 
 function drawRainbowTrail(ctx) {
-    if (!rainbowScriptTrail.length) return;
+    const n = rainbowScriptTrail.length;
+    if (n < 2) return;
     ctx.save();
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    ctx.globalCompositeOperation = "lighter";
-    for (let i = 1; i < rainbowScriptTrail.length; i++) {
-        const a = rainbowScriptTrail[i - 1];
-        const b = rainbowScriptTrail[i];
-        if (a.strokeId !== b.strokeId) continue;
-        const fade = Math.max(0, 1 - b.age / b.life);
-        if (fade <= 0.02) continue;
-        // Soft afterglow under the bright stroke.
-        ctx.strokeStyle = `hsla(${b.hue}, 95%, 68%, ${0.28 * fade})`;
-        ctx.lineWidth = Math.max(4, b.r * 2.4 * fade);
-        ctx.shadowColor = `hsla(${b.hue}, 100%, 70%, ${0.45 * fade})`;
-        ctx.shadowBlur = 18 * fade;
+    ctx.shadowBlur = 0;
+    // Batch into short polylines: one stroke per chunk instead of two glow strokes per segment.
+    const chunk = 18;
+    for (let start = 1; start < n; start += chunk) {
+        const end = Math.min(n, start + chunk);
+        const head = rainbowScriptTrail[end - 1];
+        const fade = Math.max(0, 1 - head.age / head.life);
+        if (fade <= 0.03) continue;
         ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
+        const a0 = rainbowScriptTrail[start - 1];
+        ctx.moveTo(a0.x, a0.y);
+        for (let i = start; i < end; i++) {
+            const p = rainbowScriptTrail[i];
+            ctx.lineTo(p.x, p.y);
+        }
+        ctx.strokeStyle = `hsla(${head.hue}, 90%, 62%, ${0.22 * fade})`;
+        ctx.lineWidth = Math.max(3.5, head.r * 2.1 * fade);
         ctx.stroke();
-        ctx.strokeStyle = `hsla(${(b.hue + 40) % 360}, 100%, 75%, ${0.7 * fade})`;
-        ctx.lineWidth = Math.max(1.6, b.r * fade);
-        ctx.shadowBlur = 8 * fade;
-        ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
+        ctx.strokeStyle = `hsla(${(head.hue + 35) % 360}, 100%, 72%, ${0.55 * fade})`;
+        ctx.lineWidth = Math.max(1.4, head.r * 0.85 * fade);
         ctx.stroke();
-    }
-    ctx.globalCompositeOperation = "source-over";
-    for (const p of rainbowScriptTrail) {
-        const fade = Math.max(0, 1 - p.age / p.life);
-        if (fade <= 0.02) continue;
-        ctx.fillStyle = `hsla(${p.hue}, 100%, 78%, ${0.4 * fade})`;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r * 0.7 * fade, 0, Math.PI * 2);
-        ctx.fill();
     }
     ctx.restore();
 }
@@ -2325,6 +3700,8 @@ function drawRainbowTrail(ctx) {
 // Fish wander, notice food, chase it, and bite (melodic run in the species'
 // voice). Eating food makes them GROW. Grow past a threshold and a fish turns
 // predator: it hunts smaller fish, and everyone smaller flees from it.
+// Some fish are heroes: they hunt smaller predators (evil fish, crocs, sharks,
+// whales) but never target rainbow fish.
 // ===========================================================================
 const fishes = [];
 
@@ -2345,6 +3722,8 @@ class Fish {
         this.isPredator = false;
         this.isRainbow = false; // rainbow apex predator form
         this.isMonster = false; // ate a croc/alligator and became apex
+        // Heroes hunt smaller evil fish and exotic hunters; rainbow never becomes one.
+        this.isHero = Math.random() < CONFIG.heroChance;
         this.rainbowLeaving = false;
         this.rainbowPhase = null; // "write" | "exit" during victory lap
         this.eggPath = null;
@@ -2423,6 +3802,7 @@ class Fish {
         if (this.redeemed || this.isMonster || this.isRainbow || !this.isPredator) return;
         this.redeemed = true;
         this.isPredator = false;
+        this.isHero = true; // redeemed fish join the heroes
         this.prey = null;
         this.evilPetCount = 0;
         this.evilPetProgress = 0;
@@ -2468,13 +3848,15 @@ class Fish {
         this.dead = true;
     }
 
-    grow(amount) {
+    grow(amount, opts) {
         if (this.golden || this.isRainbow) return;
-        this.size = Math.min(CONFIG.maxFishSize, this.size + amount);
-        // Redeemed fish keep growing but never turn evil again.
-        if (this.redeemed || this.isMonster) return;
+        const cap = (opts && opts.huge) ? CONFIG.growerMaxSize : CONFIG.maxFishSize;
+        this.size = Math.min(cap, this.size + amount);
+        // Redeemed and hero fish keep growing but never turn evil.
+        if (this.redeemed || this.isHero || this.isMonster) return;
         if (!this.isPredator && this.size >= CONFIG.predatorSize) {
             this.isPredator = true;
+            this.isHero = false;
             // Evil fish is slightly faster than a normal fish of its size class.
             // Species habits (dart, turn, wiggle) stay with the type.
             this.baseSpeed *= 1.12;
@@ -2487,6 +3869,7 @@ class Fish {
     becomeMonster() {
         this.isMonster = true;
         this.isPredator = true;
+        this.isHero = false;
         this.isRainbow = false;
         this.golden = false;
         this.target = null;
@@ -2504,6 +3887,7 @@ class Fish {
     turnToGold() {
         this.golden = true;
         this.isPredator = false;
+        this.isHero = false;
         this.isRainbow = false;
         this.target = null;
         this.prey = null;
@@ -2519,6 +3903,7 @@ class Fish {
     turnToRainbow() {
         this.isRainbow = true;
         this.isPredator = true;
+        this.isHero = false; // hero behavior does not apply to rainbow fish
         this.golden = false;
         this.target = null;
         this.prey = null;
@@ -2556,15 +3941,22 @@ class Fish {
     }
 
     // Nearest threat: whale, shark, reptiles (if bigger), larger predators, rainbow/monster.
+    // Heroes do not flee hunters they outsize; they chase those instead.
     findThreat() {
         if (this.golden || this.isRainbow || this.isMonster) return null;
         if (whale && !whale.dead) {
             const d = Math.hypot(whale.x - this.x, whale.y - this.y);
-            if (d < CONFIG.fleeRange * 2.2) return { x: whale.x, y: whale.y };
+            if (d < CONFIG.fleeRange * 2.2
+                && !(this.isHero && this.size > whale.size)) {
+                return { x: whale.x, y: whale.y };
+            }
         }
         if (shark && !shark.dead && !shark.leaving) {
             const d = Math.hypot(shark.x - this.x, shark.y - this.y);
-            if (d < CONFIG.fleeRange * 1.6) return { x: shark.x, y: shark.y };
+            if (d < CONFIG.fleeRange * 1.6
+                && !(this.isHero && this.size > shark.size)) {
+                return { x: shark.x, y: shark.y };
+            }
         }
         // Flee reptiles only if they are larger than us.
         for (const r of reptiles) {
@@ -2577,7 +3969,8 @@ class Fish {
         for (const p of fishes) {
             if (p === this || p.dead || p.golden) continue;
             const scary = p.isRainbow || p.isMonster
-                || (p.isPredator && p.size > this.size * 1.05);
+                || (p.isPredator && p.size > this.size * 1.05)
+                || (p.isHero && p.size > this.size);
             if (!scary) continue;
             const d = Math.hypot(p.x - this.x, p.y - this.y);
             if (d < bd) { bd = d; best = p; }
@@ -2597,20 +3990,48 @@ class Fish {
         return best;
     }
 
-    // Hunt target: smaller fish (including evil fish). Rainbow hunts anyone else.
+    // Hero target: smaller fish that eat other fish. Never rainbows.
+    findHeroPrey() {
+        let best = null, bd = CONFIG.huntRange * 1.25;
+        for (const p of fishes) {
+            if (p === this || p.dead || p.golden || p.isRainbow) continue;
+            // Only hunters: evil fish and monsters (exotics count once they turn evil).
+            if (!p.isPredator && !p.isMonster) continue;
+            if (this.size <= p.size) continue; // must be strictly larger
+            const d = Math.hypot(p.x - this.x, p.y - this.y);
+            if (d < bd) { bd = d; best = p; }
+        }
+        return best;
+    }
+
+    // Hunt target: prefer smaller fish. Evil fish may overreach slightly and get eaten instead.
     findPrey() {
         let best = null, bd = CONFIG.huntRange * (this.isRainbow || this.isMonster ? 1.4 : 1);
         for (const p of fishes) {
             if (p === this || p.dead || p.golden || p.isRainbow || p.isMonster) continue;
             if (this.isRainbow || this.isMonster) {
                 // Apex forms eat everyone else.
-            } else if (p.size >= this.size * 0.95) {
-                continue; // only eat clearly smaller fish (predator cannibalism)
+            } else if (p.size > this.size * 1.2) {
+                continue; // will not even attempt fish that are much larger
             }
             const d = Math.hypot(p.x - this.x, p.y - this.y);
-            if (d < bd) { bd = d; best = p; }
+            // Prefer clearly smaller prey, but still consider slightly larger ones.
+            const sizeBias = p.size <= this.size ? 1 : 1.35;
+            const score = d * sizeBias;
+            if (score < bd) { bd = score; best = p; }
         }
         return best;
+    }
+
+    // Hero finish: swallow a smaller exotic hunter without becoming a monster / rainbow.
+    heroFinishKill(kind, sizeGain) {
+        const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+        if (kind === "shark") Audio.sharkStrike(pan);
+        else Audio.predatorEat(pan);
+        water.disturb(this.x, this.y, this.size * 0.8, 420);
+        spawnSplash(this.x, this.y, this.size * 0.45, 0.75);
+        this.grow(sizeGain, { huge: true });
+        this.prey = null;
     }
 
     tryBiteFood(dt) {
@@ -2700,13 +4121,13 @@ class Fish {
                     }
                 }
                 if (this.trailDrop <= 0) {
-                    this.trailDrop = 0.018;
+                    this.trailDrop = 0.055;
                     this._writePathI = (this._writePathI || 0) + 1;
-                    pushRainbowTrail(this.x, this.y, 8, this._writePathI);
+                    pushRainbowTrail(this.x, this.y, 5.5, this._writePathI);
                 }
                 this.tailPhase += dt * 9;
-                if (Math.random() < 0.2) {
-                    water.disturb(this.x, this.y, 6, 24);
+                if (Math.random() < 0.06) {
+                    water.disturb(this.x, this.y, 5, 18);
                 }
                 if (this.eggIndex >= this.eggPath.length) {
                     this.rainbowPhase = "exit";
@@ -2732,9 +4153,9 @@ class Fish {
             speed = this.baseSpeed * CONFIG.rainbowSpeed * 1.15;
             this.trailDrop -= dt;
             if (this.trailDrop <= 0) {
-                this.trailDrop = 0.04;
+                this.trailDrop = 0.08;
                 this._writePathI = (this._writePathI || 0) + 1;
-                pushRainbowTrail(this.x, this.y, 2.8, this._writePathI);
+                pushRainbowTrail(this.x, this.y, 2.2, this._writePathI);
             }
             const m = this.size * 2;
             if (this.x < -m || this.x > viewW + m || this.y < -m || this.y > viewH + m) {
@@ -2782,7 +4203,10 @@ class Fish {
                             this.becomeMonster();
                         }
                     } else {
-                        if (!this.prey || this.prey.dead || this.prey.golden) this.prey = this.findPrey();
+                        if (!this.prey || this.prey.dead || this.prey.golden
+                            || (!this.isRainbow && !this.isMonster && this.prey.size > this.size * 1.2)) {
+                            this.prey = this.findPrey();
+                        }
                         if (this.prey) {
                             const chase = this.chaseToward(
                                 this.prey.x, this.prey.y,
@@ -2825,7 +4249,10 @@ class Fish {
                             desired = foodChase.desired;
                             speed = foodChase.speed * (this.isMonster ? 1.25 : 1);
                         } else {
-                            if (!this.prey || this.prey.dead || this.prey.golden) this.prey = this.findPrey();
+                            if (!this.prey || this.prey.dead || this.prey.golden
+                                || (!this.isRainbow && !this.isMonster && this.prey.size > this.size * 1.2)) {
+                                this.prey = this.findPrey();
+                            }
                             if (this.prey) {
                                 desired = Math.atan2(this.prey.y - this.y, this.prey.x - this.x);
                                 speed = this.baseSpeed * CONFIG.predatorChaseMult;
@@ -2834,6 +4261,81 @@ class Fish {
                             } else {
                                 desired = this.wander(dt);
                                 speed = this.baseSpeed * (this.isMonster ? 1.2 : 0.7);
+                            }
+                        }
+                    }
+                }
+            } else if (this.isHero) {
+                // Heroes hunt smaller predators first: whale, shark, crocs, then evil fish.
+                // Rainbow fish are never targeted.
+                hardChase = true;
+                if (whale && !whale.dead && this.size > whale.size) {
+                    const chase = this.chaseToward(
+                        whale.x, whale.y,
+                        this.baseSpeed * CONFIG.heroChaseMult
+                    );
+                    desired = chase.desired;
+                    speed = chase.speed;
+                    if (chase.dist < this.size * 0.55 + whale.size * 0.35 + 10) {
+                        const gain = whale.size * 0.22;
+                        whale.dead = true;
+                        whale = null;
+                        this.heroFinishKill("whale", gain);
+                    }
+                } else if (shark && !shark.dead && !shark.leaving && this.size > shark.size) {
+                    const chase = this.chaseToward(
+                        shark.x, shark.y,
+                        this.baseSpeed * CONFIG.heroChaseMult
+                    );
+                    desired = chase.desired;
+                    speed = chase.speed;
+                    if (chase.dist < this.size * 0.5 + shark.size * 0.45 + 10) {
+                        const gain = shark.size * 0.35;
+                        shark.dead = true;
+                        shark = null;
+                        this.heroFinishKill("shark", gain);
+                    }
+                } else {
+                    const meal = this.findEdibleReptile();
+                    if (meal) {
+                        const chase = this.chaseToward(
+                            meal.x, meal.y,
+                            this.baseSpeed * CONFIG.heroChaseMult
+                        );
+                        desired = chase.desired;
+                        speed = chase.speed;
+                        if (chase.dist < this.size * 0.5 + meal.size * 0.45 + 8) {
+                            const gain = meal.size * 0.35;
+                            meal.dead = true;
+                            this.heroFinishKill("reptile", gain);
+                        }
+                    } else {
+                        if (!this.prey || this.prey.dead || this.prey.golden
+                            || this.prey.isRainbow
+                            || (!this.prey.isPredator && !this.prey.isMonster)
+                            || this.size <= this.prey.size) {
+                            this.prey = this.findHeroPrey();
+                        }
+                        if (this.prey) {
+                            const chase = this.chaseToward(
+                                this.prey.x, this.prey.y,
+                                this.baseSpeed * CONFIG.heroChaseMult
+                            );
+                            desired = chase.desired;
+                            speed = chase.speed;
+                            if (chase.dist < this.size * 0.5 + this.prey.size * 0.5 + 6) {
+                                this.eatFish(this.prey);
+                            }
+                        } else {
+                            const foodChase = this.tryBiteFood(dt);
+                            if (foodChase) {
+                                desired = foodChase.desired;
+                                speed = foodChase.speed;
+                                hardChase = false;
+                            } else {
+                                desired = this.wander(dt);
+                                speed = this.baseSpeed * 0.65;
+                                hardChase = false;
                             }
                         }
                     }
@@ -2891,9 +4393,9 @@ class Fish {
             else if (this.y > viewH - margin) desired = -Math.PI / 2;
         }
 
-        // Softly steer around solid debris unless mid rainbow exit.
+        // Softly steer around debris too large to shove aside.
         if (!freeRoam) {
-            const avoid = obstacleAvoidDir(this.x, this.y, this.size * 0.4);
+            const avoid = obstacleAvoidDir(this.x, this.y, this.size * 0.4, this.size);
             if (avoid != null) desired = avoid;
         }
 
@@ -2985,12 +4487,34 @@ class Fish {
             this.turnToGold();
             return;
         }
+        if (food.grower) {
+            food.eaten = true;
+            this.target = null;
+            this.grow(CONFIG.growerBoost, { huge: true });
+            this.baseSpeed = Math.min(
+                CONFIG.predatorSpeedCap * 1.08,
+                this.baseSpeed * 1.1
+            );
+            const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+            Audio.fishNote({
+                freq: 320 * (this.type.register || 1),
+                wave: this.type.wave || "sine",
+                pan,
+                dur: 0.55,
+                level: 0.16,
+                partialAmt: 0.35,
+                bright: 1.3,
+            });
+            water.disturb(this.x, this.y, this.size * 0.7, 220);
+            spawnSplash(this.x, this.y, this.size * 0.35, 0.45);
+            return;
+        }
 
-        const chunk = Math.min(this.type.bite, food.amount);
+        const chunk = Math.min(this.type.bite * (food.carcass ? 1.6 : 1), food.amount);
         food.amount -= chunk;
         food.biteCount++;
         this.biteTimer = food.biteInterval();
-        this.grow(chunk * 0.22);
+        this.grow(chunk * (food.carcass ? 0.55 : 0.22), food.carcass ? { huge: true } : null);
         // Evil fish get faster with every food bite.
         if (this.isPredator && !this.isRainbow) {
             this.baseSpeed = Math.min(
@@ -3039,7 +4563,24 @@ class Fish {
     }
 
     eatFish(prey) {
-        if (prey.golden || prey.isRainbow) return;
+        if (!prey || prey.dead || this.dead) return;
+        if (prey.golden || prey.isRainbow) return; // rainbow fish cannot be eaten
+        // Heroes only finish evil fish they strictly outsize.
+        if (this.isHero && (!prey.isPredator && !prey.isMonster || this.size <= prey.size)) return;
+
+        // If an evil fish (or any non-apex hunter) bites a larger fish, it gets eaten instead.
+        if (!this.isRainbow && !this.isMonster && prey.size > this.size) {
+            const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+            this.dead = true;
+            this.prey = null;
+            if (prey.prey === this) prey.prey = null;
+            prey.grow(this.size * 0.5);
+            Audio.predatorEat(pan);
+            water.disturb(this.x, this.y, this.size, 320);
+            spawnSplash(this.x, this.y, this.size * 0.6, 0.7);
+            return;
+        }
+
         prey.dead = true;
         this.grow(prey.size * 0.5);
         const pan = Math.max(-1, Math.min(1, (prey.x / viewW) * 2 - 1));
@@ -3053,15 +4594,18 @@ class Fish {
         if (!shark || shark.dead) return;
         const pan = Math.max(-1, Math.min(1, (shark.x / viewW) * 2 - 1));
         Audio.sharkStrike(pan);
-        Audio.rainbowChime(pan);
+        if (this.isRainbow || this.isMonster) Audio.rainbowChime(pan);
         water.disturb(shark.x, shark.y, shark.size * 0.7, 900);
         spawnSplash(shark.x, shark.y, 34, 1);
+        const gain = shark.size * 0.35;
         shark.dead = true;
         shark = null;
         if (this.isMonster) {
             beginPovAttack(this);
-        } else {
+        } else if (this.isRainbow) {
             this.beginRainbowExit();
+        } else if (this.isHero) {
+            this.heroFinishKill("shark", gain);
         }
     }
 
@@ -3174,6 +4718,9 @@ class Fish {
         } else if (this.isPredator) {
             ctx.shadowColor = "rgba(160,20,30,0.75)";
             ctx.shadowBlur = 14;
+        } else if (this.isHero) {
+            ctx.shadowColor = "rgba(70,160,220,0.8)";
+            ctx.shadowBlur = 14;
         } else if (this.type.exotic) {
             ctx.shadowColor = "rgba(120,180,200,0.55)";
             ctx.shadowBlur = 12;
@@ -3182,50 +4729,83 @@ class Fish {
             ctx.shadowBlur = 8;
         }
 
-        // Tail by shape.
+        // Caudal fin: lobed, not a flat triangle.
         ctx.fillStyle = body;
         ctx.beginPath();
         if (shape === "koi" || shape === "longfin") {
-            ctx.moveTo(-L * 0.42, 0);
-            ctx.quadraticCurveTo(-L * 0.7, -W * (1.4 + wig * 0.4), -L * 1.05, -W * (1.1 + wig));
-            ctx.quadraticCurveTo(-L * 0.75, 0, -L * 1.05, W * (1.1 + wig));
-            ctx.quadraticCurveTo(-L * 0.7, W * (1.4 + wig * 0.4), -L * 0.42, 0);
+            ctx.moveTo(-L * 0.4, 0);
+            ctx.bezierCurveTo(-L * 0.62, -W * (0.9 + wig * 0.3), -L * 0.85, -W * (1.35 + wig), -L * 1.08, -W * (1.05 + wig));
+            ctx.quadraticCurveTo(-L * 0.78, -W * 0.15, -L * 0.55, 0);
+            ctx.quadraticCurveTo(-L * 0.78, W * 0.15, -L * 1.08, W * (1.05 + wig));
+            ctx.bezierCurveTo(-L * 0.85, W * (1.35 + wig), -L * 0.62, W * (0.9 + wig * 0.3), -L * 0.4, 0);
         } else if (shape === "diamond") {
-            ctx.moveTo(-L * 0.35, 0);
-            ctx.lineTo(-L * 0.7, -W * 1.4);
-            ctx.lineTo(-L * 0.55, 0);
-            ctx.lineTo(-L * 0.7, W * 1.4);
-            ctx.closePath();
+            ctx.moveTo(-L * 0.34, 0);
+            ctx.quadraticCurveTo(-L * 0.55, -W * 0.9, -L * 0.78, -W * 1.45);
+            ctx.quadraticCurveTo(-L * 0.58, 0, -L * 0.78, W * 1.45);
+            ctx.quadraticCurveTo(-L * 0.55, W * 0.9, -L * 0.34, 0);
         } else {
-            ctx.moveTo(-L * 0.5, 0);
-            ctx.lineTo(-L * 0.85, -W * 0.9 + wig * W);
-            ctx.lineTo(-L * 0.85, W * 0.9 + wig * W);
-            ctx.closePath();
+            ctx.moveTo(-L * 0.42, 0);
+            ctx.quadraticCurveTo(-L * 0.62, -W * 0.55, -L * 0.92, -W * (0.95 + wig * 0.5));
+            ctx.quadraticCurveTo(-L * 0.7, 0, -L * 0.92, W * (0.95 + wig * 0.5));
+            ctx.quadraticCurveTo(-L * 0.62, W * 0.55, -L * 0.42, 0);
         }
         ctx.fill();
 
-        // Body.
+        // Body: fusiform curves instead of plain ellipses / diamonds.
         const g = ctx.createLinearGradient(0, -W, 0, W);
         g.addColorStop(0, body);
+        g.addColorStop(0.55, body);
         g.addColorStop(1, belly);
         ctx.fillStyle = g;
-        ctx.beginPath();
         if (shape === "diamond") {
-            ctx.moveTo(L * 0.5, 0);
-            ctx.lineTo(0, -W * 1.15);
-            ctx.lineTo(-L * 0.4, 0);
-            ctx.lineTo(0, W * 1.15);
+            ctx.beginPath();
+            ctx.moveTo(L * 0.48, 0);
+            ctx.bezierCurveTo(L * 0.2, -W * 0.9, -L * 0.05, -W * 1.2, -L * 0.38, 0);
+            ctx.bezierCurveTo(-L * 0.05, W * 1.2, L * 0.2, W * 0.9, L * 0.48, 0);
             ctx.closePath();
-        } else if (shape === "round") {
-            ctx.ellipse(0, 0, L * 0.42, W * 1.15, 0, 0, Math.PI * 2);
-        } else if (shape === "koi") {
-            ctx.ellipse(0, 0, L * 0.52, W, 0, 0, Math.PI * 2);
-        } else if (shape === "slim") {
-            ctx.ellipse(0, 0, L * 0.58, W * 0.85, 0, 0, Math.PI * 2);
         } else {
-            ctx.ellipse(0, 0, L * 0.55, W, 0, 0, Math.PI * 2);
+            pathFishFusiform(ctx, L, W, shape);
         }
         ctx.fill();
+
+        // Soft belly highlight.
+        ctx.globalAlpha *= 0.35;
+        ctx.fillStyle = belly;
+        ctx.beginPath();
+        ctx.moveTo(L * 0.25, W * 0.15);
+        ctx.quadraticCurveTo(0, W * 0.75, -L * 0.25, W * 0.2);
+        ctx.quadraticCurveTo(0, W * 0.35, L * 0.25, W * 0.15);
+        ctx.fill();
+        ctx.globalAlpha /= 0.35;
+
+        // Dorsal fin.
+        if (!this.golden) {
+            ctx.fillStyle = body;
+            ctx.globalAlpha *= 0.8;
+            ctx.beginPath();
+            ctx.moveTo(-L * 0.05, -W * 0.7);
+            ctx.quadraticCurveTo(L * 0.08, -W * (shape === "longfin" ? 2.0 : 1.45), L * 0.28, -W * 0.45);
+            ctx.quadraticCurveTo(L * 0.1, -W * 0.7, -L * 0.05, -W * 0.7);
+            ctx.fill();
+            ctx.globalAlpha /= 0.8;
+        }
+
+        // Pectoral fin hint.
+        ctx.globalAlpha *= 0.55;
+        ctx.fillStyle = body;
+        ctx.beginPath();
+        ctx.moveTo(L * 0.05, W * 0.25);
+        ctx.quadraticCurveTo(L * 0.18, W * 0.7, L * 0.02, W * 0.85);
+        ctx.quadraticCurveTo(-L * 0.02, W * 0.5, L * 0.05, W * 0.25);
+        ctx.fill();
+        ctx.globalAlpha /= 0.55;
+
+        // Gill plate mark.
+        ctx.strokeStyle = "rgba(20,30,35,0.22)";
+        ctx.lineWidth = Math.max(0.7, L * 0.025);
+        ctx.beginPath();
+        ctx.arc(L * 0.18, 0, W * 0.55, -1.1, 1.1);
+        ctx.stroke();
 
         // Koi / catfish whiskers.
         if ((shape === "koi" || this.type.whiskers) && !this.golden) {
@@ -3240,39 +4820,42 @@ class Fish {
             ctx.stroke();
         }
 
-        // Longfin top sail.
+        // Longfin top sail already covered by taller dorsal; add soft trailing veil.
         if (shape === "longfin") {
             ctx.fillStyle = body;
-            ctx.globalAlpha *= 0.75;
+            ctx.globalAlpha *= 0.45;
             ctx.beginPath();
-            ctx.moveTo(-L * 0.1, -W * 0.6);
-            ctx.quadraticCurveTo(L * 0.05, -W * 1.8, L * 0.25, -W * 0.5);
-            ctx.closePath();
+            ctx.moveTo(-L * 0.15, -W * 0.5);
+            ctx.quadraticCurveTo(L * 0.1, -W * 2.1, L * 0.35, -W * 0.35);
+            ctx.quadraticCurveTo(L * 0.05, -W * 0.9, -L * 0.15, -W * 0.5);
             ctx.fill();
-            ctx.globalAlpha /= 0.75;
+            ctx.globalAlpha /= 0.45;
         }
 
         if (!this.golden && !this.isRainbow && !this.isMonster) this.drawPattern(ctx, L, W);
 
         if (this.isMonster) {
             ctx.fillStyle = "rgba(120,0,30,0.28)";
-            ctx.beginPath();
-            ctx.ellipse(0, 0, L * 0.55, W, 0, 0, Math.PI * 2);
+            pathFishFusiform(ctx, L, W, shape);
             ctx.fill();
         } else if (this.isPredator && !this.isRainbow && !this.golden) {
             // Red menace fades as the fish is soothed toward redemption.
             const soothe = Math.min(1, (this.evilPetProgress || 0) / CONFIG.evilSootheTime);
             const menace = 0.22 * (1 - soothe * 0.85);
             ctx.fillStyle = `rgba(120,10,20,${menace})`;
-            ctx.beginPath();
-            ctx.ellipse(0, 0, L * 0.55, W, 0, 0, Math.PI * 2);
+            pathFishFusiform(ctx, L, W, shape);
+            ctx.fill();
+        } else if (this.isHero && !this.golden) {
+            // Soft blue wash so heroes read against red evil fish.
+            ctx.fillStyle = "rgba(40,120,190,0.16)";
+            pathFishFusiform(ctx, L, W, shape);
             ctx.fill();
         }
 
         ctx.shadowBlur = 0;
-        const eyeX = L * (shape === "diamond" ? 0.22 : 0.32);
-        const eyeY = -W * (shape === "round" ? 0.15 : 0.24);
-        const eyeR = Math.max(1, L * 0.06);
+        const eyeX = L * (shape === "diamond" ? 0.22 : 0.3);
+        const eyeY = -W * (shape === "round" ? 0.12 : 0.22);
+        const eyeR = Math.max(1.1, L * 0.055);
         if (this.petTimer > 0 && !this.golden && !this.isRainbow && !this.isMonster) {
             ctx.strokeStyle = this.isPredator
                 ? "rgba(80,20,20,0.9)"
@@ -3288,18 +4871,28 @@ class Fish {
             ctx.arc(eyeX, eyeY + eyeR * 0.55, eyeR * 0.9, Math.PI * 1.2, Math.PI * 1.8);
             ctx.stroke();
         } else {
+            // Eye socket + wet highlight.
+            ctx.fillStyle = "rgba(245,245,240,0.88)";
+            ctx.beginPath();
+            ctx.ellipse(eyeX, eyeY, eyeR * 1.15, eyeR * 0.95, 0, 0, Math.PI * 2);
+            ctx.fill();
             ctx.fillStyle = this.golden
                 ? "rgba(120,80,20,0.9)"
-                : this.isRainbow ? "rgba(255,255,255,0.95)"
+                : this.isRainbow ? "rgba(40,40,50,0.95)"
                 : this.isMonster ? "rgba(255,40,40,0.95)"
-                : this.isPredator ? "rgba(255,60,40,0.95)" : "rgba(10,15,20,0.9)";
+                : this.isPredator ? "rgba(180,30,25,0.95)"
+                : this.isHero ? "rgba(30,90,160,0.95)" : "rgba(12,16,22,0.95)";
             ctx.beginPath();
-            ctx.arc(eyeX, eyeY, eyeR, 0, Math.PI * 2);
+            ctx.arc(eyeX, eyeY, eyeR * 0.72, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "rgba(255,255,255,0.7)";
+            ctx.beginPath();
+            ctx.arc(eyeX - eyeR * 0.25, eyeY - eyeR * 0.28, eyeR * 0.22, 0, Math.PI * 2);
             ctx.fill();
             if (this.isRainbow) {
                 ctx.fillStyle = `hsl(${(this.age * 200) % 360}, 90%, 45%)`;
                 ctx.beginPath();
-                ctx.arc(eyeX, eyeY, eyeR * 0.45, 0, Math.PI * 2);
+                ctx.arc(eyeX, eyeY, eyeR * 0.35, 0, Math.PI * 2);
                 ctx.fill();
             }
         }
@@ -3310,6 +4903,10 @@ class Fish {
 
 // Tiny festive hats for pond life once the gold-fish unlock is earned.
 function drawCreatureHat(ctx, L, W, seed) {
+    if (mariachiMode) {
+        drawMariachiHat(ctx, L, W);
+        return;
+    }
     if (!hatsOn) return;
     const kind = Math.floor((seed || 0) * 3) % 3;
     const hx = L * 0.02;
@@ -3371,6 +4968,8 @@ function initFish() {
     for (let i = 0; i < CONFIG.fishCount; i++) {
         fishes.push(new Fish(FISH_TYPES[i % FISH_TYPES.length]));
     }
+    // Always keep at least one hero in the starting school.
+    if (!fishes.some((f) => f.isHero)) fishes[0].isHero = true;
 }
 
 // ===========================================================================
@@ -3383,11 +4982,126 @@ let shark = null;
 let whale = null;
 let reptiles = [];
 let povAttack = null; // { fish, t }
+let apexDuel = null; // croc/alligator vs shark when the pond is emptied
 let repopulating = false;
 let repopTimer = 0;
 let whaleCheckTimer = 0;
 let reptileCheckTimer = 0;
 let exoticCheckTimer = 0;
+
+function beginApexDuel() {
+    if (apexDuel || povAttack) return;
+    // Keep the largest living reptile for the finale.
+    const living = reptiles.filter((r) => !r.dead);
+    if (!living.length) return;
+    living.sort((a, b) => b.size - a.size);
+    const champ = living[0];
+    for (let i = 1; i < living.length; i++) living[i].dead = true;
+    reptiles = reptiles.filter((r) => !r.dead);
+    champ.duelMode = true;
+    champ.hp = 6;
+    champ.speed = Math.max(champ.speed, 72);
+    champ.target = null;
+    if (!shark || shark.dead) {
+        shark = new Shark(champ);
+    }
+    shark.duelMode = true;
+    shark.leaving = false;
+    shark.hp = 6;
+    shark.target = champ;
+    apexDuel = { t: 0, biteCd: 0.35 };
+    const pan = champ.x < viewW * 0.5 ? -0.35 : 0.35;
+    Audio.sharkStrike(pan);
+    Audio.predatorEat(pan);
+    water.disturb(champ.x, champ.y, 40, 400);
+}
+
+function finishApexDuel() {
+    const spots = [];
+    if (shark && !shark.dead) {
+        spots.push({ x: shark.x, y: shark.y, size: shark.size });
+    } else if (shark) {
+        spots.push({ x: shark.x, y: shark.y, size: shark.size * 0.85 });
+    }
+    for (const r of reptiles) {
+        spots.push({ x: r.x, y: r.y, size: r.size });
+        r.dead = true;
+    }
+    if (shark) {
+        shark.dead = true;
+        shark = null;
+    }
+    reptiles.length = 0;
+    apexDuel = null;
+
+    for (const s of spots) {
+        water.disturb(s.x, s.y, s.size * 0.8, 700);
+        spawnSplash(s.x, s.y, 30, 1);
+        for (let i = 0; i < 3; i++) {
+            const ang = (i / 3) * Math.PI * 2 + Math.random();
+            const dist = 10 + Math.random() * 22;
+            foods.push(new Food(
+                s.x + Math.cos(ang) * dist,
+                s.y + Math.sin(ang) * dist,
+                16 + s.size * 0.1,
+                { carcass: true }
+            ));
+        }
+    }
+    Audio.sharkStrike(0);
+    Audio.predatorEat(0);
+    // New fish arrive and clean up the remains.
+    repopulating = true;
+    repopTimer = 0.55;
+}
+
+function updateApexDuel(dt) {
+    if (!apexDuel) return;
+    apexDuel.t += dt;
+    apexDuel.biteCd -= dt;
+    const r = reptiles.find((x) => !x.dead);
+    if (!shark || shark.dead || !r) {
+        finishApexDuel();
+        return;
+    }
+    // Force them to face each other; bites land in updateApexDuel.
+    shark.duelMode = true;
+    shark.leaving = false;
+    shark.target = r;
+    r.duelMode = true;
+    r.target = null;
+
+    const dist = Math.hypot(shark.x - r.x, shark.y - r.y);
+    const reach = shark.size * 0.45 + r.size * 0.45 + 10;
+    if (dist < reach && apexDuel.biteCd <= 0) {
+        shark.hp = (shark.hp == null ? 6 : shark.hp) - 1;
+        r.hp = (r.hp == null ? 6 : r.hp) - 1;
+        apexDuel.biteCd = 0.42;
+        const mx = (shark.x + r.x) * 0.5;
+        const my = (shark.y + r.y) * 0.5;
+        const pan = Math.max(-1, Math.min(1, (mx / viewW) * 2 - 1));
+        Audio.sharkStrike(pan);
+        Audio.predatorEat(pan);
+        water.disturb(mx, my, 36, 520);
+        spawnSplash(mx, my, 22, 0.9);
+        // Shove apart a little so the fight reads as clashing passes.
+        const nx = (shark.x - r.x) / (dist || 1);
+        const ny = (shark.y - r.y) / (dist || 1);
+        shark.x += nx * 10;
+        shark.y += ny * 10;
+        r.x -= nx * 10;
+        r.y -= ny * 10;
+        if (shark.hp <= 0 || r.hp <= 0) {
+            finishApexDuel();
+        }
+    }
+    // Safety: never let a stalled duel lock the pond forever.
+    if (apexDuel && apexDuel.t > 40) finishApexDuel();
+}
+
+// Right-click the snout this many times in a short window to scare a reptile off.
+const REPTILE_SNOUT_SCARE_TAPS = 5;
+const REPTILE_SNOUT_TAP_WINDOW = 2.4;
 
 class Reptile {
     constructor(kind) {
@@ -3396,7 +5110,12 @@ class Reptile {
         this.size = rand(CONFIG.reptileSize[0], CONFIG.reptileSize[1]);
         this.tailPhase = Math.random() * Math.PI * 2;
         this.dead = false;
+        this.leaving = false;
         this.eatPulse = 0;
+        this.duelMode = false;
+        this.hp = 6;
+        this.snoutTaps = 0;
+        this.snoutTapWindow = 0;
         const side = Math.floor(Math.random() * 4);
         if (side === 0) { this.x = -this.size; this.y = Math.random() * viewH; }
         else if (side === 1) { this.x = viewW + this.size; this.y = Math.random() * viewH; }
@@ -3408,50 +5127,147 @@ class Reptile {
         Audio.predatorEat(this.x < viewW * 0.5 ? -0.3 : 0.3);
     }
 
-    update(dt) {
-        this.tailPhase += dt * 3.2;
-        this.eatPulse -= dt;
+    // Local snout zone matching draw(): forward along facing dir, not the body.
+    hitSnout(wx, wy) {
+        const L = this.size;
+        const W = this.size * (this.kind === "alligator" ? 0.34 : 0.28);
+        const dx = wx - this.x;
+        const dy = wy - this.y;
+        const c = Math.cos(this.dir);
+        const s = Math.sin(this.dir);
+        const lx = dx * c + dy * s;
+        const ly = -dx * s + dy * c;
+        if (this.kind === "alligator") {
+            const cx = L * 0.38;
+            const rx = L * 0.24;
+            const ry = W * 0.9;
+            const nx = (lx - cx) / rx;
+            const ny = ly / ry;
+            return nx * nx + ny * ny <= 1;
+        }
+        // Crocodile: long narrow snout from mid-head to tip.
+        if (lx < L * 0.22 || lx > L * 0.68) return false;
+        const t = Math.max(0, Math.min(1, (lx - L * 0.25) / (L * 0.37)));
+        const halfW = W * (0.48 - 0.26 * t);
+        return Math.abs(ly) <= halfW;
+    }
 
-        if (!this.target || this.target.dead || this.target.golden
-            || this.target.isRainbow || this.target.isMonster
-            || this.target.size >= this.size) {
-            this.target = null;
-            let best = null, bd = CONFIG.huntRange * 1.5;
-            for (const f of fishes) {
-                if (f.dead || f.golden || f.isRainbow || f.isMonster) continue;
-                if (f.size >= this.size) continue; // cannot eat bigger fish
-                const d = Math.hypot(f.x - this.x, f.y - this.y);
-                if (d < bd) { bd = d; best = f; }
+    // Successful snout prod: count toward scare. Returns true if this click hit the snout.
+    prodSnout(wx, wy) {
+        if (this.dead || this.leaving || this.duelMode) return false;
+        if (!this.hitSnout(wx, wy)) return false;
+
+        if (this.snoutTapWindow <= 0) this.snoutTaps = 0;
+        this.snoutTaps += 1;
+        this.snoutTapWindow = REPTILE_SNOUT_TAP_WINDOW;
+
+        const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+        const tipX = this.x + Math.cos(this.dir) * this.size * 0.48;
+        const tipY = this.y + Math.sin(this.dir) * this.size * 0.48;
+        const power = 0.35 + this.snoutTaps * 0.12;
+        water.disturb(tipX, tipY, 12 + this.snoutTaps * 3, 90 + this.snoutTaps * 40);
+        spawnSplash(tipX, tipY, 8 + this.snoutTaps * 2, power);
+        if (Audio.tick) Audio.tick(pan, 420 + this.snoutTaps * 60);
+
+        if (this.snoutTaps >= REPTILE_SNOUT_SCARE_TAPS) {
+            this.startLeaving(wx, wy);
+            Audio.predatorEat(pan);
+            if (Audio.sharkRoll) Audio.sharkRoll(pan);
+            water.disturb(this.x, this.y, this.size * 0.5, 320);
+            spawnSplash(this.x, this.y, 20, 0.85);
+        }
+        return true;
+    }
+
+    startLeaving(fromX, fromY) {
+        this.leaving = true;
+        this.target = null;
+        this.snoutTaps = 0;
+        this.snoutTapWindow = 0;
+        if (fromX != null && fromY != null) {
+            this.dir = Math.atan2(this.y - fromY, this.x - fromX);
+        } else {
+            const toLeft = this.x, toRight = viewW - this.x;
+            const toTop = this.y, toBottom = viewH - this.y;
+            const m = Math.min(toLeft, toRight, toTop, toBottom);
+            if (m === toLeft) this.dir = Math.PI;
+            else if (m === toRight) this.dir = 0;
+            else if (m === toTop) this.dir = -Math.PI / 2;
+            else this.dir = Math.PI / 2;
+        }
+    }
+
+    update(dt) {
+        this.tailPhase += dt * (this.leaving ? 5.5 : 3.2);
+        this.eatPulse -= dt;
+        if (this.snoutTapWindow > 0) {
+            this.snoutTapWindow -= dt;
+            if (this.snoutTapWindow <= 0) this.snoutTaps = 0;
+        }
+
+        // Scared: bolt off-screen, same idea as shark.leaving.
+        if (this.leaving && !this.duelMode) {
+            const spd = this.speed * 2.2;
+            this.x += Math.cos(this.dir) * spd * dt;
+            this.y += Math.sin(this.dir) * spd * dt;
+            if (Math.random() < 0.55) {
+                water.disturb(this.x - Math.cos(this.dir) * this.size * 0.35,
+                              this.y - Math.sin(this.dir) * this.size * 0.35, 12, 70);
             }
-            this.target = best;
+            const m = this.size * 2;
+            if (this.x < -m || this.x > viewW + m || this.y < -m || this.y > viewH + m) {
+                this.dead = true;
+            }
+            return;
         }
 
         let desired = this.dir;
         let speed = this.speed * 0.55;
-        if (this.target) {
-            desired = Math.atan2(this.target.y - this.y, this.target.x - this.x);
-            speed = this.speed;
-            const dist = Math.hypot(this.target.x - this.x, this.target.y - this.y);
-            if (dist < this.size * 0.45 + this.target.size * 0.5 + 6) {
-                this.target.dead = true;
-                if (this.eatPulse <= 0) {
-                    const pan = Math.max(-1, Math.min(1, (this.target.x / viewW) * 2 - 1));
-                    Audio.predatorEat(pan);
-                    this.eatPulse = 0.2;
-                }
-                water.disturb(this.target.x, this.target.y, 22, 260);
-                spawnSplash(this.target.x, this.target.y, 14, 0.6);
-                this.target = null;
-            }
+
+        // Finale: hunt the shark until both fall.
+        if (this.duelMode && shark && !shark.dead) {
+            desired = Math.atan2(shark.y - this.y, shark.x - this.x);
+            speed = this.speed * 1.2;
         } else {
-            this.wanderTimer = (this.wanderTimer || 0) - dt;
-            if (this.wanderTimer <= 0) {
-                this.wanderTimer = 1.5 + Math.random() * 2;
-                desired = this.dir + (Math.random() - 0.5) * 1.2;
-            } else {
-                desired = this._wanderDir != null ? this._wanderDir : this.dir;
+            if (!this.target || this.target.dead || this.target.golden
+                || this.target.isRainbow || this.target.isMonster
+                || this.target.size >= this.size) {
+                this.target = null;
+                let best = null, bd = CONFIG.huntRange * 1.5;
+                for (const f of fishes) {
+                    if (f.dead || f.golden || f.isRainbow || f.isMonster) continue;
+                    if (f.size >= this.size) continue; // cannot eat bigger fish
+                    const d = Math.hypot(f.x - this.x, f.y - this.y);
+                    if (d < bd) { bd = d; best = f; }
+                }
+                this.target = best;
             }
-            this._wanderDir = desired;
+
+            if (this.target) {
+                desired = Math.atan2(this.target.y - this.y, this.target.x - this.x);
+                speed = this.speed;
+                const dist = Math.hypot(this.target.x - this.x, this.target.y - this.y);
+                if (dist < this.size * 0.45 + this.target.size * 0.5 + 6) {
+                    this.target.dead = true;
+                    if (this.eatPulse <= 0) {
+                        const pan = Math.max(-1, Math.min(1, (this.target.x / viewW) * 2 - 1));
+                        Audio.predatorEat(pan);
+                        this.eatPulse = 0.2;
+                    }
+                    water.disturb(this.target.x, this.target.y, 22, 260);
+                    spawnSplash(this.target.x, this.target.y, 14, 0.6);
+                    this.target = null;
+                }
+            } else {
+                this.wanderTimer = (this.wanderTimer || 0) - dt;
+                if (this.wanderTimer <= 0) {
+                    this.wanderTimer = 1.5 + Math.random() * 2;
+                    desired = this.dir + (Math.random() - 0.5) * 1.2;
+                } else {
+                    desired = this._wanderDir != null ? this._wanderDir : this.dir;
+                }
+                this._wanderDir = desired;
+            }
         }
 
         const margin = 50;
@@ -3661,6 +5477,7 @@ function drawPovAttack(ctx) {
 
 function resetPond() {
     povAttack = null;
+    apexDuel = null;
     shark = null;
     whale = null;
     reptiles.length = 0;
@@ -3672,8 +5489,10 @@ function resetPond() {
     grabbedObstacle = null;
     grabAim = null;
     cancelGoldLift();
+    endMariachiFiesta();
     petStreak = 0;
     guaranteeRainbow = false;
+    nextFoodVariant = null;
     repopulating = true;
     repopTimer = 0.5;
     // Soft surface settle.
@@ -3686,6 +5505,8 @@ class Shark {
         this.tailPhase = 0;
         this.leaving = false;
         this.dead = false;
+        this.duelMode = false;
+        this.hp = 6;
         this.rollTimer = 0;
         this.rollDur = 1.15;
         // Enter from a random edge, off-screen.
@@ -3712,7 +5533,7 @@ class Shark {
         this.tailPhase += dt * (this.leaving ? 6 : 4.2);
         if (this.rollTimer > 0) this.rollTimer = Math.max(0, this.rollTimer - dt);
 
-        if (this.leaving) {
+        if (this.leaving && !this.duelMode) {
             this.x += Math.cos(this.dir) * 120 * dt;
             this.y += Math.sin(this.dir) * 120 * dt;
             const m = this.size * 2;
@@ -3722,22 +5543,30 @@ class Shark {
             return;
         }
 
-        if (!this.target || this.target.dead) {
+        if (this.duelMode) {
+            const foe = reptiles.find((x) => !x.dead);
+            if (!foe) return;
+            this.target = foe;
+            this.leaving = false;
+        } else if (!this.target || this.target.dead) {
             this.target = nearestFish(this.x, this.y);
             if (!this.target) { this.startLeaving(); return; }
         }
 
         let desired = Math.atan2(this.target.y - this.y, this.target.x - this.x);
         const avoid = obstacleAvoidDir(this.x, this.y, this.size * 0.35);
-        if (avoid != null && this.rollTimer <= 0) desired = avoid;
+        if (avoid != null && this.rollTimer <= 0 && !this.duelMode) desired = avoid;
         const diff = normAngle(desired - this.dir);
         this.dir += Math.max(-1.4 * dt, Math.min(1.4 * dt, diff));
-        const spd = this.rollTimer > 0 ? 130 : 95;
+        const spd = this.duelMode
+            ? (this.rollTimer > 0 ? 145 : 110)
+            : (this.rollTimer > 0 ? 130 : 95);
         this.x += Math.cos(this.dir) * spd * dt;
         this.y += Math.sin(this.dir) * spd * dt;
         resolveObstacleOverlap(this, this.size * 0.32);
 
-        if (this.rollTimer <= 0) {
+        // Duel bites are resolved in updateApexDuel so both fall together.
+        if (!this.duelMode && this.rollTimer <= 0) {
             const dist = Math.hypot(this.target.x - this.x, this.target.y - this.y);
             if (dist < this.size * 0.5 + this.target.size * 0.5 + 8) this.eat(this.target);
         }
@@ -3752,6 +5581,8 @@ class Shark {
     eat(fish) {
         // Apex fish cannot be eaten by the shark; they eat the shark instead.
         if (fish.isRainbow || fish.isMonster) return;
+        // Larger heroes (or any larger fish) shrug the bite off.
+        if (fish.size > this.size) return;
         fish.dead = true;
         const pan = Math.max(-1, Math.min(1, (fish.x / viewW) * 2 - 1));
         Audio.sharkStrike(pan);
@@ -3896,6 +5727,8 @@ class Whale {
             const mouth = this.size * 0.5;
             for (const f of fishes) {
                 if (f.dead) continue;
+                // Heroes that outgrew the whale are not swallowed.
+                if (f.isHero && f.size > this.size) continue;
                 if (Math.hypot(f.x - this.x, f.y - this.y) < mouth) {
                     f.dead = true;
                     if (this.eatPulse <= 0) {
@@ -4055,11 +5888,11 @@ function manageEcosystem(dt) {
         }
     }
 
-    // Rare crocodile / alligator: small chance every five minutes.
+    // Rare crocodile / alligator: chance checked once per minute.
     reptileCheckTimer += dt;
     if (reptileCheckTimer >= CONFIG.reptileInterval) {
         reptileCheckTimer = 0;
-        if (!whale && !shark && !repopulating && !povAttack
+        if (!whale && !shark && !repopulating && !povAttack && !apexDuel
             && reptiles.length === 0 && swimmers.length > 2
             && Math.random() < CONFIG.reptileChance) {
             reptiles.push(new Reptile());
@@ -4075,34 +5908,43 @@ function manageEcosystem(dt) {
         whale.update(dt);
         if (whale.dead) {
             whale = null;
-            if (fishes.filter((f) => !f.dead).length === 0) {
+            if (fishes.filter((f) => !f.dead).length === 0 && !apexDuel) {
                 repopulating = true;
                 repopTimer = 0.8;
             }
         }
     }
 
+    const livingReptiles = reptiles.filter((r) => !r.dead && !r.leaving);
+    // Croc/alligator cleared the pond: summon the shark for a fight to the death.
+    if (!apexDuel && !povAttack && !whale && !rainbowExiting
+        && livingReptiles.length > 0 && swimmers.length === 0) {
+        beginApexDuel();
+    }
+    if (apexDuel) updateApexDuel(dt);
+
     if (shark) {
         shark.update(dt);
-        if (shark.dead) {
+        if (shark.dead && !apexDuel) {
             shark = null;
-            if (!rainbowExiting && !hasMonster && alive.filter((f) => !f.golden).length === 0) {
+            if (!rainbowExiting && !hasMonster && alive.filter((f) => !f.golden).length === 0
+                && livingReptiles.length === 0) {
                 repopulating = true;
                 repopTimer = 0.8;
             }
         }
-    } else if (!whale && !repopulating && !rainbowExiting && !povAttack
+    } else if (!whale && !repopulating && !rainbowExiting && !povAttack && !apexDuel
         && swimmers.length === 1 && alive.filter((f) => !f.golden).length === 1) {
         // Last swimmer remaining (rainbow or monster included): summon the shark.
         shark = new Shark(swimmers[0]);
-    } else if (!repopulating && !shark && !whale && !povAttack && !rainbowExiting
-        && swimmers.length === 0) {
+    } else if (!repopulating && !shark && !whale && !povAttack && !apexDuel && !rainbowExiting
+        && swimmers.length === 0 && livingReptiles.length === 0) {
         // Restock when no swimmers remain (golden resting fish do not block this).
         repopulating = true;
         repopTimer = 0.8;
     }
 
-    if (repopulating) {
+    if (repopulating && !apexDuel) {
         repopTimer -= dt;
         if (repopTimer <= 0 && fishes.length < CONFIG.fishCount) {
             fishes.push(edgeFish());
@@ -4218,6 +6060,63 @@ function spawnWindowRipple(x, y, v) {
 // ===========================================================================
 let pointerDownAt = null;
 let pointerNow = null;
+
+// Net mode: right-click sweeps floating food out of the pond.
+let netMode = false;
+let netSweeping = false;
+const NET_RADIUS = 44;
+
+function sweepFoodNear(x, y) {
+    let scooped = 0;
+    for (const f of foods) {
+        if (f.eaten || f.sinkProgress > 0.85) continue;
+        const reach = NET_RADIUS + f.radius();
+        if (Math.hypot(f.x - x, f.y - y) > reach) continue;
+        f.eaten = true;
+        scooped++;
+        water.disturb(f.x, f.y, Math.max(4, f.size * 0.45), 55);
+        if (scooped <= 4) spawnSplash(f.x, f.y, 3 + f.size * 0.15, 0.28);
+    }
+    if (scooped) markFirstInteraction();
+    return scooped;
+}
+
+function drawNetCursor(ctx) {
+    if (!netMode || mode !== "pond" || !pointerNow) return;
+    const x = pointerNow.x;
+    const y = pointerNow.y;
+    const pulse = 1 + Math.sin(performance.now() * 0.006) * 0.04;
+    const r = NET_RADIUS * pulse;
+    ctx.save();
+    ctx.globalAlpha = netSweeping ? 0.55 : 0.28;
+    ctx.strokeStyle = netSweeping ? "rgba(210, 230, 210, 0.9)" : "rgba(180, 210, 200, 0.75)";
+    ctx.lineWidth = netSweeping ? 2.2 : 1.4;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    // Mesh lines.
+    ctx.globalAlpha = netSweeping ? 0.28 : 0.14;
+    ctx.lineWidth = 1;
+    for (let i = -2; i <= 2; i++) {
+        const ox = i * r * 0.28;
+        ctx.beginPath();
+        ctx.moveTo(x + ox, y - Math.sqrt(Math.max(0, r * r - ox * ox)));
+        ctx.lineTo(x + ox, y + Math.sqrt(Math.max(0, r * r - ox * ox)));
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x - Math.sqrt(Math.max(0, r * r - ox * ox)), y + ox);
+        ctx.lineTo(x + Math.sqrt(Math.max(0, r * r - ox * ox)), y + ox);
+        ctx.stroke();
+    }
+    // Short handle.
+    ctx.globalAlpha = netSweeping ? 0.5 : 0.25;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x + r * 0.72, y - r * 0.72);
+    ctx.lineTo(x + r * 1.15, y - r * 1.15);
+    ctx.stroke();
+    ctx.restore();
+}
 let firstInteractionDone = false;
 
 // Normalized size in [0,1] from how long the button has been held.
@@ -4328,10 +6227,17 @@ function updateGoldHold(dt) {
 
 function onPointerDown(ev) {
     Audio.ensure();
-    // Right click: hold gold, drag debris, or pet whale / shark / fish.
+    // Right click: net scoop, hold gold, drag debris, scare reptile snout, or pet.
     if (ev.button === 2) {
         ev.preventDefault();
         if (mode !== "pond") return;
+        pointerNow = { x: ev.clientX, y: ev.clientY };
+        if (netMode) {
+            netSweeping = true;
+            sweepFoodNear(ev.clientX, ev.clientY);
+            water.disturb(ev.clientX, ev.clientY, NET_RADIUS * 0.35, 40);
+            return;
+        }
         const gold = goldenFishAt(ev.clientX, ev.clientY);
         if (gold) {
             gold.lifting = true;
@@ -4360,6 +6266,10 @@ function onPointerDown(ev) {
             water.disturb(ob.x, ob.y, obstacleRadius(ob) * 0.6, 80);
             return;
         }
+        if (tryScareReptileAt(ev.clientX, ev.clientY)) {
+            markFirstInteraction();
+            return;
+        }
         petPondLifeAt(ev.clientX, ev.clientY);
         return;
     }
@@ -4369,6 +6279,11 @@ function onPointerDown(ev) {
 function onPointerMove(ev) {
     pointerNow = { x: ev.clientX, y: ev.clientY };
     if (mode === "pond" && (ev.buttons & 2)) {
+        if (netMode && netSweeping) {
+            sweepFoodNear(ev.clientX, ev.clientY);
+            if (Math.random() < 0.2) water.disturb(ev.clientX, ev.clientY, NET_RADIUS * 0.25, 28);
+            return;
+        }
         if (liftState && liftState.holding) {
             // Stay near where you grabbed; the fish rises on its own.
             const d = Math.hypot(ev.clientX - liftState.originX, ev.clientY - liftState.originY);
@@ -4389,6 +6304,9 @@ function onPointerMove(ev) {
 }
 function onPointerUp(ev) {
     if (ev.button === 2) {
+        if (netSweeping) {
+            netSweeping = false;
+        }
         if (liftState) {
             // Released too early: the gold fish settles back on the lakebed.
             cancelGoldLift();
@@ -4443,6 +6361,21 @@ function markFirstInteraction() {
         hint.classList.add("gone");
         setTimeout(() => hint.remove(), 1100);
     }
+}
+
+// Right-click snout prods: accumulate hits to scare a croc/alligator away.
+function tryScareReptileAt(x, y) {
+    if (apexDuel) return false;
+    let best = null;
+    let bestD = Infinity;
+    for (const r of reptiles) {
+        if (r.dead || r.leaving || r.duelMode) continue;
+        if (!r.hitSnout(x, y)) continue;
+        const d = Math.hypot(x - r.x, y - r.y);
+        if (d < bestD) { bestD = d; best = r; }
+    }
+    if (!best) return false;
+    return best.prodSnout(x, y);
 }
 
 // Right-click pets: whale and shark first (larger targets), then ordinary fish.
@@ -4533,9 +6466,44 @@ canvas.addEventListener("pointermove", onPointerMove);
 window.addEventListener("pointerup", onPointerUp);
 window.addEventListener("pointercancel", () => {
     cancelGoldLift();
+    netSweeping = false;
     grabbedObstacle = null;
     grabAim = null;
 });
+
+// Quiet food-variant keywords: type "rainbow", "golden", "green" (etc.) for the next drop.
+window.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    // Escape / U: immersive UI chrome toggle (safe with keyword typing).
+    if (e.key === "Escape" || e.key === "u" || e.key === "U") {
+        e.preventDefault();
+        setUiHidden(!document.body.classList.contains("ui-hidden"));
+        return;
+    }
+    if (e.key.length !== 1) return;
+    noteFoodVariantKeyword(e.key);
+});
+
+// ===========================================================================
+// UI CHROME TOGGLE (immersive view: hide all menus except this button)
+// ===========================================================================
+const uiToggle = document.getElementById("ui-toggle");
+
+function setUiHidden(hidden) {
+    document.body.classList.toggle("ui-hidden", hidden);
+    if (!uiToggle) return;
+    const label = hidden ? "Show menus" : "Hide menus";
+    uiToggle.title = label;
+    uiToggle.setAttribute("aria-label", label);
+    uiToggle.setAttribute("aria-pressed", hidden ? "true" : "false");
+}
+
+if (uiToggle) {
+    uiToggle.addEventListener("click", (e) => {
+        e.stopPropagation();
+        setUiHidden(!document.body.classList.contains("ui-hidden"));
+    });
+}
 
 // ===========================================================================
 // MODE TOGGLE (single click = switch surface, double click = ambient bed)
@@ -4581,6 +6549,18 @@ dropSoundBtn.addEventListener("click", (e) => {
     });
 });
 
+const netBtn = document.getElementById("net-btn");
+netBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    netMode = !netMode;
+    netSweeping = false;
+    netBtn.classList.toggle("on", netMode);
+    netBtn.setAttribute("aria-pressed", netMode ? "true" : "false");
+    netBtn.title = netMode
+        ? "Net on: right click sweeps food"
+        : "Net: scoop food with right click";
+});
+
 const hatsBtn = document.getElementById("hats-btn");
 hatsBtn.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -4612,10 +6592,16 @@ function frame(now) {
     sceneryTime += dt;
 
     if (mode === "pond") {
+        sunPhase += dt;
         // Advance the water twice per frame for smoother, faster wave travel.
         water.step();
         water.step();
+
+        // Floor first, caustics on the stones, then translucent water.
+        drawPondBed(ctx);
+        drawBedCaustics(ctx);
         water.render(ctx);
+        drawSunContactShadows(ctx);
 
         // Shore and bank scenery sit under the swimming life.
         drawShoreStones(ctx, dt);
@@ -4630,6 +6616,7 @@ function frame(now) {
         updateDroplets(dt);
         updateRainbowTrail(dt);
         updateGoldHold(dt);
+        updateMariachiFiesta(dt);
 
         // Fish live beneath the surface, so draw them first.
         if (!povAttack) {
@@ -4639,6 +6626,7 @@ function frame(now) {
         for (let i = fishes.length - 1; i >= 0; i--) {
             if (fishes[i].dead) fishes.splice(i, 1);
         }
+        drawSunCreatureShadows(ctx);
         // Draw resting gold first (lakebed), then swimmers above them.
         for (const fish of fishes) {
             if (fish.golden) fish.draw(ctx);
@@ -4662,6 +6650,7 @@ function frame(now) {
             if (foods[i].eaten) foods.splice(i, 1);
         }
         for (const f of foods) f.draw(ctx);
+        drawNetCursor(ctx);
 
         for (const rk of rocks) rk.update(dt);
         for (let i = rocks.length - 1; i >= 0; i--) {
@@ -4670,6 +6659,9 @@ function frame(now) {
         for (const rk of rocks) rk.draw(ctx);
         drawDroplets(ctx);
         if (!povAttack) drawCharge(ctx);
+
+        // Golden-hour wash (no rays) sits above the pond life.
+        drawSunAmbience(ctx);
 
         // Vignette for depth.
         ctx.save();

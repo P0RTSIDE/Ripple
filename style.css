@@ -43,6 +43,57 @@ body.pond {
     touch-action: none; /* let us handle all pointer gestures ourselves */
 }
 
+/* Hide/show chrome: always reachable, even when other menus are off. */
+#ui-toggle {
+    position: fixed;
+    top: 18px;
+    right: 56px;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    color: var(--ink);
+    opacity: 0.18;
+    transition: opacity 0.4s ease, right 0.35s ease;
+    z-index: 12;
+}
+
+#ui-toggle:hover,
+#ui-toggle:focus-visible {
+    opacity: 0.75;
+    outline: none;
+}
+
+body.ui-hidden #ui-toggle {
+    right: 18px;
+    opacity: 0.12;
+}
+
+body.ui-hidden #ui-toggle:hover,
+body.ui-hidden #ui-toggle:focus-visible {
+    opacity: 0.65;
+}
+
+.ico-ui {
+    width: 12px;
+    height: 10px;
+    background:
+        linear-gradient(currentColor, currentColor) 0 0 / 100% 1.5px no-repeat,
+        linear-gradient(currentColor, currentColor) 0 4.25px / 100% 1.5px no-repeat,
+        linear-gradient(currentColor, currentColor) 0 8.5px / 100% 1.5px no-repeat;
+}
+
+body.ui-hidden .ico-ui {
+    opacity: 0.85;
+    background:
+        linear-gradient(currentColor, currentColor) 0 4.25px / 100% 1.5px no-repeat;
+}
+
 /* Minimal corner toggle: an icon only, faint until hovered. */
 #mode-toggle {
     position: fixed;
@@ -66,6 +117,16 @@ body.pond {
 #mode-toggle:focus-visible {
     opacity: 0.75;
     outline: none;
+}
+
+/* Immersive mode: every menu except the UI toggle itself. */
+body.ui-hidden #mode-toggle,
+body.ui-hidden #gold-counter,
+body.ui-hidden #pond-controls,
+body.ui-hidden #hint {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    visibility: hidden;
 }
 
 /* Icon is drawn with pure CSS so there are no image assets. */
@@ -166,7 +227,8 @@ body.pond #pond-controls {
 
 .scenery-btn,
 #drop-sound-btn,
-#hats-btn {
+#hats-btn,
+#net-btn {
     width: 34px;
     min-height: 34px;
     display: flex;
@@ -186,16 +248,19 @@ body.pond #pond-controls {
 .scenery-btn:hover,
 #drop-sound-btn:hover,
 #hats-btn:hover,
+#net-btn:hover,
 .scenery-btn:focus-visible,
 #drop-sound-btn:focus-visible,
-#hats-btn:focus-visible {
+#hats-btn:focus-visible,
+#net-btn:focus-visible {
     outline: none;
     border-color: rgba(200, 224, 210, 0.55);
     color: var(--ink);
 }
 
 .scenery-btn.on,
-#hats-btn.on {
+#hats-btn.on,
+#net-btn.on {
     border-color: rgba(160, 200, 170, 0.55);
     color: rgba(200, 230, 210, 0.9);
 }
@@ -332,6 +397,46 @@ body.pond #pond-controls {
     border: 1.4px solid currentColor;
     border-radius: 45% 40% 50% 55%;
     transform: rotate(12deg);
+}
+
+.ico-bed {
+    width: 12px;
+    height: 8px;
+    border: 1.3px solid currentColor;
+    border-radius: 2px 2px 40% 40%;
+    box-shadow: inset 0 -2px 0 0 currentColor;
+}
+
+.ico-sun {
+    width: 10px;
+    height: 10px;
+    border: 1.4px solid currentColor;
+    border-radius: 50%;
+    box-shadow:
+        0 -4px 0 -2.5px currentColor,
+        0 4px 0 -2.5px currentColor,
+        -4px 0 0 -2.5px currentColor,
+        4px 0 0 -2.5px currentColor;
+}
+
+.ico-net {
+    width: 12px;
+    height: 12px;
+    border: 1.4px solid currentColor;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 0.5px currentColor;
+}
+
+.ico-net::before {
+    content: "";
+    position: absolute;
+    left: 5px;
+    top: -3px;
+    width: 1.4px;
+    height: 5px;
+    background: currentColor;
+    border-radius: 1px;
+    transform: rotate(28deg);
 }
 
 .ico-hat {
