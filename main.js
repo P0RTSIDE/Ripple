@@ -1750,31 +1750,238 @@ function sunShadowDir() {
     return { x: -0.58, y: 0.52 };
 }
 
-// Hard contact shadow on the pond floor (crisp edge, clear offset).
-function drawFloorShadow(ctx, x, y, rx, ry, alpha) {
+// Transform to the sun-offset floor contact and slightly squash so the silhouette sits on the bed.
+function withFloorShadow(ctx, x, y, sizeHint, alpha, rot, drawFn) {
     const d = sunShadowDir();
-    const len = 22 + Math.max(rx, ry) * 0.95;
-    const sx = x + d.x * len;
-    const sy = y + d.y * len;
-    const ang = Math.atan2(d.y, d.x);
-    // Solid dark core with a hard rim (minimal soft falloff).
+    const len = 22 + Math.max(8, sizeHint) * 0.95;
+    ctx.save();
+    ctx.translate(x + d.x * len, y + d.y * len);
+    ctx.scale(1, 0.58);
+    if (rot != null) ctx.rotate(rot);
     ctx.fillStyle = `rgba(12, 10, 8, ${Math.min(0.78, alpha * 1.15)})`;
-    ctx.beginPath();
-    ctx.ellipse(sx, sy, rx * 1.02, ry * 0.62, ang, 0, Math.PI * 2);
-    ctx.fill();
-    // Very tight penumbra so the silhouette stays sharp.
-    const g = ctx.createRadialGradient(sx, sy, Math.min(rx, ry) * 0.55, sx, sy, Math.max(rx, ry) * 1.12);
-    g.addColorStop(0, `rgba(18, 14, 10, ${alpha * 0.35})`);
-    g.addColorStop(0.75, `rgba(18, 14, 10, ${alpha * 0.08})`);
-    g.addColorStop(1, "rgba(18, 14, 10, 0)");
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.ellipse(sx, sy, rx * 1.12, ry * 0.72, ang, 0, Math.PI * 2);
-    ctx.fill();
+    drawFn(ctx);
+    ctx.restore();
+}
+
+// Fallback oval when a shape path is not available.
+function drawFloorShadow(ctx, x, y, rx, ry, alpha, rot) {
+    withFloorShadow(ctx, x, y, Math.max(rx, ry), alpha, rot ?? Math.atan2(sunShadowDir().y, sunShadowDir().x), (c) => {
+        c.beginPath();
+        c.ellipse(0, 0, rx * 1.02, ry * 1.05, 0, 0, Math.PI * 2);
+        c.fill();
+    });
 }
 
 function drawSoftShadowBlob(ctx, x, y, rx, ry, alpha) {
     drawFloorShadow(ctx, x, y, rx, ry, alpha);
+}
+
+function pathLilyPad(ctx, r) {
+    ctx.beginPath();
+    const lobes = 12;
+    for (let i = 0; i <= lobes; i++) {
+        const t0 = 0.28 + (i / lobes) * (Math.PI * 2 - 0.56);
+        const lobe = 0.9 + 0.1 * Math.sin(i * 2.2);
+        const x = Math.cos(t0) * r * lobe;
+        const y = Math.sin(t0) * r * 0.88 * lobe;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.lineTo(0, 0);
+    ctx.closePath();
+}
+
+function pathFacetRockOutline(ctx, o) {
+    const facets = o.facets || 8;
+    const profile = o.profile || makeObstacleDetail(2, facets, 3);
+    ctx.beginPath();
+    for (let i = 0; i < facets; i++) {
+        const a = (i / facets) * Math.PI * 2 - 0.4;
+        const rr = o.r * (0.72 + profile[i % profile.length] * 0.35);
+        const x = Math.cos(a) * rr;
+        const y = Math.sin(a) * rr * 0.72;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+}
+
+function pathPlankOutline(ctx, o) {
+    const profile = o.profile || [];
+    ctx.beginPath();
+    ctx.moveTo(-o.len * 0.5, -o.thick * 0.5);
+    for (let i = 0; i < 6; i++) {
+        const t = i / 5;
+        ctx.lineTo(-o.len * 0.5 + o.len * t, -o.thick * (0.45 + (profile[i] || 1) * 0.08));
+    }
+    ctx.lineTo(o.len * 0.5, o.thick * 0.5);
+    for (let i = 5; i >= 0; i--) {
+        const t = i / 5;
+        ctx.lineTo(-o.len * 0.5 + o.len * t, o.thick * (0.4 + (profile[i] || 1) * 0.1));
+    }
+    ctx.closePath();
+}
+
+function pathPotSilhouette(ctx, r) {
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.42, r * 0.58);
+    ctx.bezierCurveTo(-r * 0.95, r * 0.15, -r * 0.88, -r * 0.25, -r * 0.38, -r * 0.52);
+    ctx.quadraticCurveTo(-r * 0.1, -r * 0.62, r * 0.12, -r * 0.58);
+    ctx.bezierCurveTo(r * 0.55, -r * 0.52, r * 0.95, -r * 0.1, r * 0.62, r * 0.55);
+    ctx.quadraticCurveTo(0.1, r * 0.72, -r * 0.42, r * 0.58);
+    ctx.closePath();
+}
+
+function pathStumpOutline(ctx, o) {
+    const facets = 9;
+    const profile = o.profile || makeObstacleDetail(3, facets, 4);
+    ctx.beginPath();
+    for (let i = 0; i < facets; i++) {
+        const a = (i / facets) * Math.PI * 2;
+        const rr = o.r * (0.75 + profile[i % profile.length] * 0.3);
+        const x = Math.cos(a) * rr;
+        const y = Math.sin(a) * rr * 0.68;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+}
+
+function pathObstacleShadow(ctx, o) {
+    if (o.kind === "log" || o.kind === "driftwood") {
+        const thick = o.kind === "driftwood" ? o.thick * 0.85 : o.thick;
+        const profile = o.profile || makeObstacleDetail(1, 10, 1);
+        const endJags = o.knobs || [1, 0.75, 1.15, 0.85];
+        pathJaggedCapsule(ctx, o.len, thick, profile, endJags);
+    } else if (o.kind === "plank") {
+        pathPlankOutline(ctx, o);
+    } else if (o.kind === "boulder" || o.kind === "mossrock") {
+        pathFacetRockOutline(ctx, o);
+    } else if (o.kind === "crate") {
+        pathWornCrate(ctx, o.r * 1.55, o.profile);
+    } else if (o.kind === "barrel") {
+        pathBarrelSilhouette(ctx, o.r * 0.88, o.r, o.profile);
+    } else if (o.kind === "pot") {
+        pathPotSilhouette(ctx, o.r);
+    } else if (o.kind === "reedraft") {
+        ctx.beginPath();
+        ctx.ellipse(0, o.r * 0.1, o.r * 0.7, o.r * 0.45, 0, 0, Math.PI * 2);
+    } else {
+        pathStumpOutline(ctx, o);
+    }
+}
+
+function fishShadowDims(f) {
+    const shape = f.type.shape || "oval";
+    const slim = f.type.slim != null ? f.type.slim
+        : shape === "slim" ? 0.58
+        : shape === "round" ? 0.72
+        : shape === "diamond" ? 0.85
+        : shape === "longfin" ? 0.55
+        : shape === "koi" ? 0.62
+        : 0.5;
+    const L = f.size;
+    const W = f.size * 0.5 * slim;
+    return { L, W, shape };
+}
+
+function fillFishShadowPaths(ctx, L, W, shape) {
+    // Tail lobe.
+    ctx.beginPath();
+    if (shape === "koi" || shape === "longfin") {
+        ctx.moveTo(-L * 0.4, 0);
+        ctx.bezierCurveTo(-L * 0.62, -W * 0.9, -L * 0.85, -W * 1.35, -L * 1.08, -W * 1.05);
+        ctx.quadraticCurveTo(-L * 0.78, -W * 0.15, -L * 0.55, 0);
+        ctx.quadraticCurveTo(-L * 0.78, W * 0.15, -L * 1.08, W * 1.05);
+        ctx.bezierCurveTo(-L * 0.85, W * 1.35, -L * 0.62, W * 0.9, -L * 0.4, 0);
+    } else if (shape === "diamond") {
+        ctx.moveTo(-L * 0.34, 0);
+        ctx.quadraticCurveTo(-L * 0.55, -W * 0.9, -L * 0.78, -W * 1.45);
+        ctx.quadraticCurveTo(-L * 0.58, 0, -L * 0.78, W * 1.45);
+        ctx.quadraticCurveTo(-L * 0.55, W * 0.9, -L * 0.34, 0);
+    } else {
+        ctx.moveTo(-L * 0.42, 0);
+        ctx.quadraticCurveTo(-L * 0.62, -W * 0.55, -L * 0.92, -W * 0.95);
+        ctx.quadraticCurveTo(-L * 0.7, 0, -L * 0.92, W * 0.95);
+        ctx.quadraticCurveTo(-L * 0.62, W * 0.55, -L * 0.42, 0);
+    }
+    ctx.fill();
+    // Body.
+    if (shape === "diamond") {
+        ctx.beginPath();
+        ctx.moveTo(L * 0.48, 0);
+        ctx.bezierCurveTo(L * 0.2, -W * 0.9, -L * 0.05, -W * 1.2, -L * 0.38, 0);
+        ctx.bezierCurveTo(-L * 0.05, W * 1.2, L * 0.2, W * 0.9, L * 0.48, 0);
+        ctx.closePath();
+    } else {
+        pathFishFusiform(ctx, L, W, shape);
+    }
+    ctx.fill();
+}
+
+function fillReptileShadowPaths(ctx, r) {
+    const L = r.size;
+    const W = r.size * (r.kind === "alligator" ? 0.34 : 0.28);
+    const snout = r.kind === "alligator" ? 0.22 : 0.32;
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.4, 0);
+    ctx.lineTo(-L * 0.85, -W * 0.7);
+    ctx.lineTo(-L * 0.7, 0);
+    ctx.lineTo(-L * 0.85, W * 0.7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(0, 0, L * 0.42, W, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    if (r.kind === "alligator") {
+        ctx.ellipse(L * 0.38, 0, L * snout, W * 0.85, 0, 0, Math.PI * 2);
+    } else {
+        ctx.moveTo(L * 0.25, -W * 0.45);
+        ctx.lineTo(L * 0.62, -W * 0.22);
+        ctx.lineTo(L * 0.62, W * 0.22);
+        ctx.lineTo(L * 0.25, W * 0.45);
+        ctx.closePath();
+    }
+    ctx.fill();
+}
+
+function fillSharkShadowPaths(ctx, L, W) {
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.48, 0);
+    ctx.lineTo(-L * 0.78, -W * 0.75);
+    ctx.lineTo(-L * 0.64, 0);
+    ctx.lineTo(-L * 0.78, W * 0.75);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(0, 0, L * 0.48, W, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(L * 0.42, 0, L * 0.2, W * 0.62, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(0, -W * 0.65);
+    ctx.lineTo(-L * 0.1, -W * 1.35);
+    ctx.lineTo(-L * 0.22, -W * 0.65);
+    ctx.closePath();
+    ctx.fill();
+}
+
+function fillWhaleShadowPaths(ctx, L, W) {
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.46, 0);
+    ctx.lineTo(-L * 0.74, -W * 0.95);
+    ctx.lineTo(-L * 0.6, 0);
+    ctx.lineTo(-L * 0.74, W * 0.95);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(0, 0, L * 0.46, W, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(L * 0.4, 0, L * 0.17, W * 0.68, 0, 0, Math.PI * 2);
+    ctx.fill();
 }
 
 // Soft organic caustic shimmer on the pond bed (no lattice, no sun rays).
@@ -1834,22 +2041,41 @@ function drawSunContactShadows(ctx) {
 
     if (scenery.debris) {
         for (const o of obstacles) {
-            const r = obstacleRadius(o);
-            if (isLongObstacle(o)) {
-                drawFloorShadow(ctx, o.x, o.y, o.len * 0.4, o.thick * 0.65, 0.58);
-            } else {
-                drawFloorShadow(ctx, o.x, o.y, r * 0.9, r * 0.62, 0.55);
-            }
+            const hint = isLongObstacle(o) ? o.len * 0.45 : obstacleRadius(o);
+            withFloorShadow(ctx, o.x, o.y, hint, isLongObstacle(o) ? 0.58 : 0.55, o.rot, (c) => {
+                if (o.kind === "driftwood") {
+                    pathJaggedCapsule(c, o.len, o.thick * 0.85, o.profile, o.knobs);
+                    c.fill();
+                    const fork = o.fork || 0.45;
+                    c.beginPath();
+                    c.moveTo(o.len * 0.05, -o.thick * 0.1);
+                    c.quadraticCurveTo(o.len * 0.25, -o.thick * (0.8 + fork), o.len * 0.42, -o.thick * (1.1 + fork));
+                    c.lineTo(o.len * 0.38, -o.thick * (0.7 + fork));
+                    c.quadraticCurveTo(o.len * 0.2, -o.thick * 0.35, o.len * 0.02, 0);
+                    c.closePath();
+                    c.fill();
+                } else {
+                    pathObstacleShadow(c, o);
+                    c.fill();
+                }
+            });
         }
     }
     if (scenery.stones) {
         for (const s of sceneryItems.stones) {
-            drawFloorShadow(ctx, s.x, s.y, s.rx * 1.05, s.ry * 0.95, 0.5);
+            if (!s.profile) s.profile = makeObstacleDetail(Math.floor(s.x + s.y), 9, 5);
+            withFloorShadow(ctx, s.x, s.y, Math.max(s.rx, s.ry), 0.5, s.rot, (c) => {
+                pathOrganicOval(c, s.rx * 1.05, s.ry * 0.95, 9, s.profile, 0.2);
+                c.fill();
+            });
         }
     }
     if (scenery.lilies) {
         for (const L of sceneryItems.lilies) {
-            drawFloorShadow(ctx, L.x, L.y, L.r * 0.95, L.r * 0.55, 0.52);
+            withFloorShadow(ctx, L.x, L.y, L.r, 0.52, L.rot, (c) => {
+                pathLilyPad(c, L.r);
+                c.fill();
+            });
         }
     }
     ctx.restore();
@@ -1862,18 +2088,33 @@ function drawSunCreatureShadows(ctx) {
     ctx.globalAlpha = 0.95;
     for (const f of fishes) {
         if (f.dead) continue;
-        const deep = f.golden ? 1.25 : 1;
-        drawFloorShadow(ctx, f.x, f.y, f.size * 0.5 * deep, f.size * 0.24 * deep, f.golden ? 0.45 : 0.6);
+        const { L, W, shape } = fishShadowDims(f);
+        const scale = f.golden ? (1 - (f.sinkDepth || 0) * 0.35) : 1;
+        const yOff = f.golden ? (f.sinkDepth || 0) * 6 : 0;
+        withFloorShadow(ctx, f.x, f.y + yOff, L, f.golden ? 0.45 : 0.6, f.dir, (c) => {
+            c.scale(scale, scale);
+            fillFishShadowPaths(c, L, W, shape);
+        });
     }
     for (const r of reptiles) {
         if (r.dead) continue;
-        drawFloorShadow(ctx, r.x, r.y, r.size * 0.42, r.size * 0.18, 0.58);
+        withFloorShadow(ctx, r.x, r.y, r.size, 0.58, r.dir, (c) => {
+            fillReptileShadowPaths(c, r);
+        });
     }
     if (shark && !shark.dead) {
-        drawFloorShadow(ctx, shark.x, shark.y, shark.size * 0.48, shark.size * 0.2, 0.62);
+        const L = shark.size;
+        const W = shark.size * 0.38;
+        withFloorShadow(ctx, shark.x, shark.y, L, 0.62, shark.dir, (c) => {
+            fillSharkShadowPaths(c, L, W);
+        });
     }
     if (whale && !whale.dead) {
-        drawFloorShadow(ctx, whale.x, whale.y, whale.size * 0.42, whale.size * 0.18, 0.52);
+        const L = whale.size;
+        const W = whale.size * 0.3;
+        withFloorShadow(ctx, whale.x, whale.y, L, 0.52, whale.dir, (c) => {
+            fillWhaleShadowPaths(c, L, W);
+        });
     }
     ctx.restore();
 }
@@ -2655,18 +2896,7 @@ function drawDriftwood(ctx, o) {
 
 function drawFacetRock(ctx, o, mossy) {
     const c = Math.floor(70 + o.tone * 50);
-    const facets = o.facets || 8;
-    const profile = o.profile || makeObstacleDetail(2, facets, 3);
-    ctx.beginPath();
-    for (let i = 0; i < facets; i++) {
-        const a = (i / facets) * Math.PI * 2 - 0.4;
-        const rr = o.r * (0.72 + profile[i % profile.length] * 0.35);
-        const x = Math.cos(a) * rr;
-        const y = Math.sin(a) * rr * 0.72;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-    }
-    ctx.closePath();
+    pathFacetRockOutline(ctx, o);
     const g = ctx.createRadialGradient(-o.r * 0.2, -o.r * 0.25, 2, 0, 0, o.r);
     g.addColorStop(0, `rgb(${c + 22},${c + 18},${c + 14})`);
     g.addColorStop(1, `rgb(${c - 30},${c - 26},${c - 24})`);
@@ -2713,19 +2943,7 @@ function drawObstacles(ctx, dt) {
             drawDriftwood(ctx, o);
         } else if (o.kind === "plank") {
             const w = woodTone(o.tone, 8);
-            const profile = o.profile || [];
-            ctx.beginPath();
-            ctx.moveTo(-o.len * 0.5, -o.thick * 0.5);
-            for (let i = 0; i < 6; i++) {
-                const t = i / 5;
-                ctx.lineTo(-o.len * 0.5 + o.len * t, -o.thick * (0.45 + (profile[i] || 1) * 0.08));
-            }
-            ctx.lineTo(o.len * 0.5, o.thick * 0.5);
-            for (let i = 5; i >= 0; i--) {
-                const t = i / 5;
-                ctx.lineTo(-o.len * 0.5 + o.len * t, o.thick * (0.4 + (profile[i] || 1) * 0.1));
-            }
-            ctx.closePath();
+            pathPlankOutline(ctx, o);
             ctx.fillStyle = w.fill;
             ctx.fill();
             ctx.strokeStyle = w.line;
@@ -2803,13 +3021,7 @@ function drawObstacles(ctx, dt) {
             g.addColorStop(0, `rgb(${c + 20},${Math.floor(c * 0.7)},${Math.floor(c * 0.48)})`);
             g.addColorStop(1, `rgb(${c - 25},${Math.floor(c * 0.48)},${Math.floor(c * 0.3)})`);
             ctx.fillStyle = g;
-            ctx.beginPath();
-            ctx.moveTo(-o.r * 0.42, o.r * 0.58);
-            ctx.bezierCurveTo(-o.r * 0.95, o.r * 0.15, -o.r * 0.88, -o.r * 0.25, -o.r * 0.38, -o.r * 0.52);
-            ctx.quadraticCurveTo(-o.r * 0.1, -o.r * 0.62, o.r * 0.12, -o.r * 0.58);
-            ctx.bezierCurveTo(o.r * 0.55, -o.r * 0.52, o.r * 0.95, -o.r * 0.1, o.r * 0.62, o.r * 0.55);
-            ctx.quadraticCurveTo(0.1, o.r * 0.72, -o.r * 0.42, o.r * 0.58);
-            ctx.closePath();
+            pathPotSilhouette(ctx, o.r);
             ctx.fill();
             ctx.strokeStyle = `rgba(${c - 35},${Math.floor(c * 0.38)},${Math.floor(c * 0.22)},0.55)`;
             ctx.lineWidth = 1.1;
@@ -2856,18 +3068,8 @@ function drawObstacles(ctx, dt) {
         } else {
             // Stump: bark sides + jagged ringed cut face.
             const w = woodTone(o.tone);
-            const facets = 9;
-            const profile = o.profile || makeObstacleDetail(3, facets, 4);
-            ctx.beginPath();
-            for (let i = 0; i < facets; i++) {
-                const a = (i / facets) * Math.PI * 2;
-                const rr = o.r * (0.75 + profile[i % profile.length] * 0.3);
-                const x = Math.cos(a) * rr;
-                const y = Math.sin(a) * rr * 0.68;
-                if (i === 0) ctx.moveTo(x, y);
-                else ctx.lineTo(x, y);
-            }
-            ctx.closePath();
+            const profile = o.profile || makeObstacleDetail(3, 9, 4);
+            pathStumpOutline(ctx, o);
             ctx.fillStyle = w.dark;
             ctx.fill();
             ctx.fillStyle = w.light;
@@ -3044,18 +3246,7 @@ function drawLilies(ctx, t, dt) {
         g.addColorStop(1, "#2a4a2c");
         ctx.fillStyle = g;
         // Lobed pad with a V-notch slit.
-        ctx.beginPath();
-        const lobes = 12;
-        for (let i = 0; i <= lobes; i++) {
-            const t0 = 0.28 + (i / lobes) * (Math.PI * 2 - 0.56);
-            const lobe = 0.9 + 0.1 * Math.sin(i * 2.2);
-            const x = Math.cos(t0) * L.r * lobe;
-            const y = Math.sin(t0) * L.r * 0.88 * lobe;
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-        }
-        ctx.lineTo(0, 0);
-        ctx.closePath();
+        pathLilyPad(ctx, L.r);
         ctx.fill();
         ctx.strokeStyle = "rgba(30, 60, 35, 0.35)";
         ctx.lineWidth = 0.8;
