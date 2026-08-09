@@ -20,10 +20,10 @@
         <span id="mode-icon"></span>
     </button>
 
-    <!-- Gold fish collection progress for the hats unlock. -->
-    <div id="gold-counter" aria-live="polite" title="Gold fish collected">
+    <!-- Spendable gold fish collected from the pond. -->
+    <div id="gold-counter" aria-live="polite" title="Gold fish">
         <span class="ico ico-gold"></span>
-        <span id="gold-count">0</span><span class="gold-sep">/</span><span>5</span>
+        <span id="gold-count">0</span>
     </div>
 
     <!-- Pond-only aesthetics and drop-sound controls: faint until hovered. -->
@@ -62,14 +62,33 @@
             <span class="ico ico-hat"></span>
             <span id="hats-cost">5</span>
         </button>
+        <button type="button" id="market-btn" class="locked" title="Market: 7 gold fish" aria-disabled="true" aria-pressed="false">
+            <span class="ico ico-market"></span>
+            <span id="market-cost">7</span>
+        </button>
+        <button type="button" id="catcher-btn" class="scenery-btn" title="Rainbow catcher" aria-pressed="false" hidden>
+            <span class="ico ico-catcher"></span>
+        </button>
         <button type="button" id="drop-sound-btn" title="Drop sound: soft" aria-label="Cycle drop sound">
             <span class="ico ico-sound"></span>
             <span id="drop-sound-label">soft</span>
         </button>
     </div>
 
-    <!-- Special food saved from the net: click a pellet, then click the pond to drop it. -->
-    <div id="food-stash" aria-label="Saved special food" aria-hidden="true"></div>
+    <!-- Quiet market: few buy rows, same faint corner feel as other pond chrome. -->
+    <div id="market-panel" aria-label="Market" aria-hidden="true">
+        <div class="market-meta">
+            <span><span id="market-gold">0</span> gold</span>
+            <span><span id="market-food">0</span> food</span>
+        </div>
+        <button type="button" id="market-buy-magnet" class="market-row" disabled>Magnet · 3 gold</button>
+        <button type="button" id="market-buy-catcher" class="market-row" disabled>Rainbow catcher · 4 gold</button>
+        <button type="button" id="market-buy-rainbow" class="market-row" disabled>Rainbow fish · 10 gold</button>
+        <button type="button" id="market-buy-goldfood" class="market-row" disabled>Gold food · 20 fish food</button>
+    </div>
+
+    <!-- Food saved from the net: click a pellet, then click the pond to drop it. -->
+    <div id="food-stash" aria-label="Saved food" aria-hidden="true"></div>
 
     <!-- On-load hint that fades out after the first interaction and never returns. -->
     <div id="hint">click anywhere</div>
