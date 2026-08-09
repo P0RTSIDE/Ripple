@@ -230,11 +230,33 @@ body.pond #pond-controls {
     opacity: 0.85;
 }
 
+/* Aesthetic toggles live in one flyout so the left column stays short. */
+#looks-panel {
+    position: absolute;
+    left: 42px;
+    top: 0;
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+    padding: 6px;
+    border-radius: 12px;
+    border: 1px solid rgba(180, 210, 200, 0.22);
+    background: rgba(8, 16, 18, 0.55);
+    max-height: min(70vh, 420px);
+    overflow-y: auto;
+}
+
+#looks-panel.open {
+    display: flex;
+}
+
 .scenery-btn,
 #drop-sound-btn,
+#looks-btn,
 #hats-btn,
 #market-btn,
 #catcher-btn,
+#picker-btn,
 #net-btn {
     width: 34px;
     min-height: 34px;
@@ -254,15 +276,19 @@ body.pond #pond-controls {
 
 .scenery-btn:hover,
 #drop-sound-btn:hover,
+#looks-btn:hover,
 #hats-btn:hover,
 #market-btn:hover,
 #catcher-btn:hover,
+#picker-btn:hover,
 #net-btn:hover,
 .scenery-btn:focus-visible,
 #drop-sound-btn:focus-visible,
+#looks-btn:focus-visible,
 #hats-btn:focus-visible,
 #market-btn:focus-visible,
 #catcher-btn:focus-visible,
+#picker-btn:focus-visible,
 #net-btn:focus-visible {
     outline: none;
     border-color: rgba(200, 224, 210, 0.55);
@@ -270,9 +296,11 @@ body.pond #pond-controls {
 }
 
 .scenery-btn.on,
+#looks-btn.on,
 #hats-btn.on,
 #market-btn.on,
 #catcher-btn.on,
+#picker-btn.on,
 #net-btn.on {
     border-color: rgba(160, 200, 170, 0.55);
     color: rgba(200, 230, 210, 0.9);
@@ -315,7 +343,8 @@ body.pond #pond-controls {
     display: none;
 }
 
-#catcher-btn[hidden] {
+#catcher-btn[hidden],
+#picker-btn[hidden] {
     display: none !important;
 }
 
@@ -338,6 +367,26 @@ body.pond #pond-controls {
     position: relative;
     width: 14px;
     height: 14px;
+}
+
+.ico-looks {
+    width: 12px;
+    height: 12px;
+    border: 1.4px solid currentColor;
+    border-radius: 3px;
+    position: relative;
+}
+
+.ico-looks::before {
+    content: "";
+    position: absolute;
+    left: 2px;
+    right: 2px;
+    top: 2px;
+    height: 2px;
+    background: currentColor;
+    box-shadow: 0 3px 0 currentColor, 0 6px 0 currentColor;
+    opacity: 0.85;
 }
 
 .ico-stone {
@@ -527,6 +576,35 @@ body.pond #pond-controls {
     border: 1.2px dashed currentColor;
     border-radius: 50%;
     opacity: 0.75;
+}
+
+.ico-picker {
+    width: 12px;
+    height: 12px;
+}
+
+.ico-picker::before {
+    content: "";
+    position: absolute;
+    left: 1px;
+    top: 5px;
+    width: 10px;
+    height: 5px;
+    border: 1.3px solid currentColor;
+    border-radius: 0 0 5px 5px;
+    border-top: none;
+}
+
+.ico-picker::after {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 1px;
+    width: 4px;
+    height: 5px;
+    border: 1.3px solid currentColor;
+    border-bottom: none;
+    border-radius: 3px 3px 0 0;
 }
 
 .ico-hat {
