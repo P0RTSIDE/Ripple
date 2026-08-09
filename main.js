@@ -7413,6 +7413,12 @@ let reptileCheckTimer = 0;
 let exoticCheckTimer = 0;
 
 function pondFinaleActive() {
+    // Soft white-return after a peaceful giant ending is not a hard lockout:
+    // the restocked hero school should already be swimming under the fade.
+    if (giantEnding && giantEnding.kind === "peace" && giantEnding.restocked) {
+        return !!(povAttack || heroRemorseEnding || frogFinale
+            || octopusWhaleFight || orcaFeastEnding || swordfishSpearEnding);
+    }
     return !!(povAttack || giantEnding || heroRemorseEnding || frogFinale
         || octopusWhaleFight || orcaFeastEnding || swordfishSpearEnding);
 }
@@ -7449,7 +7455,7 @@ function fishGrowCap(fish, opts) {
 
 // Quiet keyword spawn: type "alligator" (see noteFoodVariantKeyword).
 function spawnKeywordAlligator() {
-    if (mode !== "pond" || pondFinaleActive()) return;
+    if (mode !== "pond" || pondFinaleActive() || nightMode) return;
     const r = new Reptile("alligator");
     reptiles.push(r);
     water.disturb(r.x, r.y, r.size * 0.5, 200);
@@ -7457,7 +7463,8 @@ function spawnKeywordAlligator() {
 }
 
 function beginApexDuel() {
-    if (apexDuel || pondFinaleActive()) return;
+    // Day-only: night uses swordfish / octopus / orca stories instead.
+    if (nightMode || apexDuel || pondFinaleActive()) return;
     // Keep the largest wild reptile for the finale. Tamed crocs sit the fight out.
     const living = reptiles.filter((r) => !r.dead && !r.tamed && !r.golden);
     if (!living.length) return;
@@ -9841,11 +9848,12 @@ function updateOctopusWhaleFight(dt) {
     const ease = (rate) => 1 - Math.exp(-rate * dt);
 
     // Soft vignette builds and falls with the scene, never snaps.
-    let overlayGoal = 0.12;
-    if (fight.phase === "wrap") overlayGoal = 0.22;
-    else if (fight.phase === "eat") overlayGoal = 0.38;
-    else if (fight.phase === "ship") overlayGoal = 0.28;
-    else if (fight.phase === "fade") overlayGoal = 0.55;
+    // Ship-pull stays dark (not washed out); fade softens before pond return.
+    let overlayGoal = 0.14;
+    if (fight.phase === "wrap") overlayGoal = 0.28;
+    else if (fight.phase === "eat") overlayGoal = 0.42;
+    else if (fight.phase === "ship") overlayGoal = 0.52;
+    else if (fight.phase === "fade") overlayGoal = fight.restocked ? 0.08 : 0.62;
     fight.overlay += (overlayGoal - fight.overlay) * ease(1.4);
 
     if (fight.phase === "approach") {
@@ -11730,20 +11738,41 @@ function manageEcosystem(dt) {
     }
 
     const livingReptiles = reptiles.filter((r) => !r.dead && !r.leaving && !r.tamed && !r.golden);
+    // At night, day reptiles must not drive ecosystem events; ease them off-screen.
+    if (nightMode && livingReptiles.length > 0) {
+        for (const r of livingReptiles) {
+            if (!r.leaving) r.leaving = true;
+        }
+    }
     // Wild croc/alligator cleared the pond: summon the shark for a fight to the death.
     // Glow fish do not count, so the duel still starts while they float unharmed.
-    // Prefer a ready swordfish orca hunt over stealing the orca into a croc duel.
-    const swordfishOrcaStory = !!(swordfish && !swordfish.dead
-        && shark && !shark.dead && shark.isOrca
-        && (swordfish.orcaHunt || swordfishReadyForSpearEnding(swordfish)));
-    if (!apexDuel && !pondFinaleActive() && !whale && !rainbowExiting
-        && livingReptiles.length > 0 && countable.length === 0
-        && !swordfishOrcaStory) {
+    // Day only: never steal night orca / swordfish stories into a croc duel.
+    if (!nightMode && !apexDuel && !pondFinaleActive() && !whale && !rainbowExiting
+        && livingReptiles.length > 0 && countable.length === 0) {
         beginApexDuel();
     }
-    if (apexDuel) updateApexDuel(dt);
+    if (apexDuel) {
+        if (nightMode) {
+            // Soft abort: never run the day croc/shark duel under moonlight.
+            apexDuel = null;
+            if (shark && !shark.isHero) {
+                shark.duelMode = false;
+                shark.leaving = true;
+            }
+            for (const r of reptiles) {
+                r.duelMode = false;
+                if (!r.tamed && !r.golden && !r.isHero) r.leaving = true;
+            }
+        } else {
+            updateApexDuel(dt);
+        }
+    }
 
     if (shark) {
+        // Day shark must not linger after a switch to night; orca replaces last-fish role.
+        if (nightMode && !shark.isOrca && !shark.isHero && !shark.duelMode && !shark.glowSwallow) {
+            shark.leaving = true;
+        }
         shark.update(dt);
         if (shark.dead && !apexDuel) {
             const wasOrca = !!shark.isOrca;
@@ -12763,6 +12792,26 @@ document.querySelectorAll(".scenery-btn[data-scenery]").forEach((btn) => {
     });
 });
 
+// Keep the horizontal looks flyout on-screen without introducing scrollbars.
+function layoutLooksPanel() {
+    const panel = document.getElementById("looks-panel");
+    if (!panel || !looksPanelOpen) return;
+    panel.style.transform = "";
+    const pad = 8;
+    const rect = panel.getBoundingClientRect();
+    let dx = 0;
+    let dy = 0;
+    if (rect.top < pad) dy = pad - rect.top;
+    if (rect.bottom > window.innerHeight - pad) {
+        dy -= rect.bottom - (window.innerHeight - pad);
+    }
+    if (rect.right > window.innerWidth - pad) {
+        dx = (window.innerWidth - pad) - rect.right;
+    }
+    if (rect.left + dx < pad) dx += pad - (rect.left + dx);
+    if (dx || dy) panel.style.transform = `translate(${dx}px, ${dy}px)`;
+}
+
 function setLooksPanelOpen(open) {
     looksPanelOpen = !!open;
     const panel = document.getElementById("looks-panel");
@@ -12770,6 +12819,11 @@ function setLooksPanelOpen(open) {
     if (panel) {
         panel.classList.toggle("open", looksPanelOpen);
         panel.setAttribute("aria-hidden", looksPanelOpen ? "false" : "true");
+        if (!looksPanelOpen) {
+            panel.style.transform = "";
+        } else {
+            requestAnimationFrame(layoutLooksPanel);
+        }
     }
     if (btn) {
         btn.classList.toggle("on", looksPanelOpen);
@@ -12786,6 +12840,9 @@ if (looksBtn) {
         setLooksPanelOpen(!looksPanelOpen);
     });
 }
+window.addEventListener("resize", () => {
+    if (looksPanelOpen) layoutLooksPanel();
+});
 
 const dropSoundBtn = document.getElementById("drop-sound-btn");
 const dropSoundLabel = document.getElementById("drop-sound-label");
