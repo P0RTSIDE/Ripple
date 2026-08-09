@@ -51,7 +51,7 @@ const CONFIG = {
     repopInterval: 1.1,     // seconds between new fish swimming in
     fleeSpeedMult: 1.85,    // how much faster than cruising a fleeing fish is
     predatorChaseMult: 2.05,// predator chase: slightly faster than flee, so evil fish catch prey
-    goldenChance: 0.04,     // chance a piece of food is the golden kind
+    goldenChance: 0.03,     // chance a piece of food is the golden kind
     rainbowChance: 0.0035,  // even rarer: rainbow food (must stay below goldenChance)
     greenChance: 0.005,     // rare green food: turns a fish into a lasting pond plant
     growerChance: 0.007,    // rare grower food: surges a fish past normal size
