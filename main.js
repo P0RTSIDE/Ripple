@@ -54,7 +54,7 @@ const CONFIG = {
     goldenChance: 0.03,     // chance a piece of food is the golden kind
     rainbowChance: 0.0035,  // even rarer: rainbow food (must stay below goldenChance)
     greenChance: 0.005,     // rare green food: turns a fish into a lasting pond plant
-    pinkChance: 0.006,      // breeding food: turns a fish pink; two pink fish can spawn young
+    pinkChance: 0.014,      // breeding food: turns a fish pink; two pink fish can spawn young
     growerChance: 0.007,    // rare grower food: surges a fish past normal size
     growerBoost: 44,        // size gained from one grower pellet
     growerMaxSize: 215,     // floor cap for grower / carcass; heroes & huge meals scale to ~half screen
@@ -79,9 +79,12 @@ const CONFIG = {
     exoticEdgeChance: 0.14, // chance a repopulating fish is an exotic
     heroChance: 0.24,       // chance a new fish is a hero (hunts smaller predators)
     heroChaseMult: 2.1,     // hero chase: a bit faster than evil fish so they can catch them
+    // After a whale eats a fish, a large hero may hunt it below full whale size.
+    whaleHeroHuntFrac: 0.55,    // hero.size > whale.size * this
+    whaleHeroHuntScreen: 0.28,  // or hero.size >= min(viewW, viewH) * this
     breedCooldown: 6.5,     // seconds before a pink pair can breed again
     maxBreedPop: 24,        // soft cap on living fish from breeding (above fishCount)
-    foodStashMax: 10,       // special pellets saved from the net
+    foodStashMax: 14,       // pellets saved from the net (normal + specials)
 };
 
 // Hidden streak: consecutive pets with no food thrown unlock a guaranteed rainbow pellet.
@@ -101,18 +104,20 @@ function normalizeFoodVariant(variant) {
 }
 
 function applyFoodVariant(target, variant) {
+    // Mutually exclusive specials: forcing pink (or any variant) clears the others.
     target.rainbow = false;
     target.green = false;
     target.golden = false;
     target.grower = false;
     target.pink = false;
     const v = normalizeFoodVariant(variant);
-    if (!v) return;
+    if (!v || v === "normal" || v === "carcass") return v;
     if (v === "rainbow") target.rainbow = true;
     else if (v === "green") target.green = true;
     else if (v === "golden") target.golden = true;
     else if (v === "grower") target.grower = true;
     else if (v === "pink") target.pink = true;
+    return v;
 }
 
 function isRareFoodFlags(f) {
@@ -127,7 +132,7 @@ function foodVariantKey(f) {
     if (f.pink) return "pink";
     if (f.golden) return "golden";
     if (f.carcass) return "carcass";
-    return null;
+    return "normal";
 }
 
 function consumeNextFoodVariant() {
@@ -143,7 +148,8 @@ function consumeNextFoodVariant() {
     return null;
 }
 
-function rollFoodVariant() {
+// pickFoodVariant: keyword/guarantee force first, then cumulative rare rolls (pink is reachable).
+function pickFoodVariant() {
     const forced = consumeNextFoodVariant();
     if (forced) return forced;
     const roll = Math.random();
@@ -151,13 +157,17 @@ function rollFoodVariant() {
     if (roll < edge) return "rainbow";
     edge += CONFIG.greenChance;
     if (roll < edge) return "green";
-    edge += CONFIG.pinkChance;
-    if (roll < edge) return "pink";
     edge += CONFIG.growerChance;
     if (roll < edge) return "grower";
+    edge += CONFIG.pinkChance;
+    if (roll < edge) return "pink";
     edge += CONFIG.goldenChance;
     if (roll < edge) return "golden";
     return null;
+}
+
+function rollFoodVariant() {
+    return pickFoodVariant();
 }
 
 function noteFoodVariantKeyword(ch) {
@@ -189,15 +199,16 @@ function noteFoodVariantKeyword(ch) {
         }
     }
     if (!matched) return;
-    nextFoodVariant = matched;
+    // Store the normalized variant so pink/breed force the next drop like rainbow/golden.
+    nextFoodVariant = normalizeFoodVariant(matched);
     foodTypeBuffer = "";
     if (typeof Audio !== "undefined" && Audio.ensure) {
         Audio.ensure();
-        if (matched === "rainbow" && Audio.rainbowChime) Audio.rainbowChime(0);
-        else if (matched === "golden" && Audio.goldChime) Audio.goldChime(0);
-        else if ((matched === "pink" || matched === "breed") && Audio.playDrop) {
+        if (nextFoodVariant === "rainbow" && Audio.rainbowChime) Audio.rainbowChime(0);
+        else if (nextFoodVariant === "golden" && Audio.goldChime) Audio.goldChime(0);
+        else if (nextFoodVariant === "pink" && Audio.playDrop) {
             Audio.playDrop({ freq: 460, decay: 1.0, velocity: 0.35, pan: 0, plunk: false });
-        } else if (matched === "grower" && Audio.playDrop) {
+        } else if (nextFoodVariant === "grower" && Audio.playDrop) {
             Audio.playDrop({ freq: 520, decay: 1.1, velocity: 0.4, pan: 0, plunk: true });
         } else if (Audio.playDrop) {
             Audio.playDrop({ freq: 380, decay: 0.9, velocity: 0.3, pan: 0, plunk: false });
@@ -327,11 +338,27 @@ function drawMariachiHat(ctx, L, W) {
 
 // Hats unlock: hold right-click on a settled gold fish for 5 seconds to collect it.
 const HATS_GOLD_COST = 5;
+const MARKET_GOLD_COST = 7;
+const MAGNET_GOLD_COST = 3;
+const CATCHER_GOLD_COST = 4;
+const RAINBOW_FISH_GOLD_COST = 10;
+const GOLD_FOOD_NORMAL_COST = 20;
 const GOLD_HOLD_TIME = 5;
+const MAGNET_HOLD_MULT = 0.32; // magnet: lift gold much faster
+const CATCHER_MAX_RADIUS = 44; // tight circle so rainbow catch stays hard
 let goldCollected = 0;
 let hatsUnlocked = false;
 let hatsOn = false;
 let liftState = null; // { fish, originY, originX, holdTime, holding }
+
+// Market: spend gold / stashed food on quiet pond upgrades.
+const MARKET_KEY = "ripple-market";
+let marketUnlocked = false;
+let marketOpen = false;
+let magnetOwned = false;
+let catcherOwned = false;
+let catcherMode = false;
+let catcherDrag = null; // { cx, cy, r } while drawing a catch circle
 
 // Scales: fish bites walk up these for melodic runs.
 const PENTATONIC = [1, 9 / 8, 5 / 4, 3 / 2, 5 / 3];
@@ -3437,7 +3464,7 @@ class Rock {
         this.arc = this.thrown ? 60 + dist * 0.35 + v * 60 : 120 + v * 60;
         this.dead = false;
         // Rare special pellets are mutually exclusive. Typed keywords (or a pet streak) can force one.
-        applyFoodVariant(this, rollFoodVariant());
+        applyFoodVariant(this, pickFoodVariant());
         // Slightly irregular pellet silhouette.
         this.shape = [];
         const pts = 8;
@@ -3484,13 +3511,22 @@ class Rock {
             if (common >= 0) foods.splice(common, 1);
             else foods.shift();
         }
-        foods.push(new Food(this.tx, this.ty, this.size, {
-            golden: this.golden,
-            rainbow: this.rainbow,
-            green: this.green,
-            grower: this.grower,
-            pink: this.pink,
+        // Rebuild flags from the exclusive variant so a forced pink drop never lands as brown.
+        const flags = {
+            golden: false,
+            rainbow: false,
+            green: false,
+            grower: false,
+            pink: false,
+        };
+        applyFoodVariant(flags, foodVariantKey({
+            golden: !!this.golden,
+            rainbow: !!this.rainbow,
+            green: !!this.green,
+            grower: !!this.grower,
+            pink: !!this.pink,
         }));
+        foods.push(new Food(this.tx, this.ty, this.size, flags));
     }
 
     draw(ctx) {
@@ -3945,8 +3981,8 @@ function drawRainbowTrail(ctx) {
 // Fish wander, notice food, chase it, and bite (melodic run in the species'
 // voice). Eating food makes them GROW. Grow past a threshold and a fish turns
 // predator: it hunts smaller fish, and everyone smaller flees from it.
-// Some fish are heroes: they hunt smaller predators (evil fish, crocs, sharks,
-// whales) but never target rainbow fish.
+// Some fish are heroes: they hunt smaller predators (evil fish, aggressive
+// exotics, crocs, sharks, whales) but never target rainbow fish.
 // ===========================================================================
 const fishes = [];
 
@@ -4120,7 +4156,7 @@ class Fish {
     // Half-screen legend: heroes / redeemed get a calm farewell; untamed giants get a darker close.
     maybeBeginGiantEnding() {
         if (this.dead || this.golden || this.isRainbow || this.rainbowLeaving) return;
-        if (this.giantEnded || giantEnding || povAttack) return;
+        if (this.giantEnded || pondFinaleActive()) return;
         if (this.size < giantSizeThreshold()) return;
         beginGiantEnding(this);
     }
@@ -4223,13 +4259,13 @@ class Fish {
     }
 
     // Nearest threat: whale, shark, reptiles (if bigger), larger predators, rainbow/monster.
-    // Heroes do not flee hunters they outsize; they chase those instead.
+    // Heroes do not flee hunters they outsize (or can hunt after a whale meal); they chase those instead.
     findThreat() {
         if (this.golden || this.isRainbow || this.isMonster) return null;
         if (whale && !whale.dead) {
             const d = Math.hypot(whale.x - this.x, whale.y - this.y);
             if (d < CONFIG.fleeRange * 2.2
-                && !(this.isHero && this.size > whale.size)) {
+                && !(this.isHero && heroCanHuntWhale(this))) {
                 return { x: whale.x, y: whale.y };
             }
         }
@@ -4262,7 +4298,8 @@ class Fish {
 
     // Nearest wild reptile we can eat (we must be bigger). Tamed ones are left alone.
     findEdibleReptile() {
-        let best = null, bd = CONFIG.huntRange * 1.3;
+        // Heroes lock crocs/gators from farther away so they prioritize them.
+        let best = null, bd = CONFIG.huntRange * (this.isHero ? 1.65 : 1.3);
         for (const r of reptiles) {
             if (r.dead || r.tamed || r.golden) continue;
             if (this.size <= r.size) continue;
@@ -4272,16 +4309,42 @@ class Fish {
         return best;
     }
 
-    // Hero target: smaller fish that eat other fish. Never rainbows.
+    // Aggressive exotic: exotic-type fish that is a predator or monster hunter.
+    isAggressiveExotic(p) {
+        return !!(p && p.type && p.type.exotic && (p.isPredator || p.isMonster));
+    }
+
+    // Hero target: smaller hunters. Prefers aggressive exotics. Never rainbows.
     findHeroPrey() {
-        let best = null, bd = CONFIG.huntRange * 1.25;
+        let best = null, bd = CONFIG.huntRange * 1.4;
         for (const p of fishes) {
             if (p === this || p.dead || p.golden || p.isRainbow) continue;
-            // Only hunters: evil fish and monsters (exotics count once they turn evil).
+            // Evil fish, monsters, and aggressive exotic hunters only.
             if (!p.isPredator && !p.isMonster) continue;
             if (this.size <= p.size) continue; // must be strictly larger
             const d = Math.hypot(p.x - this.x, p.y - this.y);
-            if (d < bd) { bd = d; best = p; }
+            // Bias lock-on toward aggressive exotics.
+            const score = d * (this.isAggressiveExotic(p) ? 0.78 : 1);
+            if (score < bd) { bd = score; best = p; }
+        }
+        return best;
+    }
+
+    heroPreyStillValid(p) {
+        return !!(p && !p.dead && !p.golden && !p.isRainbow
+            && (p.isPredator || p.isMonster)
+            && this.size > p.size);
+    }
+
+    // Nearest eligible pink partner for breeding (both may seek each other).
+    findPinkMate() {
+        if (!canBreedFish(this)) return null;
+        let best = null;
+        let bd = Infinity;
+        for (const f of fishes) {
+            if (f === this || !canBreedFish(f)) continue;
+            const d = Math.hypot(f.x - this.x, f.y - this.y);
+            if (d < bd) { bd = d; best = f; }
         }
         return best;
     }
@@ -4457,6 +4520,13 @@ class Fish {
             if (threat) {
                 desired = Math.atan2(this.y - threat.y, this.x - threat.x);
                 speed = this.baseSpeed * CONFIG.fleeSpeedMult;
+            } else {
+            // Pink fish lock onto the nearest eligible mate (full speed; no chaseToward softlock).
+            const mate = this.findPinkMate();
+            if (mate) {
+                hardChase = true;
+                desired = Math.atan2(mate.y - this.y, mate.x - this.x);
+                speed = this.baseSpeed * CONFIG.predatorChaseMult;
             } else if (this.isRainbow) {
                 // Rainbow priority: nearest food, then shark, then prey.
                 hardChase = true;
@@ -4549,10 +4619,14 @@ class Fish {
                     }
                 }
             } else if (this.isHero) {
-                // Heroes hunt smaller predators first: whale, shark, crocs, then evil fish.
-                // Rainbow fish are never targeted.
+                // Heroes: crocs/gators first, then aggressive exotics/evil fish,
+                // then shark. If the whale already ate a fish, that hunt jumps
+                // ahead for the one-shot remorse finale. Rainbows never targeted.
                 hardChase = true;
-                if (whale && !whale.dead && this.size > whale.size) {
+                const whaleRemorseHunt = whale && !whale.dead && whale.ateFish
+                    && !whaleRemorseDone && heroCanHuntWhale(this);
+                const meal = whaleRemorseHunt ? null : this.findEdibleReptile();
+                if (whaleRemorseHunt) {
                     const chase = this.chaseToward(
                         whale.x, whale.y,
                         this.baseSpeed * CONFIG.heroChaseMult
@@ -4560,66 +4634,77 @@ class Fish {
                     desired = chase.desired;
                     speed = chase.speed;
                     if (chase.dist < this.size * 0.55 + whale.size * 0.35 + 10) {
-                        const gain = whale.size * 0.22;
                         whale.dead = true;
                         whale = null;
-                        this.heroFinishKill("whale", gain);
+                        beginHeroRemorseEnding(this);
                     }
-                } else if (shark && !shark.dead && !shark.leaving && this.size > shark.size) {
+                } else if (meal) {
                     const chase = this.chaseToward(
-                        shark.x, shark.y,
+                        meal.x, meal.y,
                         this.baseSpeed * CONFIG.heroChaseMult
                     );
                     desired = chase.desired;
                     speed = chase.speed;
-                    if (chase.dist < this.size * 0.5 + shark.size * 0.45 + 10) {
-                        const gain = shark.size * 0.35;
-                        shark.dead = true;
-                        shark = null;
-                        this.heroFinishKill("shark", gain);
+                    if (chase.dist < this.size * 0.5 + meal.size * 0.45 + 8) {
+                        const gain = meal.size * 0.35;
+                        meal.dead = true;
+                        this.heroFinishKill("reptile", gain);
                     }
                 } else {
-                    const meal = this.findEdibleReptile();
-                    if (meal) {
+                    if (!this.heroPreyStillValid(this.prey)) {
+                        this.prey = this.findHeroPrey();
+                    }
+                    if (this.prey) {
                         const chase = this.chaseToward(
-                            meal.x, meal.y,
+                            this.prey.x, this.prey.y,
                             this.baseSpeed * CONFIG.heroChaseMult
                         );
                         desired = chase.desired;
                         speed = chase.speed;
-                        if (chase.dist < this.size * 0.5 + meal.size * 0.45 + 8) {
-                            const gain = meal.size * 0.35;
-                            meal.dead = true;
-                            this.heroFinishKill("reptile", gain);
+                        if (chase.dist < this.size * 0.5 + this.prey.size * 0.5 + 6) {
+                            this.eatFish(this.prey);
+                        }
+                    } else if (shark && !shark.dead && !shark.leaving && this.size > shark.size) {
+                        const chase = this.chaseToward(
+                            shark.x, shark.y,
+                            this.baseSpeed * CONFIG.heroChaseMult
+                        );
+                        desired = chase.desired;
+                        speed = chase.speed;
+                        if (chase.dist < this.size * 0.5 + shark.size * 0.45 + 10) {
+                            const gain = shark.size * 0.35;
+                            shark.dead = true;
+                            shark = null;
+                            this.heroFinishKill("shark", gain);
+                        }
+                    } else if (whale && !whale.dead && heroCanHuntWhale(this)) {
+                        const chase = this.chaseToward(
+                            whale.x, whale.y,
+                            this.baseSpeed * CONFIG.heroChaseMult
+                        );
+                        desired = chase.desired;
+                        speed = chase.speed;
+                        if (chase.dist < this.size * 0.55 + whale.size * 0.35 + 10) {
+                            const ateFish = !!whale.ateFish;
+                            const gain = whale.size * 0.22;
+                            whale.dead = true;
+                            whale = null;
+                            if (ateFish && !whaleRemorseDone) {
+                                beginHeroRemorseEnding(this);
+                            } else {
+                                this.heroFinishKill("whale", gain);
+                            }
                         }
                     } else {
-                        if (!this.prey || this.prey.dead || this.prey.golden
-                            || this.prey.isRainbow
-                            || (!this.prey.isPredator && !this.prey.isMonster)
-                            || this.size <= this.prey.size) {
-                            this.prey = this.findHeroPrey();
-                        }
-                        if (this.prey) {
-                            const chase = this.chaseToward(
-                                this.prey.x, this.prey.y,
-                                this.baseSpeed * CONFIG.heroChaseMult
-                            );
-                            desired = chase.desired;
-                            speed = chase.speed;
-                            if (chase.dist < this.size * 0.5 + this.prey.size * 0.5 + 6) {
-                                this.eatFish(this.prey);
-                            }
+                        const foodChase = this.tryBiteFood(dt);
+                        if (foodChase) {
+                            desired = foodChase.desired;
+                            speed = foodChase.speed;
+                            hardChase = false;
                         } else {
-                            const foodChase = this.tryBiteFood(dt);
-                            if (foodChase) {
-                                desired = foodChase.desired;
-                                speed = foodChase.speed;
-                                hardChase = false;
-                            } else {
-                                desired = this.wander(dt);
-                                speed = this.baseSpeed * 0.65;
-                                hardChase = false;
-                            }
+                            desired = this.wander(dt);
+                            speed = this.baseSpeed * 0.65;
+                            hardChase = false;
                         }
                     }
                 }
@@ -4645,6 +4730,7 @@ class Fish {
                     }
                 }
             }
+            } // end non-threat: mate seek / role AI
         }
 
         // Species dart habit still shows on evil forms (not rainbow: keeps tracking stable).
@@ -5016,8 +5102,10 @@ class Fish {
             ctx.shadowBlur = 14;
         } else if (this.isHero) {
             const giantGlow = giantEnding && giantEnding.fish === this && giantEnding.kind === "peace";
-            ctx.shadowColor = giantGlow ? "rgba(160,220,255,0.95)" : "rgba(70,160,220,0.8)";
-            ctx.shadowBlur = giantGlow ? 26 : 14;
+            const remorseGlow = heroRemorseEnding && heroRemorseEnding.fish === this;
+            ctx.shadowColor = (giantGlow || remorseGlow)
+                ? "rgba(160,220,255,0.95)" : "rgba(70,160,220,0.8)";
+            ctx.shadowBlur = (giantGlow || remorseGlow) ? 26 : 14;
         } else if (this.type.exotic) {
             ctx.shadowColor = "rgba(120,180,200,0.55)";
             ctx.shadowBlur = 12;
@@ -5422,12 +5510,16 @@ function updateBreeding() {
 // shark and then swims into the camera (POV) to "eat the user" and reset.
 // Heroes / redeemed (and grower-fed giants) that fill ~half the screen get a
 // separate farewell ending, then resetPond.
+// After a whale eats a fish, a large enough hero can hunt it for a one-shot
+// remorse explosion into a full hero school (every common + exotic type).
 // ===========================================================================
 let shark = null;
 let whale = null;
 let reptiles = [];
 let povAttack = null; // { fish, t }
 let giantEnding = null; // { fish, t, kind: "peace" | "shadow" }
+let heroRemorseEnding = null; // { fish, t, burst }
+let whaleRemorseDone = false; // one-shot: remorse finale already fired this session
 let apexDuel = null; // croc/alligator vs shark when the pond is emptied
 let repopulating = false;
 let repopTimer = 0;
@@ -5435,12 +5527,26 @@ let whaleCheckTimer = 0;
 let reptileCheckTimer = 0;
 let exoticCheckTimer = 0;
 
+function pondFinaleActive() {
+    return !!(povAttack || giantEnding || heroRemorseEnding);
+}
+
 function giantSizeThreshold() {
     return Math.min(viewW, viewH) * CONFIG.giantSizeFrac;
 }
 
 function giantSizeCap() {
     return Math.min(viewW, viewH) * CONFIG.giantCapFrac;
+}
+
+// Large hero may hunt the whale after it ate a fish, or whenever fully larger.
+function heroCanHuntWhale(hero) {
+    if (!hero || !hero.isHero || !whale || whale.dead) return false;
+    if (hero.size > whale.size) return true;
+    if (!whale.ateFish) return false;
+    const screenGate = Math.min(viewW, viewH) * CONFIG.whaleHeroHuntScreen;
+    return hero.size > whale.size * CONFIG.whaleHeroHuntFrac
+        || hero.size >= screenGate;
 }
 
 // Heroes / redeemed can climb to ~half the screen on any meal; grower/carcass unlocks that for everyone else.
@@ -5457,7 +5563,7 @@ function fishGrowCap(fish, opts) {
 
 // Quiet keyword spawn: type "alligator" (see noteFoodVariantKeyword).
 function spawnKeywordAlligator() {
-    if (mode !== "pond" || povAttack || giantEnding) return;
+    if (mode !== "pond" || pondFinaleActive()) return;
     const r = new Reptile("alligator");
     reptiles.push(r);
     water.disturb(r.x, r.y, r.size * 0.5, 200);
@@ -5465,7 +5571,7 @@ function spawnKeywordAlligator() {
 }
 
 function beginApexDuel() {
-    if (apexDuel || povAttack || giantEnding) return;
+    if (apexDuel || pondFinaleActive()) return;
     // Keep the largest wild reptile for the finale. Tamed crocs sit the fight out.
     const living = reptiles.filter((r) => !r.dead && !r.tamed && !r.golden);
     if (!living.length) return;
@@ -6141,7 +6247,7 @@ class Reptile {
 }
 
 function beginPovAttack(fish) {
-    if (povAttack || giantEnding) return;
+    if (pondFinaleActive()) return;
     povAttack = { fish, t: 0 };
     fish.petTimer = 0;
     fish.target = null;
@@ -6151,7 +6257,7 @@ function beginPovAttack(fish) {
 }
 
 function beginGiantEnding(fish) {
-    if (giantEnding || povAttack || !fish || fish.dead || fish.giantEnded) return;
+    if (pondFinaleActive() || !fish || fish.dead || fish.giantEnded) return;
     fish.giantEnded = true;
     fish.target = null;
     fish.prey = null;
@@ -6425,6 +6531,7 @@ function drawPovAttack(ctx) {
 function resetPond() {
     povAttack = null;
     giantEnding = null;
+    heroRemorseEnding = null;
     apexDuel = null;
     shark = null;
     whale = null;
@@ -6630,6 +6737,7 @@ class Whale {
         this.tailPhase = 0;
         this.dead = false;
         this.eatPulse = 0;
+        this.ateFish = false; // set when this whale swallows any fish
         this.petTimer = 0;
         this.petDur = 2.6;
         // Enter from left or right, swim across.
@@ -6675,10 +6783,11 @@ class Whale {
             const mouth = this.size * 0.5;
             for (const f of fishes) {
                 if (f.dead) continue;
-                // Heroes that outgrew the whale are not swallowed.
-                if (f.isHero && f.size > this.size) continue;
+                // Heroes large enough to hunt this whale are not swallowed.
+                if (f.isHero && heroCanHuntWhale(f)) continue;
                 if (Math.hypot(f.x - this.x, f.y - this.y) < mouth) {
                     f.dead = true;
+                    this.ateFish = true;
                     if (this.eatPulse <= 0) {
                         const pan = Math.max(-1, Math.min(1, (f.x / viewW) * 2 - 1));
                         Audio.predatorEat(pan);
@@ -6810,6 +6919,10 @@ function manageEcosystem(dt) {
         updateGiantEnding(dt);
         return;
     }
+    if (heroRemorseEnding) {
+        updateHeroRemorseEnding(dt);
+        return;
+    }
 
     // Golden fish rest on the lakebed until refresh; they are not active swimmers.
     const alive = fishes.filter((f) => !f.dead);
@@ -6822,7 +6935,7 @@ function manageEcosystem(dt) {
     whaleCheckTimer += dt;
     if (whaleCheckTimer >= CONFIG.whaleInterval) {
         whaleCheckTimer = 0;
-        if (!whale && !shark && !repopulating && !rainbowExiting && !povAttack && !giantEnding
+        if (!whale && !shark && !repopulating && !rainbowExiting && !pondFinaleActive()
             && swimmers.length > 0 && Math.random() < CONFIG.whaleChance) {
             whale = new Whale();
         }
@@ -6833,7 +6946,7 @@ function manageEcosystem(dt) {
     if (exoticCheckTimer >= CONFIG.exoticInterval) {
         exoticCheckTimer = 0;
         const exoticCount = swimmers.filter((f) => f.type && f.type.exotic).length;
-        if (!whale && !shark && !repopulating && !rainbowExiting && !povAttack && !giantEnding
+        if (!whale && !shark && !repopulating && !rainbowExiting && !pondFinaleActive()
             && swimmers.length > 0 && exoticCount < 3
             && Math.random() < CONFIG.exoticChance) {
             fishes.push(edgeFish(true));
@@ -6844,7 +6957,7 @@ function manageEcosystem(dt) {
     reptileCheckTimer += dt;
     if (reptileCheckTimer >= CONFIG.reptileInterval) {
         reptileCheckTimer = 0;
-        if (!whale && !shark && !repopulating && !povAttack && !giantEnding && !apexDuel
+        if (!whale && !shark && !repopulating && !pondFinaleActive() && !apexDuel
             && reptiles.length === 0 && swimmers.length > 2
             && Math.random() < CONFIG.reptileChance) {
             reptiles.push(new Reptile());
@@ -6869,7 +6982,7 @@ function manageEcosystem(dt) {
 
     const livingReptiles = reptiles.filter((r) => !r.dead && !r.leaving && !r.tamed && !r.golden);
     // Wild croc/alligator cleared the pond: summon the shark for a fight to the death.
-    if (!apexDuel && !povAttack && !giantEnding && !whale && !rainbowExiting
+    if (!apexDuel && !pondFinaleActive() && !whale && !rainbowExiting
         && livingReptiles.length > 0 && swimmers.length === 0) {
         beginApexDuel();
     }
@@ -6885,11 +6998,11 @@ function manageEcosystem(dt) {
                 repopTimer = 0.8;
             }
         }
-    } else if (!whale && !repopulating && !rainbowExiting && !povAttack && !giantEnding && !apexDuel
+    } else if (!whale && !repopulating && !rainbowExiting && !pondFinaleActive() && !apexDuel
         && swimmers.length === 1 && alive.filter((f) => !f.golden).length === 1) {
         // Last swimmer remaining (rainbow or monster included): summon the shark.
         shark = new Shark(swimmers[0]);
-    } else if (!repopulating && !shark && !whale && !povAttack && !giantEnding && !apexDuel && !rainbowExiting
+    } else if (!repopulating && !shark && !whale && !pondFinaleActive() && !apexDuel && !rainbowExiting
         && swimmers.length === 0 && livingReptiles.length === 0) {
         // Restock when no swimmers remain (golden resting fish do not block this).
         repopulating = true;
@@ -7018,12 +7131,15 @@ let netMode = false;
 let netSweeping = false;
 const NET_RADIUS = 44;
 
-// Special pellets scooped by the net are saved here for later redeploy.
+// Pellets scooped by the net are saved here for later redeploy.
+// Normal food also accrues a bank (can exceed visible slot cap) for market trades.
 const FOOD_STASH_KEY = "ripple-food-stash";
 const foodStash = [];
+let normalFoodBank = 0;
 let armedStashIndex = null;
 
 const STASH_SWATCH = {
+    normal: { from: "#c4a06a", mid: "#8a6531", to: "#5c4321", label: "Fish food" },
     rainbow: { from: "#ff9ad8", mid: "#6ec8ff", to: "#b48cff", label: "Rainbow food" },
     golden: { from: "#fff3b0", mid: "#f0c437", to: "#a9791a", label: "Golden food" },
     green: { from: "#c8f5b0", mid: "#5db84a", to: "#2a6b2e", label: "Green food" },
@@ -7034,17 +7150,29 @@ const STASH_SWATCH = {
 
 function loadFoodStash() {
     foodStash.length = 0;
+    normalFoodBank = 0;
     try {
         const raw = localStorage.getItem(FOOD_STASH_KEY);
         if (!raw) return;
         const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed)) return;
-        for (const item of parsed) {
+        let items = parsed;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            items = parsed.items;
+            if (typeof parsed.normalBank === "number" && parsed.normalBank >= 0) {
+                normalFoodBank = Math.floor(parsed.normalBank);
+            }
+        }
+        if (!Array.isArray(items)) return;
+        for (const item of items) {
             if (typeof item === "string" && STASH_SWATCH[item]) foodStash.push(item);
             else if (item && typeof item.variant === "string" && STASH_SWATCH[item.variant]) {
                 foodStash.push(item.variant);
             }
             if (foodStash.length >= CONFIG.foodStashMax) break;
+        }
+        // Older saves: infer bank from visible normal pellets if unset.
+        if (!parsed || Array.isArray(parsed) || typeof parsed.normalBank !== "number") {
+            normalFoodBank = countStashVariant("normal");
         }
     } catch (err) {
         // Ignore corrupt stash data.
@@ -7053,20 +7181,38 @@ function loadFoodStash() {
 
 function saveFoodStash() {
     try {
-        localStorage.setItem(FOOD_STASH_KEY, JSON.stringify(foodStash.slice(0, CONFIG.foodStashMax)));
+        localStorage.setItem(FOOD_STASH_KEY, JSON.stringify({
+            items: foodStash.slice(0, CONFIG.foodStashMax),
+            normalBank: normalFoodBank,
+        }));
     } catch (err) {
         // Private mode / quota: stash still works for this session.
     }
 }
 
-function stashSpecialFood(variant) {
+function stashFood(variant) {
     const key = normalizeFoodVariant(variant);
     if (!key || !STASH_SWATCH[key]) return false;
     if (foodStash.length >= CONFIG.foodStashMax) foodStash.shift();
     foodStash.push(key);
+    if (key === "normal") normalFoodBank++;
     saveFoodStash();
     renderFoodStashUI();
+    updateMarketUI();
     return true;
+}
+
+function countStashVariant(variant) {
+    const key = normalizeFoodVariant(variant);
+    let n = 0;
+    for (const item of foodStash) {
+        if (item === key) n++;
+    }
+    return n;
+}
+
+function availableNormalFood() {
+    return Math.max(normalFoodBank, countStashVariant("normal"));
 }
 
 function flagsFromStashVariant(variant) {
@@ -7116,6 +7262,12 @@ function armStashSlot(index) {
 }
 
 function placeArmedStashAt(x, y) {
+    // Typed force (pink/breed/etc.) wins: drop that variant and keep the armed stash slot.
+    if (nextFoodVariant) {
+        const forced = consumeNextFoodVariant();
+        placeStashedFood(x, y, forced);
+        return true;
+    }
     if (armedStashIndex == null || armedStashIndex < 0 || armedStashIndex >= foodStash.length) {
         armedStashIndex = null;
         return false;
@@ -7123,9 +7275,11 @@ function placeArmedStashAt(x, y) {
     const variant = foodStash[armedStashIndex];
     foodStash.splice(armedStashIndex, 1);
     armedStashIndex = null;
+    if (variant === "normal") normalFoodBank = Math.max(0, normalFoodBank - 1);
     saveFoodStash();
     placeStashedFood(x, y, variant);
     renderFoodStashUI();
+    updateMarketUI();
     return true;
 }
 
@@ -7142,10 +7296,12 @@ function renderFoodStashUI() {
     el.setAttribute("aria-hidden", "false");
     el.classList.toggle("armed", armedStashIndex != null);
     foodStash.forEach((variant, i) => {
-        const sw = STASH_SWATCH[variant] || STASH_SWATCH.golden;
+        const sw = STASH_SWATCH[variant] || STASH_SWATCH.normal;
         const btn = document.createElement("button");
         btn.type = "button";
-        btn.className = "stash-slot" + (armedStashIndex === i ? " armed" : "");
+        btn.className = "stash-slot"
+            + (variant === "normal" ? " stash-normal" : "")
+            + (armedStashIndex === i ? " armed" : "");
         btn.title = armedStashIndex === i
             ? "Click the pond to drop this food"
             : (sw.label + ": click, then click the pond to drop");
@@ -7173,7 +7329,7 @@ function sweepFoodNear(x, y) {
         const reach = NET_RADIUS + f.radius();
         if (Math.hypot(f.x - x, f.y - y) > reach) continue;
         const variant = foodVariantKey(f);
-        if (variant && stashSpecialFood(variant)) stashed++;
+        if (variant && stashFood(variant)) stashed++;
         f.eaten = true;
         scooped++;
         water.disturb(f.x, f.y, Math.max(4, f.size * 0.45), 55);
@@ -7279,9 +7435,11 @@ function updateGoldCountUI() {
     const wrap = document.getElementById("gold-counter");
     if (el) el.textContent = String(goldCollected);
     if (wrap) {
-        wrap.classList.toggle("active", goldCollected > 0 || !!liftState || hatsUnlocked);
-        wrap.title = goldCollected + " of " + HATS_GOLD_COST + " gold fish";
+        wrap.classList.toggle("active",
+            goldCollected > 0 || !!liftState || hatsUnlocked || marketUnlocked);
+        wrap.title = goldCollected + " gold fish";
     }
+    updateMarketUI();
 }
 
 function cancelGoldLift() {
@@ -7302,7 +7460,7 @@ function collectGoldFish(fish) {
     fish.dead = true;
     fish.lifting = false;
     liftState = null;
-    goldCollected = Math.min(HATS_GOLD_COST, goldCollected + 1);
+    goldCollected += 1;
     const pan = Math.max(-1, Math.min(1, (fish.x / viewW) * 2 - 1));
     Audio.goldChime(pan);
     water.disturb(fish.x, Math.max(20, fish.y), fish.size, 160);
@@ -7312,7 +7470,11 @@ function collectGoldFish(fish) {
     markFirstInteraction();
 }
 
-// Hold still on a gold fish: it rises and brightens over GOLD_HOLD_TIME seconds.
+function goldHoldDuration() {
+    return magnetOwned ? GOLD_HOLD_TIME * MAGNET_HOLD_MULT : GOLD_HOLD_TIME;
+}
+
+// Hold still on a gold fish: it rises and brightens over the hold time.
 function updateGoldHold(dt) {
     if (!liftState || !liftState.holding) return;
     const fish = liftState.fish;
@@ -7321,7 +7483,7 @@ function updateGoldHold(dt) {
         return;
     }
     liftState.holdTime += dt;
-    const progress = Math.min(1, liftState.holdTime / GOLD_HOLD_TIME);
+    const progress = Math.min(1, liftState.holdTime / goldHoldDuration());
     fish.lifting = true;
     fish.x = liftState.originX;
     fish.y = liftState.originY - progress * 58;
@@ -7335,10 +7497,17 @@ function updateGoldHold(dt) {
 
 function onPointerDown(ev) {
     Audio.ensure();
-    // Armed stash: left-click places the saved special pellet in the pond.
+    // Armed stash: left-click places the saved pellet in the pond.
     if (ev.button === 0 && mode === "pond" && armedStashIndex != null) {
         pointerNow = { x: ev.clientX, y: ev.clientY };
         placeArmedStashAt(ev.clientX, ev.clientY);
+        pointerDownAt = null;
+        return;
+    }
+    // Rainbow catcher: left-drag a small circle that must contain a free rainbow fish.
+    if (ev.button === 0 && mode === "pond" && catcherMode) {
+        pointerNow = { x: ev.clientX, y: ev.clientY };
+        catcherDrag = { cx: ev.clientX, cy: ev.clientY, r: 8 };
         pointerDownAt = null;
         return;
     }
@@ -7397,6 +7566,11 @@ function onPointerDown(ev) {
 }
 function onPointerMove(ev) {
     pointerNow = { x: ev.clientX, y: ev.clientY };
+    if (mode === "pond" && catcherDrag && (ev.buttons & 1)) {
+        const r = Math.hypot(ev.clientX - catcherDrag.cx, ev.clientY - catcherDrag.cy);
+        catcherDrag.r = Math.max(8, Math.min(CATCHER_MAX_RADIUS, r));
+        return;
+    }
     if (mode === "pond" && (ev.buttons & 2)) {
         if (netMode && netSweeping) {
             sweepFoodNear(ev.clientX, ev.clientY);
@@ -7436,6 +7610,11 @@ function onPointerUp(ev) {
             grabbedObstacle = null;
             grabAim = null;
         }
+        return;
+    }
+    if (ev.button === 0 && catcherDrag) {
+        tryCatchRainbowInCircle(catcherDrag.cx, catcherDrag.cy, catcherDrag.r);
+        catcherDrag = null;
         return;
     }
     const x = ev.clientX;
@@ -7604,6 +7783,7 @@ window.addEventListener("pointerup", onPointerUp);
 window.addEventListener("pointercancel", () => {
     cancelGoldLift();
     netSweeping = false;
+    catcherDrag = null;
     grabbedObstacle = null;
     grabAim = null;
 });
@@ -7695,6 +7875,7 @@ netBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     netMode = !netMode;
     netSweeping = false;
+    if (netMode) setCatcherMode(false);
     netBtn.classList.toggle("on", netMode);
     netBtn.setAttribute("aria-pressed", netMode ? "true" : "false");
     netBtn.title = netMode
@@ -7708,11 +7889,12 @@ hatsBtn.addEventListener("click", (e) => {
     Audio.ensure();
     if (!hatsUnlocked) {
         if (goldCollected >= HATS_GOLD_COST) {
-            goldCollected = 0;
+            goldCollected -= HATS_GOLD_COST;
             hatsUnlocked = true;
             hatsOn = true;
             Audio.goldChime(0);
             updateHatsButtonUI();
+            updateGoldCountUI();
         }
         return;
     }
@@ -7720,6 +7902,324 @@ hatsBtn.addEventListener("click", (e) => {
     updateHatsButtonUI();
 });
 updateHatsButtonUI();
+
+// ---------------------------------------------------------------------------
+// Market (unlock with gold; quiet buy rows for pond tools)
+// ---------------------------------------------------------------------------
+function loadMarketState() {
+    try {
+        const raw = localStorage.getItem(MARKET_KEY);
+        if (!raw) return;
+        const data = JSON.parse(raw);
+        if (!data || typeof data !== "object") return;
+        marketUnlocked = !!data.unlocked;
+        magnetOwned = !!data.magnet;
+        catcherOwned = !!data.catcher;
+    } catch (err) {
+        // Ignore corrupt market data.
+    }
+}
+
+function saveMarketState() {
+    try {
+        localStorage.setItem(MARKET_KEY, JSON.stringify({
+            unlocked: marketUnlocked,
+            magnet: magnetOwned,
+            catcher: catcherOwned,
+        }));
+    } catch (err) {
+        // Private mode / quota: market still works for this session.
+    }
+}
+
+function setCatcherMode(on) {
+    catcherMode = !!on && catcherOwned;
+    if (!catcherMode) catcherDrag = null;
+    if (catcherMode) {
+        netMode = false;
+        netSweeping = false;
+        if (netBtn) {
+            netBtn.classList.remove("on");
+            netBtn.setAttribute("aria-pressed", "false");
+            netBtn.title = "Net: scoop food with right click";
+        }
+        if (armedStashIndex != null) {
+            armedStashIndex = null;
+            renderFoodStashUI();
+        }
+    }
+    updateCatcherButtonUI();
+}
+
+function updateCatcherButtonUI() {
+    const btn = document.getElementById("catcher-btn");
+    if (!btn) return;
+    btn.hidden = !catcherOwned;
+    btn.classList.toggle("on", catcherMode);
+    btn.setAttribute("aria-pressed", catcherMode ? "true" : "false");
+    btn.title = catcherMode
+        ? "Catcher on: drag a small circle around a rainbow fish"
+        : "Rainbow catcher: drag a small circle to catch";
+}
+
+function updateMarketButtonUI() {
+    const btn = document.getElementById("market-btn");
+    const cost = document.getElementById("market-cost");
+    if (!btn || !cost) return;
+    if (marketUnlocked) {
+        btn.classList.remove("locked", "ready");
+        btn.classList.toggle("on", marketOpen);
+        btn.setAttribute("aria-disabled", "false");
+        btn.setAttribute("aria-pressed", marketOpen ? "true" : "false");
+        btn.title = marketOpen ? "Close market" : "Open market";
+        cost.textContent = "";
+    } else {
+        const left = Math.max(0, MARKET_GOLD_COST - goldCollected);
+        btn.classList.add("locked");
+        btn.classList.toggle("ready", left === 0);
+        btn.classList.remove("on");
+        btn.setAttribute("aria-disabled", left === 0 ? "false" : "true");
+        btn.setAttribute("aria-pressed", "false");
+        cost.textContent = String(left === 0 ? MARKET_GOLD_COST : left);
+        btn.title = left === 0
+            ? "Unlock market"
+            : "Market: " + left + " gold fish";
+    }
+}
+
+function setMarketOpen(open) {
+    marketOpen = !!open && marketUnlocked;
+    const panel = document.getElementById("market-panel");
+    if (panel) {
+        panel.classList.toggle("open", marketOpen);
+        panel.setAttribute("aria-hidden", marketOpen ? "false" : "true");
+    }
+    updateMarketButtonUI();
+    updateMarketUI();
+}
+
+function updateMarketUI() {
+    updateMarketButtonUI();
+    updateCatcherButtonUI();
+    const goldEl = document.getElementById("market-gold");
+    const foodEl = document.getElementById("market-food");
+    if (goldEl) goldEl.textContent = String(goldCollected);
+    if (foodEl) foodEl.textContent = String(availableNormalFood());
+
+    const rows = {
+        magnet: document.getElementById("market-buy-magnet"),
+        catcher: document.getElementById("market-buy-catcher"),
+        rainbow: document.getElementById("market-buy-rainbow"),
+        goldfood: document.getElementById("market-buy-goldfood"),
+    };
+    if (rows.magnet) {
+        rows.magnet.disabled = !marketUnlocked || magnetOwned || goldCollected < MAGNET_GOLD_COST;
+        rows.magnet.textContent = magnetOwned
+            ? "Magnet owned (faster gold pickup)"
+            : "Magnet · " + MAGNET_GOLD_COST + " gold";
+        rows.magnet.title = magnetOwned
+            ? "Already owned: gold fish lift much faster"
+            : "Lift settled gold fish much faster";
+    }
+    if (rows.catcher) {
+        rows.catcher.disabled = !marketUnlocked || catcherOwned || goldCollected < CATCHER_GOLD_COST;
+        rows.catcher.textContent = catcherOwned
+            ? "Rainbow catcher owned"
+            : "Rainbow catcher · " + CATCHER_GOLD_COST + " gold";
+        rows.catcher.title = catcherOwned
+            ? "Use the catcher button, then drag a small circle"
+            : "Draw a small circle that must contain a rainbow fish";
+    }
+    if (rows.rainbow) {
+        rows.rainbow.disabled = !marketUnlocked || goldCollected < RAINBOW_FISH_GOLD_COST;
+        rows.rainbow.textContent = "Rainbow fish · " + RAINBOW_FISH_GOLD_COST + " gold";
+        rows.rainbow.title = "Spawn a rainbow fish in the pond";
+    }
+    if (rows.goldfood) {
+        const food = availableNormalFood();
+        rows.goldfood.disabled = !marketUnlocked || food < GOLD_FOOD_NORMAL_COST;
+        rows.goldfood.textContent = "Gold food · " + GOLD_FOOD_NORMAL_COST + " fish food";
+        rows.goldfood.title = food + " fish food saved";
+    }
+}
+
+function spendGold(amount) {
+    if (goldCollected < amount) return false;
+    goldCollected -= amount;
+    updateHatsButtonUI();
+    updateGoldCountUI();
+    return true;
+}
+
+function marketBuyMagnet() {
+    if (!marketUnlocked || magnetOwned) return;
+    if (!spendGold(MAGNET_GOLD_COST)) return;
+    magnetOwned = true;
+    saveMarketState();
+    Audio.goldChime(0);
+    updateMarketUI();
+    markFirstInteraction();
+}
+
+function marketBuyCatcher() {
+    if (!marketUnlocked || catcherOwned) return;
+    if (!spendGold(CATCHER_GOLD_COST)) return;
+    catcherOwned = true;
+    saveMarketState();
+    setCatcherMode(true);
+    Audio.rainbowChime(0);
+    updateMarketUI();
+    markFirstInteraction();
+}
+
+function marketBuyRainbowFish() {
+    if (!marketUnlocked) return;
+    if (!spendGold(RAINBOW_FISH_GOLD_COST)) return;
+    let target = null;
+    for (const f of fishes) {
+        if (f.dead || f.golden || f.isRainbow || f.rainbowLeaving) continue;
+        target = f;
+        break;
+    }
+    if (!target) {
+        target = edgeFish();
+        fishes.push(target);
+    }
+    target.turnToRainbow();
+    updateMarketUI();
+    markFirstInteraction();
+}
+
+function marketBuyGoldFood() {
+    if (!marketUnlocked) return;
+    if (availableNormalFood() < GOLD_FOOD_NORMAL_COST) return;
+    normalFoodBank = Math.max(0, availableNormalFood() - GOLD_FOOD_NORMAL_COST);
+    let left = GOLD_FOOD_NORMAL_COST;
+    for (let i = foodStash.length - 1; i >= 0 && left > 0; i--) {
+        if (foodStash[i] !== "normal") continue;
+        foodStash.splice(i, 1);
+        left--;
+    }
+    if (armedStashIndex != null && armedStashIndex >= foodStash.length) {
+        armedStashIndex = null;
+    }
+    saveFoodStash();
+    renderFoodStashUI();
+    stashFood("golden");
+    if (typeof Audio !== "undefined" && Audio.ensure) {
+        Audio.ensure();
+        if (Audio.goldChime) Audio.goldChime(0);
+    }
+    updateMarketUI();
+    markFirstInteraction();
+}
+
+function tryCatchRainbowInCircle(cx, cy, r) {
+    if (!catcherOwned || r < 10) return false;
+    let best = null;
+    let bestD = Infinity;
+    for (const f of fishes) {
+        if (f.dead || !f.isRainbow || f.rainbowLeaving) continue;
+        const d = Math.hypot(f.x - cx, f.y - cy);
+        if (d <= r && d < bestD) {
+            bestD = d;
+            best = f;
+        }
+    }
+    if (!best) {
+        water.disturb(cx, cy, r * 0.35, 35);
+        return false;
+    }
+    best.dead = true;
+    best.isRainbow = false;
+    const pan = Math.max(-1, Math.min(1, (best.x / viewW) * 2 - 1));
+    if (typeof Audio !== "undefined" && Audio.ensure) {
+        Audio.ensure();
+        if (Audio.rainbowChime) Audio.rainbowChime(pan);
+    }
+    water.disturb(best.x, best.y, best.size * 1.2, 220);
+    spawnSplash(best.x, best.y, best.size * 0.55, 0.7);
+    markFirstInteraction();
+    return true;
+}
+
+function drawCatcherOverlay(ctx) {
+    if (mode !== "pond" || !catcherMode) return;
+    if (catcherDrag) {
+        const { cx, cy, r } = catcherDrag;
+        ctx.save();
+        ctx.strokeStyle = "rgba(200, 170, 255, 0.75)";
+        ctx.lineWidth = 1.6;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 0.08;
+        ctx.fillStyle = "rgba(180, 150, 255, 1)";
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        return;
+    }
+    if (!pointerNow) return;
+    ctx.save();
+    ctx.globalAlpha = 0.22;
+    ctx.strokeStyle = "rgba(190, 170, 240, 0.9)";
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([3, 5]);
+    ctx.beginPath();
+    ctx.arc(pointerNow.x, pointerNow.y, CATCHER_MAX_RADIUS, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+}
+
+loadMarketState();
+
+const marketBtn = document.getElementById("market-btn");
+if (marketBtn) {
+    marketBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        Audio.ensure();
+        if (!marketUnlocked) {
+            if (goldCollected >= MARKET_GOLD_COST) {
+                goldCollected -= MARKET_GOLD_COST;
+                marketUnlocked = true;
+                saveMarketState();
+                setMarketOpen(true);
+                Audio.goldChime(0);
+                updateGoldCountUI();
+            }
+            return;
+        }
+        setMarketOpen(!marketOpen);
+    });
+}
+
+const catcherBtn = document.getElementById("catcher-btn");
+if (catcherBtn) {
+    catcherBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!catcherOwned) return;
+        setCatcherMode(!catcherMode);
+    });
+}
+
+const marketPanel = document.getElementById("market-panel");
+if (marketPanel) {
+    marketPanel.addEventListener("click", (e) => e.stopPropagation());
+    const buyMagnet = document.getElementById("market-buy-magnet");
+    const buyCatcher = document.getElementById("market-buy-catcher");
+    const buyRainbow = document.getElementById("market-buy-rainbow");
+    const buyGoldFood = document.getElementById("market-buy-goldfood");
+    if (buyMagnet) buyMagnet.addEventListener("click", (e) => { e.stopPropagation(); marketBuyMagnet(); });
+    if (buyCatcher) buyCatcher.addEventListener("click", (e) => { e.stopPropagation(); marketBuyCatcher(); });
+    if (buyRainbow) buyRainbow.addEventListener("click", (e) => { e.stopPropagation(); marketBuyRainbowFish(); });
+    if (buyGoldFood) buyGoldFood.addEventListener("click", (e) => { e.stopPropagation(); marketBuyGoldFood(); });
+}
+
+updateMarketUI();
 
 // ===========================================================================
 // RENDER LOOP
@@ -7760,11 +8260,11 @@ function frame(now) {
         updateMariachiFiesta(dt);
 
         // Fish live beneath the surface, so draw them first.
-        if (!povAttack && !giantEnding) {
+        if (!pondFinaleActive()) {
             for (const fish of fishes) fish.update(dt);
             updateBreeding();
         }
-        manageEcosystem(dt); // predators, shark, reptiles, POV / giant finales
+        manageEcosystem(dt); // predators, shark, reptiles, POV / giant / remorse finales
         for (let i = fishes.length - 1; i >= 0; i--) {
             if (fishes[i].dead) fishes.splice(i, 1);
         }
@@ -7793,6 +8293,7 @@ function frame(now) {
         }
         for (const f of foods) f.draw(ctx);
         drawNetCursor(ctx);
+        drawCatcherOverlay(ctx);
 
         for (const rk of rocks) rk.update(dt);
         for (let i = rocks.length - 1; i >= 0; i--) {
@@ -7800,7 +8301,7 @@ function frame(now) {
         }
         for (const rk of rocks) rk.draw(ctx);
         drawDroplets(ctx);
-        if (!povAttack && !giantEnding) drawCharge(ctx);
+        if (!pondFinaleActive()) drawCharge(ctx);
 
         // Golden-hour wash (no rays) sits above the pond life.
         drawSunAmbience(ctx);
@@ -7815,6 +8316,7 @@ function frame(now) {
         // Finales draw on top of everything.
         if (povAttack) drawPovAttack(ctx);
         if (giantEnding) drawGiantEnding(ctx);
+        if (heroRemorseEnding) drawHeroRemorseEnding(ctx);
     } else {
         ctx.globalCompositeOperation = "source-over";
         ctx.fillStyle = "rgba(7, 10, 15, 0.22)";
