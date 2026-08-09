@@ -6296,6 +6296,171 @@ function beginGiantEnding(fish) {
     }
 }
 
+// Whale-meal hero finale: surge, center, close eyes, burst into one of every type.
+function beginHeroRemorseEnding(fish) {
+    if (heroRemorseEnding || whaleRemorseDone || povAttack || giantEnding
+        || !fish || fish.dead) return;
+    whaleRemorseDone = true;
+    fish.giantEnded = true; // block the normal half-screen farewell
+    fish.target = null;
+    fish.prey = null;
+    fish.isPredator = false;
+    fish.isMonster = false;
+    fish.isHero = true;
+    heroRemorseEnding = { fish, t: 0, burst: false };
+    const pan = Math.max(-1, Math.min(1, (fish.x / viewW) * 2 - 1));
+    water.disturb(fish.x, fish.y, fish.size * 1.1, 480);
+    spawnSplash(fish.x, fish.y, fish.size * 0.5, 0.7);
+    Audio.goldChime(pan);
+    Audio.whalePurr(pan);
+    Audio.fishNote({
+        freq: (fish.type.petFreq || 280) * 0.85,
+        wave: "sine",
+        pan,
+        dur: 0.9,
+        level: 0.1,
+        partialAmt: 0.22,
+        partialRatio: 2.1,
+        bright: 0.95,
+    });
+}
+
+function explodeHeroIntoSchool(hero) {
+    if (!hero) return;
+    const cx = hero.x;
+    const cy = hero.y;
+    const types = FISH_TYPES.concat(EXOTIC_TYPES);
+    const n = types.length;
+    hero.dead = true;
+    hero.prey = null;
+    hero.target = null;
+    for (let i = 0; i < n; i++) {
+        const baby = new Fish(types[i]);
+        baby.isHero = true;
+        baby.isPredator = false;
+        baby.isMonster = false;
+        baby.isRainbow = false;
+        baby.redeemed = false;
+        baby.isPink = false;
+        baby.golden = false;
+        baby.giantEnded = false;
+        const ang = (i / n) * Math.PI * 2 + Math.random() * 0.12;
+        const rad = 36 + (i % 5) * 14 + Math.random() * 28;
+        baby.x = Math.max(24, Math.min(viewW - 24, cx + Math.cos(ang) * rad));
+        baby.y = Math.max(24, Math.min(viewH - 24, cy + Math.sin(ang) * rad));
+        baby.dir = ang + Math.PI * (0.65 + Math.random() * 0.3);
+        fishes.push(baby);
+    }
+    water.disturb(cx, cy, 120, 720);
+    spawnSplash(cx, cy, 48, 1.1);
+    Audio.rainbowChime(0);
+    Audio.goldChime(0);
+    Audio.fishNote({
+        freq: 360,
+        wave: "triangle",
+        pan: 0,
+        dur: 0.65,
+        level: 0.09,
+        partialAmt: 0.28,
+        bright: 1.2,
+    });
+    Audio.fishNote({
+        freq: 480,
+        wave: "sine",
+        pan: 0.15,
+        dur: 0.5,
+        level: 0.07,
+        partialAmt: 0.2,
+        bright: 1.3,
+    });
+}
+
+function updateHeroRemorseEnding(dt) {
+    if (!heroRemorseEnding) return;
+    heroRemorseEnding.t += dt;
+    const f = heroRemorseEnding.fish;
+    const t = heroRemorseEnding.t;
+    const cx = viewW * 0.5;
+    const cy = viewH * 0.5;
+    const targetSize = Math.min(viewW, viewH) * CONFIG.giantCapFrac * 0.96;
+
+    if (f && !f.dead && !heroRemorseEnding.burst) {
+        // 1) Surge toward half-screen scale.
+        if (t < 1.5) {
+            f.size += (targetSize - f.size) * Math.min(1, dt * 2.1);
+        }
+        // 2) Swim to the middle of the pond.
+        f.x += (cx - f.x) * Math.min(1, dt * 1.25);
+        f.y += (cy - f.y) * Math.min(1, dt * 1.25);
+        f.dir += dt * 0.4;
+        f.tailPhase += dt * 3.2;
+        // 3) Close eyes in remorse (pet-style lids, held).
+        if (t >= 1.35) {
+            f.petTimer = Math.max(f.petTimer, 1.6);
+        }
+        if (Math.random() < 0.14) {
+            water.disturb(f.x, f.y, f.size * 0.4, 70);
+        }
+    }
+
+    // 4) Explode into one of every fish and exotic type (all heroes).
+    if (t >= 3.05 && !heroRemorseEnding.burst) {
+        heroRemorseEnding.burst = true;
+        if (f && !f.dead) explodeHeroIntoSchool(f);
+        else explodeHeroIntoSchool({ x: cx, y: cy, dead: true });
+    }
+
+    // Brief ecosystem pause, then continue with the new hero school (no full reset).
+    if (t >= 4.15) {
+        heroRemorseEnding = null;
+        if (whale && whale.dead) whale = null;
+    }
+}
+
+function drawHeroRemorseEnding(ctx) {
+    if (!heroRemorseEnding) return;
+    const t = heroRemorseEnding.t;
+    const f = heroRemorseEnding.fish;
+    const glow = Math.min(1, t / 1.1);
+    const burst = heroRemorseEnding.burst
+        ? Math.min(1, (t - 3.05) / 0.55)
+        : 0;
+    const fade = t > 3.6 ? Math.min(1, (t - 3.6) / 0.55) : 0;
+
+    ctx.save();
+    const wash = ctx.createRadialGradient(
+        viewW * 0.5, viewH * 0.5, Math.min(viewW, viewH) * 0.06,
+        viewW * 0.5, viewH * 0.5, Math.max(viewW, viewH) * 0.72
+    );
+    wash.addColorStop(0, `rgba(170, 210, 235, ${0.07 + glow * 0.16})`);
+    wash.addColorStop(0.5, `rgba(90, 130, 150, ${0.05 + glow * 0.1})`);
+    wash.addColorStop(1, `rgba(18, 32, 42, ${0.08 + glow * 0.14})`);
+    ctx.fillStyle = wash;
+    ctx.fillRect(0, 0, viewW, viewH);
+
+    if (f && !f.dead && !heroRemorseEnding.burst) {
+        ctx.save();
+        ctx.globalAlpha = 0.3 + glow * 0.35;
+        ctx.shadowColor = "rgba(140, 200, 230, 0.85)";
+        ctx.shadowBlur = 30 + glow * 40;
+        ctx.fillStyle = "rgba(150, 200, 230, 0.18)";
+        ctx.beginPath();
+        ctx.ellipse(f.x, f.y, f.size * 0.8, f.size * 0.42, f.dir, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    if (burst > 0) {
+        ctx.fillStyle = `rgba(210, 235, 250, ${burst * 0.55})`;
+        ctx.fillRect(0, 0, viewW, viewH);
+    }
+    if (fade > 0) {
+        ctx.fillStyle = `rgba(200, 225, 240, ${fade * 0.35})`;
+        ctx.fillRect(0, 0, viewW, viewH);
+    }
+    ctx.restore();
+}
+
 function updateGiantEnding(dt) {
     if (!giantEnding) return;
     giantEnding.t += dt;
