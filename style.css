@@ -131,6 +131,13 @@ body.ui-hidden #hint {
     visibility: hidden;
 }
 
+/* Open dev panel stays usable even when chrome is hidden. */
+body.ui-hidden #dev-panel.open {
+    opacity: 0.96 !important;
+    pointer-events: auto !important;
+    visibility: visible;
+}
+
 /* Icon is drawn with pure CSS so there are no image assets. */
 #mode-icon {
     position: relative;
@@ -733,4 +740,134 @@ body.pond #food-stash.has-items {
 @keyframes breathe {
     0%, 100% { opacity: 0.28; }
     50% { opacity: 0.6; }
+}
+
+/* Secret dev menu: scrollable tool panel, market-adjacent chrome. */
+#dev-panel {
+    position: fixed;
+    top: 16px;
+    right: 58px;
+    z-index: 20;
+    display: none;
+    flex-direction: column;
+    width: min(300px, calc(100vw - 72px));
+    max-height: calc(100vh - 32px);
+    padding: 8px 8px 10px;
+    background: rgba(10, 18, 22, 0.88);
+    border: 1px solid rgba(180, 210, 200, 0.22);
+    border-radius: 10px;
+    color: rgba(210, 230, 220, 0.9);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+}
+
+#dev-panel.open {
+    display: flex;
+    opacity: 0.94;
+    pointer-events: auto;
+}
+
+#dev-panel.open:hover,
+#dev-panel.open:focus-within {
+    opacity: 0.98;
+}
+
+.dev-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 2px 2px 8px;
+    border-bottom: 1px solid rgba(180, 210, 200, 0.12);
+    margin-bottom: 6px;
+}
+
+.dev-title {
+    font: 500 11px/1 "Segoe UI", Roboto, sans-serif;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(200, 230, 210, 0.7);
+}
+
+.dev-close {
+    margin: 0;
+    padding: 4px 8px;
+    background: transparent;
+    border: 1px solid rgba(180, 210, 200, 0.2);
+    border-radius: 6px;
+    color: rgba(210, 230, 220, 0.75);
+    font: 300 11px/1 "Segoe UI", Roboto, sans-serif;
+    cursor: pointer;
+}
+
+.dev-close:hover,
+.dev-close:focus-visible {
+    outline: none;
+    border-color: rgba(200, 224, 210, 0.5);
+    color: rgba(240, 250, 245, 0.95);
+}
+
+.dev-scroll {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-right: 2px;
+}
+
+.dev-section-title {
+    margin: 0 0 4px;
+    padding: 0 2px;
+    font: 500 10px/1 "Segoe UI", Roboto, sans-serif;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(170, 200, 190, 0.55);
+}
+
+.dev-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.dev-row {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    padding: 5px 7px;
+    background: transparent;
+    border: 1px solid rgba(180, 210, 200, 0.16);
+    border-radius: 6px;
+    color: rgba(210, 230, 220, 0.8);
+    font: 300 10px/1.15 "Segoe UI", Roboto, sans-serif;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+}
+
+.dev-row:hover,
+.dev-row:focus-visible {
+    outline: none;
+    border-color: rgba(200, 224, 210, 0.45);
+    color: rgba(240, 250, 245, 0.98);
+}
+
+.dev-row.on {
+    border-color: rgba(140, 200, 170, 0.55);
+    background: rgba(60, 120, 100, 0.22);
+    color: rgba(220, 245, 230, 0.98);
+}
+
+.dev-row.warn {
+    border-color: rgba(210, 140, 100, 0.35);
+}
+
+.dev-hint {
+    margin: 0;
+    padding: 0 2px 2px;
+    font: 300 10px/1.35 "Segoe UI", Roboto, sans-serif;
+    color: rgba(170, 195, 185, 0.45);
 }

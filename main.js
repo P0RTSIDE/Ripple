@@ -196,6 +196,16 @@ function noteFoodVariantKeyword(ch) {
     foodTypeBuffer = (foodTypeBuffer + letter).slice(-40);
     const compact = foodTypeBuffer.replace(/\s+/g, "");
 
+    // Secret developer menu: type "dev code fartgoblin" (spaces optional).
+    if (compact.endsWith("devcodefartgoblin")
+        || foodTypeBuffer.replace(/\s+/g, " ").trimEnd().endsWith("dev code fartgoblin")) {
+        foodTypeBuffer = "";
+        setDevMenuOpen(!devMenuOpen);
+        return;
+    }
+    // While the menu is open, ignore other typed cheats so buttons stay the focus.
+    if (devMenuOpen) return;
+
     // Hidden fiesta: type "easter egg" (spaces optional, case ignored).
     if (compact.endsWith("easteregg") || foodTypeBuffer.trimEnd().endsWith("easter egg")) {
         foodTypeBuffer = "";
@@ -10913,8 +10923,17 @@ window.addEventListener("pointercancel", () => {
 // Quiet food-variant keywords: type "rainbow", "golden", "green" (etc.) for the next drop.
 window.addEventListener("keydown", (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    // Escape / U: immersive UI chrome toggle (safe with keyword typing).
-    if (e.key === "Escape" || e.key === "u" || e.key === "U") {
+    if (e.key === "Escape") {
+        e.preventDefault();
+        if (devMenuOpen) {
+            setDevMenuOpen(false);
+            return;
+        }
+        setUiHidden(!document.body.classList.contains("ui-hidden"));
+        return;
+    }
+    // U: immersive UI chrome toggle (safe with keyword typing).
+    if (e.key === "u" || e.key === "U") {
         e.preventDefault();
         setUiHidden(!document.body.classList.contains("ui-hidden"));
         return;
@@ -11489,6 +11508,509 @@ if (nightBtn) {
 }
 
 updateMarketUI();
+
+// ===========================================================================
+// DEV MENU (secret: type "dev code fartgoblin")
+// ===========================================================================
+let devMenuOpen = false;
+let devMenuBuilt = false;
+
+function setDevMenuOpen(open) {
+    devMenuOpen = !!open;
+    if (devMenuOpen && !devMenuBuilt) buildDevMenu();
+    const panel = document.getElementById("dev-panel");
+    if (panel) {
+        panel.classList.toggle("open", devMenuOpen);
+        panel.setAttribute("aria-hidden", devMenuOpen ? "false" : "true");
+    }
+    if (devMenuOpen) {
+        setUiHidden(false);
+        refreshDevMenuToggles();
+        markFirstInteraction();
+        if (Audio.ensure) Audio.ensure();
+        if (Audio.playDrop) {
+            Audio.playDrop({ freq: 280, decay: 0.7, velocity: 0.25, pan: 0, plunk: false });
+        }
+    }
+}
+
+function devEnsurePond() {
+    if (mode === "pond") return;
+    mode = "pond";
+    document.body.classList.toggle("pond", true);
+    Audio.onModeChange();
+}
+
+function devSpawnPoint() {
+    const pad = 40;
+    const x = pointerNow ? pointerNow.x : viewW * 0.5;
+    const y = pointerNow ? pointerNow.y : viewH * 0.5;
+    return {
+        x: Math.max(pad, Math.min(viewW - pad, x)),
+        y: Math.max(pad, Math.min(viewH - pad, y)),
+    };
+}
+
+function findFishTypeByName(name) {
+    return FISH_TYPES.find((t) => t.name === name)
+        || EXOTIC_TYPES.find((t) => t.name === name)
+        || NIGHT_FISH_TYPES.find((t) => t.name === name)
+        || null;
+}
+
+function devSpawnTypedFish(type, opts) {
+    if (!type) return null;
+    devEnsurePond();
+    const f = new Fish(type);
+    const p = devSpawnPoint();
+    f.x = p.x + (Math.random() - 0.5) * 24;
+    f.y = p.y + (Math.random() - 0.5) * 24;
+    f.isHero = false;
+    f.isPredator = false;
+    f.isRainbow = false;
+    f.isMonster = false;
+    f.isPlatinum = false;
+    f.isPink = false;
+    f.golden = false;
+    f.redeemed = false;
+    if (opts) {
+        if (opts.hero) { f.isHero = true; f.redeemed = true; }
+        if (opts.predator) {
+            f.isPredator = true;
+            f.isHero = false;
+            f.size = Math.max(f.size, CONFIG.predatorSize + 4);
+        }
+        if (opts.rainbow) f.turnToRainbow();
+        if (opts.platinum) f.turnToPlatinum();
+        if (opts.gold) f.turnToGold();
+        if (opts.pink) f.turnPink();
+        if (opts.monster) f.becomeMonster();
+        if (opts.sword) f.gainSword();
+        if (opts.tentacles) f.gainTentacles();
+        if (opts.huge) f.size = Math.min(giantSizeCap() * 0.45, f.size * 2.4);
+    }
+    fishes.push(f);
+    water.disturb(f.x, f.y, f.size * 0.5, 80);
+    return f;
+}
+
+function devNearestFish() {
+    const p = devSpawnPoint();
+    let best = null, bd = Infinity;
+    for (const f of fishes) {
+        if (f.dead) continue;
+        const d = Math.hypot(f.x - p.x, f.y - p.y);
+        if (d < bd) { bd = d; best = f; }
+    }
+    return best;
+}
+
+function devDropFood(variant) {
+    devEnsurePond();
+    const p = devSpawnPoint();
+    const flags = {};
+    if (variant === "carcass") flags.carcass = true;
+    else if (variant && variant !== "normal") applyFoodVariant(flags, variant);
+    const size = flags.carcass ? 22 : (variant === "grower" ? 16 : 14);
+    foods.push(new Food(p.x, p.y, size, flags));
+    water.disturb(p.x, p.y, 10, 40);
+}
+
+function devSyncSceneryBtn(key) {
+    const btn = document.querySelector(`.scenery-btn[data-scenery="${key}"]`);
+    if (!btn || !(key in scenery)) return;
+    btn.classList.toggle("on", scenery[key]);
+    btn.setAttribute("aria-pressed", scenery[key] ? "true" : "false");
+}
+
+function devRefreshChrome() {
+    updateGoldCountUI();
+    updateHatsButtonUI();
+    updateMarketUI();
+    updateNightButtonUI();
+    updateCatcherButtonUI();
+    if (typeof renderFoodStashUI === "function") renderFoodStashUI();
+    if (netBtn) {
+        netBtn.classList.toggle("on", netMode);
+        netBtn.setAttribute("aria-pressed", netMode ? "true" : "false");
+    }
+    refreshDevMenuToggles();
+}
+
+function refreshDevMenuToggles() {
+    const panel = document.getElementById("dev-panel");
+    if (!panel) return;
+    panel.querySelectorAll("[data-dev-toggle]").forEach((btn) => {
+        const key = btn.dataset.devToggle;
+        let on = false;
+        if (key === "night") on = nightMode;
+        else if (key === "hats") on = hatsOn;
+        else if (key === "net") on = netMode;
+        else if (key === "catcher") on = catcherMode;
+        else if (key === "market") on = marketOpen;
+        else if (key === "pond") on = mode === "pond";
+        else if (key in scenery) on = !!scenery[key];
+        btn.classList.toggle("on", on);
+    });
+}
+
+function buildDevMenu() {
+    const panel = document.getElementById("dev-panel");
+    if (!panel) return;
+    panel.innerHTML = "";
+    panel.addEventListener("pointerdown", (e) => e.stopPropagation());
+    panel.addEventListener("click", (e) => e.stopPropagation());
+
+    const head = document.createElement("div");
+    head.className = "dev-head";
+    head.innerHTML = '<span class="dev-title">Dev</span>';
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "dev-close";
+    close.textContent = "Close";
+    close.addEventListener("click", () => setDevMenuOpen(false));
+    head.appendChild(close);
+    panel.appendChild(head);
+
+    const scroll = document.createElement("div");
+    scroll.className = "dev-scroll";
+    panel.appendChild(scroll);
+
+    const hint = document.createElement("p");
+    hint.className = "dev-hint";
+    hint.textContent = "Spawns appear at the cursor. Escape closes.";
+    scroll.appendChild(hint);
+
+    function section(title) {
+        const wrap = document.createElement("section");
+        const h = document.createElement("h3");
+        h.className = "dev-section-title";
+        h.textContent = title;
+        const grid = document.createElement("div");
+        grid.className = "dev-grid";
+        wrap.appendChild(h);
+        wrap.appendChild(grid);
+        scroll.appendChild(wrap);
+        return grid;
+    }
+
+    function btn(grid, label, onClick, opts) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "dev-row" + (opts && opts.warn ? " warn" : "");
+        b.textContent = label;
+        if (opts && opts.toggle) b.dataset.devToggle = opts.toggle;
+        b.addEventListener("click", (e) => {
+            e.stopPropagation();
+            Audio.ensure();
+            onClick();
+            devRefreshChrome();
+        });
+        grid.appendChild(b);
+        return b;
+    }
+
+    const unlocks = section("Unlocks");
+    btn(unlocks, "Unlock all", () => {
+        goldCollected = Math.max(goldCollected, 99);
+        hatsUnlocked = true;
+        marketUnlocked = true;
+        magnetOwned = true;
+        catcherOwned = true;
+        catcherLevel = CATCHER_LEVEL_MAX;
+        rainbowCaughtCount = Math.max(rainbowCaughtCount, RAINBOWS_FOR_PLATINUM);
+        platinumUnlocked = true;
+        nightUnlocked = true;
+        saveMarketState();
+    });
+    btn(unlocks, "+20 gold", () => {
+        goldCollected += 20;
+    });
+    btn(unlocks, "Fill stash", () => {
+        for (const v of ["normal", "rainbow", "golden", "green", "grower", "pink", "platinum"]) {
+            for (let i = 0; i < 3; i++) stashFood(v);
+        }
+        normalFoodBank = Math.max(normalFoodBank, 40);
+        saveFoodStash();
+    });
+    btn(unlocks, "Hats on", () => {
+        hatsUnlocked = true;
+        hatsOn = true;
+    }, { toggle: "hats" });
+    btn(unlocks, "Market open", () => {
+        marketUnlocked = true;
+        setMarketOpen(true);
+    }, { toggle: "market" });
+    btn(unlocks, "Magnet", () => {
+        marketUnlocked = true;
+        magnetOwned = true;
+        saveMarketState();
+    });
+    btn(unlocks, "Catcher max", () => {
+        marketUnlocked = true;
+        catcherOwned = true;
+        catcherLevel = CATCHER_LEVEL_MAX;
+        setCatcherMode(true);
+        saveMarketState();
+    }, { toggle: "catcher" });
+    btn(unlocks, "Night unlock", () => {
+        platinumUnlocked = true;
+        nightUnlocked = true;
+        rainbowCaughtCount = Math.max(rainbowCaughtCount, RAINBOWS_FOR_PLATINUM);
+        saveMarketState();
+    });
+
+    const modes = section("Modes");
+    btn(modes, "Pond / window", () => {
+        mode = mode === "window" ? "pond" : "window";
+        document.body.classList.toggle("pond", mode === "pond");
+        Audio.onModeChange();
+    }, { toggle: "pond" });
+    btn(modes, "Night", () => {
+        nightUnlocked = true;
+        platinumUnlocked = true;
+        saveMarketState();
+        setNightMode(!nightMode);
+    }, { toggle: "night" });
+    btn(modes, "Net", () => {
+        netMode = !netMode;
+        netSweeping = false;
+        if (netMode) setCatcherMode(false);
+    }, { toggle: "net" });
+    btn(modes, "Catcher", () => {
+        catcherOwned = true;
+        setCatcherMode(!catcherMode);
+        saveMarketState();
+    }, { toggle: "catcher" });
+    btn(modes, "Hats", () => {
+        hatsUnlocked = true;
+        hatsOn = !hatsOn;
+    }, { toggle: "hats" });
+    btn(modes, "Ambient", () => { Audio.toggleAmbient(); });
+    btn(modes, "Drop sound", () => {
+        const style = Audio.cycleDropStyle();
+        if (dropSoundLabel) dropSoundLabel.textContent = style;
+        if (dropSoundBtn) dropSoundBtn.title = "Drop sound: " + style;
+    });
+    btn(modes, "Hide UI", () => {
+        setUiHidden(!document.body.classList.contains("ui-hidden"));
+    });
+
+    const sceneryGrid = section("Scenery");
+    for (const key of Object.keys(scenery)) {
+        btn(sceneryGrid, key, () => {
+            scenery[key] = !scenery[key];
+            devSyncSceneryBtn(key);
+            if (key === "debris") rebuildObstacles();
+        }, { toggle: key });
+    }
+
+    const fishGrid = section("Fish");
+    for (const t of FISH_TYPES) {
+        btn(fishGrid, t.name, () => { devSpawnTypedFish(t); });
+    }
+    btn(fishGrid, "random", () => {
+        devSpawnTypedFish(FISH_TYPES[Math.floor(Math.random() * FISH_TYPES.length)]);
+    });
+    btn(fishGrid, "edge", () => {
+        devEnsurePond();
+        fishes.push(edgeFish(false));
+    });
+
+    const exoticGrid = section("Exotic");
+    for (const t of EXOTIC_TYPES) {
+        btn(exoticGrid, t.name, () => { devSpawnTypedFish(t); });
+    }
+    btn(exoticGrid, "edge exotic", () => {
+        devEnsurePond();
+        fishes.push(edgeFish(true));
+    });
+
+    const nightGrid = section("Night fish");
+    for (const t of NIGHT_FISH_TYPES) {
+        btn(nightGrid, t.name, () => { devSpawnTypedFish(t); });
+    }
+
+    const special = section("Special fish");
+    btn(special, "Hero", () => {
+        const t = FISH_TYPES[Math.floor(Math.random() * FISH_TYPES.length)];
+        devSpawnTypedFish(t, { hero: true });
+    });
+    btn(special, "Predator", () => {
+        const t = FISH_TYPES[Math.floor(Math.random() * FISH_TYPES.length)];
+        devSpawnTypedFish(t, { predator: true });
+    });
+    btn(special, "Rainbow", () => {
+        const t = FISH_TYPES[Math.floor(Math.random() * FISH_TYPES.length)];
+        devSpawnTypedFish(t, { rainbow: true });
+    });
+    btn(special, "Platinum", () => {
+        const t = FISH_TYPES[Math.floor(Math.random() * FISH_TYPES.length)];
+        devSpawnTypedFish(t, { platinum: true });
+    });
+    btn(special, "Gold", () => {
+        const t = FISH_TYPES[Math.floor(Math.random() * FISH_TYPES.length)];
+        devSpawnTypedFish(t, { gold: true });
+    });
+    btn(special, "Pink", () => {
+        const t = FISH_TYPES[Math.floor(Math.random() * FISH_TYPES.length)];
+        devSpawnTypedFish(t, { pink: true });
+    });
+    btn(special, "Monster", () => {
+        const t = FISH_TYPES[Math.floor(Math.random() * FISH_TYPES.length)];
+        devSpawnTypedFish(t, { monster: true });
+    });
+    btn(special, "Sword fish", () => {
+        const t = FISH_TYPES[Math.floor(Math.random() * FISH_TYPES.length)];
+        devSpawnTypedFish(t, { hero: true, sword: true, huge: true });
+    });
+    btn(special, "Tentacle fish", () => {
+        const t = FISH_TYPES[Math.floor(Math.random() * FISH_TYPES.length)];
+        devSpawnTypedFish(t, { hero: true, tentacles: true, huge: true });
+    });
+    btn(special, "Huge", () => {
+        const t = FISH_TYPES[Math.floor(Math.random() * FISH_TYPES.length)];
+        devSpawnTypedFish(t, { hero: true, huge: true });
+    });
+
+    const apex = section("Apex");
+    btn(apex, "Shark", () => {
+        devEnsurePond();
+        shark = new Shark(null);
+    });
+    btn(apex, "Whale", () => {
+        devEnsurePond();
+        whale = new Whale();
+    });
+    btn(apex, "Crocodile", () => {
+        devEnsurePond();
+        reptiles.push(new Reptile("crocodile"));
+    });
+    btn(apex, "Alligator", () => {
+        devEnsurePond();
+        spawnKeywordAlligator();
+    });
+    btn(apex, "Swordfish", () => {
+        devEnsurePond();
+        swordfish = new Swordfish();
+        const p = devSpawnPoint();
+        swordfish.x = p.x;
+        swordfish.y = p.y;
+    });
+    btn(apex, "Octopus", () => {
+        devEnsurePond();
+        octopus = new Octopus();
+        const p = devSpawnPoint();
+        octopus.x = p.x;
+        octopus.y = p.y;
+    });
+    btn(apex, "Frog group", () => {
+        devEnsurePond();
+        scenery.frogs = true;
+        devSyncSceneryBtn("frogs");
+        spawnFrogGroup();
+    });
+    btn(apex, "Hero guardians", () => {
+        devEnsurePond();
+        const p = devSpawnPoint();
+        spawnHeroApexGuardians(p.x, p.y);
+    });
+
+    const food = section("Food");
+    for (const v of ["normal", "rainbow", "golden", "green", "grower", "pink", "platinum", "carcass"]) {
+        btn(food, v, () => { devDropFood(v); });
+    }
+    btn(food, "Force next rainbow", () => { nextFoodVariant = "rainbow"; });
+    btn(food, "Force next gold", () => { nextFoodVariant = "golden"; });
+    btn(food, "Force next pink", () => { nextFoodVariant = "pink"; });
+    btn(food, "Force next platinum", () => { nextFoodVariant = "platinum"; });
+
+    const transform = section("Transform nearest");
+    btn(transform, "To rainbow", () => {
+        const f = devNearestFish();
+        if (f) f.turnToRainbow();
+    });
+    btn(transform, "To platinum", () => {
+        const f = devNearestFish();
+        if (f) f.turnToPlatinum();
+    });
+    btn(transform, "To gold", () => {
+        const f = devNearestFish();
+        if (f) f.turnToGold();
+    });
+    btn(transform, "To pink", () => {
+        const f = devNearestFish();
+        if (f) f.turnPink();
+    });
+    btn(transform, "To plant", () => {
+        const f = devNearestFish();
+        if (f) f.turnToPlant();
+    });
+    btn(transform, "Monster", () => {
+        const f = devNearestFish();
+        if (f) f.becomeMonster();
+    });
+    btn(transform, "Redeem hero", () => {
+        const f = devNearestFish();
+        if (f) f.redeem();
+    });
+    btn(transform, "Tame night", () => {
+        if (swordfish && !swordfish.dead) nightPredatorTame(swordfish);
+        if (octopus && !octopus.dead) nightPredatorTame(octopus);
+        for (const r of reptiles) {
+            if (!r.dead && typeof r.tame === "function") r.tame();
+            else if (!r.dead) { r.tamed = true; r.isHero = true; }
+        }
+    });
+
+    const elements = section("Elements");
+    for (const kind of PLANT_KINDS) {
+        btn(elements, kind, () => {
+            devEnsurePond();
+            const p = devSpawnPoint();
+            const plant = makePondPlant(p.x, p.y, 36 + Math.random() * 28);
+            plant.kind = kind;
+            pondPlants.push(plant);
+        });
+    }
+    btn(elements, "Rebuild debris", () => {
+        scenery.debris = true;
+        devSyncSceneryBtn("debris");
+        rebuildObstacles();
+    });
+    btn(elements, "Mariachi", () => { beginMariachiFiesta(); });
+    btn(elements, "Whale fight", () => {
+        devEnsurePond();
+        if (!octopus || octopus.dead) {
+            octopus = new Octopus();
+            const p = devSpawnPoint();
+            octopus.x = p.x;
+            octopus.y = p.y;
+        }
+        beginOctopusWhaleFight();
+    }, { warn: true });
+
+    const danger = section("Danger");
+    btn(danger, "Reset pond", () => {
+        resetPond();
+        initFish();
+    }, { warn: true });
+    btn(danger, "Clear fish", () => {
+        for (const f of fishes) f.dead = true;
+    }, { warn: true });
+    btn(danger, "Clear apex", () => {
+        if (shark) { shark.dead = true; shark = null; }
+        if (whale) { whale.dead = true; whale = null; }
+        if (swordfish) { swordfish.dead = true; swordfish = null; }
+        if (octopus) { octopus.dead = true; octopus = null; }
+        for (const r of reptiles) r.dead = true;
+        reptiles.length = 0;
+        octopusWhaleFight = null;
+    }, { warn: true });
+
+    devMenuBuilt = true;
+    refreshDevMenuToggles();
+}
 
 // ===========================================================================
 // RENDER LOOP
