@@ -109,6 +109,12 @@ let guaranteeRainbow = false;
 const FOOD_VARIANT_KEYWORDS = ["rainbow", "golden", "green", "grower", "pink", "breed", "platinum"];
 let nextFoodVariant = null;
 let foodTypeBuffer = "";
+// Dev menu state lives up here so typed codes work even if later UI setup throws.
+let devMenuOpen = false;
+let devMenuBuilt = false;
+let devMenuPos = null; // { left, top } after the panel has been dragged
+let devCodeBuffer = "";
+const DEV_MENU_CODE = "devcodefartgoblin"; // typed form; spaces optional, case ignored
 
 function normalizeFoodVariant(variant) {
     if (variant === "breed") return "pink";
@@ -189,22 +195,34 @@ function rollFoodVariant() {
     return pickFoodVariant();
 }
 
+function noteDevMenuCode(ch) {
+    if (!ch || ch.length !== 1) return false;
+    const letter = ch.toLowerCase();
+    // Letters and spaces only; case is always ignored.
+    if (letter !== " " && (letter < "a" || letter > "z")) return false;
+    if (letter === " ") {
+        devCodeBuffer = (devCodeBuffer + " ").slice(-48);
+    } else {
+        devCodeBuffer = (devCodeBuffer + letter).slice(-48);
+    }
+    const compact = devCodeBuffer.replace(/\s+/g, "");
+    if (compact.endsWith(DEV_MENU_CODE) || compact.endsWith("fartgoblin")) {
+        devCodeBuffer = "";
+        foodTypeBuffer = "";
+        setDevMenuOpen(!devMenuOpen);
+        return true;
+    }
+    return false;
+}
+
 function noteFoodVariantKeyword(ch) {
     if (!ch || ch.length !== 1) return;
+    // Dev passphrase is handled in the keydown listener (case insensitive).
+    if (devMenuOpen) return;
     const letter = ch.toLowerCase();
     if (letter !== " " && (letter < "a" || letter > "z")) return;
     foodTypeBuffer = (foodTypeBuffer + letter).slice(-40);
     const compact = foodTypeBuffer.replace(/\s+/g, "");
-
-    // Secret developer menu: type "dev code fartgoblin" (spaces optional).
-    if (compact.endsWith("devcodefartgoblin")
-        || foodTypeBuffer.replace(/\s+/g, " ").trimEnd().endsWith("dev code fartgoblin")) {
-        foodTypeBuffer = "";
-        setDevMenuOpen(!devMenuOpen);
-        return;
-    }
-    // While the menu is open, ignore other typed cheats so buttons stay the focus.
-    if (devMenuOpen) return;
 
     // Hidden fiesta: type "easter egg" (spaces optional, case ignored).
     if (compact.endsWith("easteregg") || foodTypeBuffer.trimEnd().endsWith("easter egg")) {
@@ -8608,6 +8626,8 @@ class Octopus {
         this.eatPulse = 0;
         this.apexWrap = null; // { kind, ent, reel }
         this.huntTarget = null;
+        this.huntLockT = 0; // builds before a chase feels "locked"
+        this.retargetTimer = 0;
         this.wanderTimer = 0;
         this._wanderDir = 0;
         initNightPredatorSocial(this);
@@ -8621,7 +8641,7 @@ class Octopus {
         this.vx = 0;
         this.vy = 0;
         this.dir = Math.atan2(viewH * 0.5 - this.y, viewW * 0.5 - this.x);
-        this.speed = 78 + Math.random() * 20;
+        this.speed = 62 + Math.random() * 16;
         this.legs = [];
         // Arms fan from the rear of the elliptical mantle (heading-relative).
         for (let i = 0; i < 8; i++) {
@@ -8646,22 +8666,23 @@ class Octopus {
 
     pet(quiet) { nightPredatorPet(this, quiet); }
 
-    // Prefer nearer fish ahead of the mantle; lead their swim a little.
+    // Notice fish mainly ahead of the mantle; short lead, modest range.
     findHuntFish() {
-        let best = null, bestScore = CONFIG.huntRange * 2.6;
+        let best = null, bestScore = CONFIG.huntRange * 1.55;
         for (const f of fishes) {
             if (f.dead || f.golden || f.isRainbow || f.isPlatinum || f.isMonster) continue;
-            if (f.size >= this.size * 1.08) continue;
+            if (f.size >= this.size * 1.05) continue;
             if (f.tentacleGrab) continue;
-            const lead = 0.35;
+            const ang = Math.atan2(f.y - this.y, f.x - this.x);
+            const facing = Math.abs(normAngle(ang - this.dir));
+            // Ignore fish well outside the forward cone until they drift closer.
+            if (facing > Math.PI * 0.55) continue;
+            const lead = 0.12;
             const fx = f.x + Math.cos(f.dir || 0) * (f.baseSpeed || 24) * lead;
             const fy = f.y + Math.sin(f.dir || 0) * (f.baseSpeed || 24) * lead;
             const d = Math.hypot(fx - this.x, fy - this.y);
-            if (d > bestScore * 1.15) continue;
-            const ang = Math.atan2(fy - this.y, fx - this.x);
-            const facing = Math.abs(normAngle(ang - this.dir));
-            // Strong bias to chase what the elliptical head is already facing.
-            const score = d * (0.55 + 0.45 * (facing / Math.PI));
+            if (d > bestScore) continue;
+            const score = d * (0.75 + 0.45 * (facing / Math.PI));
             if (score < bestScore) { bestScore = score; best = f; }
         }
         return best;
@@ -8860,33 +8881,45 @@ class Octopus {
             this.clearApexWrap();
         }
 
-        // Hunt fish: lock on, face the elliptical head toward them, crawl that way.
+        // Hunt fish: notice slowly, then ease into a crawl chase (not a snap lock).
+        this.retargetTimer = Math.max(0, this.retargetTimer - dt);
         if (!this.tamed && !this.isHero && !this.apexWrap && !foodChase) {
-            if (!this.huntTarget || this.huntTarget.dead || this.huntTarget.golden
+            const lost = !this.huntTarget || this.huntTarget.dead || this.huntTarget.golden
                 || this.huntTarget.isRainbow || this.huntTarget.isPlatinum
                 || this.huntTarget.tentacleGrab
-                || this.huntTarget.size >= this.size * 1.08) {
-                this.huntTarget = this.findHuntFish();
+                || this.huntTarget.size >= this.size * 1.05
+                || Math.hypot(this.huntTarget.x - this.x, this.huntTarget.y - this.y) > CONFIG.huntRange * 2.1;
+            if (lost) {
+                this.huntTarget = null;
+                this.huntLockT = 0;
+                if (this.retargetTimer <= 0) {
+                    this.huntTarget = this.findHuntFish();
+                    this.retargetTimer = 0.85 + Math.random() * 0.7;
+                }
             }
             if (this.huntTarget) {
+                this.huntLockT = Math.min(1.35, this.huntLockT + dt);
+                const commit = Math.min(1, this.huntLockT / 1.1);
                 const f = this.huntTarget;
-                const lead = 0.4;
+                const lead = 0.1 * commit;
                 const tx = f.x + Math.cos(f.dir || 0) * (f.baseSpeed || 24) * lead;
                 const ty = f.y + Math.sin(f.dir || 0) * (f.baseSpeed || 24) * lead;
                 desired = Math.atan2(ty - this.y, tx - this.x);
-                const chase = this.speed * 0.12;
+                // Only lean into the chase after a short notice period.
+                const chase = this.speed * (0.028 + 0.055 * commit);
                 this.vx += Math.cos(desired) * chase;
                 this.vy += Math.sin(desired) * chase;
             } else {
                 this.wanderTimer -= dt;
                 if (this.wanderTimer <= 0) {
-                    this.wanderTimer = 1.4 + Math.random() * 2;
-                    this._wanderDir = this.dir + (Math.random() - 0.5) * 1.2;
+                    this.wanderTimer = 1.8 + Math.random() * 2.4;
+                    this._wanderDir = this.dir + (Math.random() - 0.5) * 1.0;
                 }
                 desired = this._wanderDir;
             }
         } else if (this.tamed || this.isHero) {
             this.huntTarget = null;
+            this.huntLockT = 0;
             this.wanderTimer -= dt;
             if (this.wanderTimer <= 0) {
                 this.wanderTimer = 1.8 + Math.random() * 2.2;
@@ -8901,7 +8934,8 @@ class Octopus {
         if (this.y < margin) desired = Math.PI / 2;
         else if (this.y > viewH - margin) desired = -Math.PI / 2;
 
-        const turn = this.huntTarget ? 3.6 : 2.6;
+        const lock = this.huntTarget ? Math.min(1, this.huntLockT / 1.1) : 0;
+        const turn = 1.5 + lock * 1.1;
         const diff = normAngle(desired - this.dir);
         this.dir += Math.max(-turn * dt, Math.min(turn * dt, diff));
 
@@ -8976,19 +9010,19 @@ class Octopus {
 
         this.shoveObstaclesWithArms(dt);
 
-        // Drag body toward planted tips, plus a strong glide along facing.
+        // Drag body toward planted tips, plus a calm glide along facing.
         if (pulls > 0) {
             const tx = pullX / pulls;
             const ty = pullY / pulls;
-            this.vx += (tx - this.x) * 3.8 * dt;
-            this.vy += (ty - this.y) * 3.8 * dt;
+            this.vx += (tx - this.x) * 2.6 * dt;
+            this.vy += (ty - this.y) * 2.6 * dt;
         }
-        const cruise = (this.tamed || this.isHero ? 0.35 : 0.7) * this.speed;
-        this.vx += hx * cruise * dt * 2.2;
-        this.vy += hy * cruise * dt * 2.2;
-        this.vx *= Math.exp(-1.0 * dt);
-        this.vy *= Math.exp(-1.0 * dt);
-        const maxSpd = 120 + this.size * 0.45;
+        const cruise = (this.tamed || this.isHero ? 0.3 : 0.48) * this.speed;
+        this.vx += hx * cruise * dt * 1.55;
+        this.vy += hy * cruise * dt * 1.55;
+        this.vx *= Math.exp(-1.25 * dt);
+        this.vy *= Math.exp(-1.25 * dt);
+        const maxSpd = 78 + this.size * 0.28;
         const spd = Math.hypot(this.vx, this.vy);
         if (spd > maxSpd) {
             this.vx *= maxSpd / spd;
@@ -9000,12 +9034,13 @@ class Octopus {
         this.y = Math.max(20, Math.min(viewH - 20, this.y));
         resolveObstacleOverlap(this, this.size * 0.5);
 
-        // Grab with leading arms when prey is in reach.
-        if (!this.tamed && !this.isHero && !this.apexWrap && this.grabCooldown <= 0) {
-            const prey = this.huntTarget && !this.huntTarget.dead ? this.huntTarget : this.findHuntFish();
-            if (prey && !prey.tentacleGrab && prey.size < this.size * 1.08) {
+        // Grab only after notice builds and prey is close to the arm crown.
+        if (!this.tamed && !this.isHero && !this.apexWrap && this.grabCooldown <= 0
+            && this.huntTarget && this.huntLockT >= 0.85) {
+            const prey = this.huntTarget;
+            if (prey && !prey.dead && !prey.tentacleGrab && prey.size < this.size * 1.05) {
                 const d = Math.hypot(prey.x - this.x, prey.y - this.y);
-                if (d < this.size * 2.9) {
+                if (d < this.size * 1.85) {
                     let free = null;
                     for (const leg of this.legs) {
                         if (!leg.grab) { free = leg; break; }
@@ -9013,8 +9048,7 @@ class Octopus {
                     if (free) {
                         free.grab = { prey, reel: 0 };
                         prey.tentacleGrab = { owner: "octopus" };
-                        this.huntTarget = prey;
-                        this.grabCooldown = 0.55;
+                        this.grabCooldown = 1.15;
                     }
                 }
             }
@@ -9139,58 +9173,108 @@ class Octopus {
             );
         }
 
-        // Elliptical mantle leading in the travel direction.
+        // Complex mantle: rear arm crown, bulbous head, pale ventral side, funnel.
         ctx.save();
         ctx.translate(this.x, drawY);
         ctx.rotate(this.dir);
-        const mL = S * 0.78 * breath;
-        const mW = S * 0.44 * breath;
-        const g = ctx.createRadialGradient(-mL * 0.15, -mW * 0.25, S * 0.08, 0, 0, S * 0.85);
+        const mL = S * 0.82 * breath;
+        const mW = S * 0.46 * breath;
+
+        // Arm-crown / head ring where tentacles meet the body.
+        ctx.fillStyle = mantleB;
+        ctx.beginPath();
+        ctx.ellipse(-S * 0.22, 0, S * 0.34, S * 0.4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(20,10,14,0.28)";
+        ctx.lineWidth = Math.max(1, S * 0.03);
+        ctx.beginPath();
+        ctx.ellipse(-S * 0.18, 0, S * 0.28, S * 0.34, 0, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Main elliptical mantle (dorsal).
+        const g = ctx.createRadialGradient(-mL * 0.1, -mW * 0.35, S * 0.06, S * 0.05, 0, S * 0.9);
         g.addColorStop(0, mantleA);
-        g.addColorStop(0.5, mantleB);
+        g.addColorStop(0.45, mantleB);
         g.addColorStop(1, mantleC);
         ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.ellipse(S * 0.06, 0, mL, mW, 0, 0, Math.PI * 2);
+        // Slightly irregular egg: fuller rear, tapered leading tip.
+        ctx.moveTo(mL * 0.95, 0);
+        ctx.bezierCurveTo(mL * 0.7, -mW * 1.05, -mL * 0.15, -mW * 1.12, -mL * 0.75, -mW * 0.55);
+        ctx.bezierCurveTo(-mL * 1.05, 0, -mL * 0.75, mW * 0.55, -mL * 0.15, mW * 0.95);
+        ctx.bezierCurveTo(mL * 0.25, mW * 1.05, mL * 0.7, mW * 0.75, mL * 0.95, 0);
+        ctx.closePath();
         ctx.fill();
 
-        // Mottled papillae / spots like the reference skin.
+        // Pale ventral wash (underside of mantle).
+        ctx.fillStyle = this.golden ? "rgba(255,240,180,0.35)"
+            : this.isHero || this.tamed ? "rgba(220,240,250,0.28)"
+            : "rgba(245,220,200,0.28)";
+        ctx.beginPath();
+        ctx.ellipse(S * 0.02, mW * 0.28, mL * 0.7, mW * 0.42, 0.08, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Raised dorsal ridge / keel.
+        ctx.strokeStyle = "rgba(255,210,190,0.18)";
+        ctx.lineWidth = Math.max(1.2, S * 0.035);
+        ctx.beginPath();
+        ctx.moveTo(-mL * 0.55, -mW * 0.15);
+        ctx.quadraticCurveTo(0, -mW * 0.85, mL * 0.55, -mW * 0.1);
+        ctx.stroke();
+
+        // Chromatophore mottling and papilla bumps.
         if (!this.isRainbow) {
-            ctx.fillStyle = "rgba(40,15,20,0.22)";
-            for (let i = 0; i < 14; i++) {
-                const px = -mL * 0.55 + (i % 5) * mL * 0.28 + Math.sin(this.pulse + i) * 2;
-                const py = -mW * 0.55 + Math.floor(i / 5) * mW * 0.4 + Math.cos(this.pulse * 0.7 + i) * 2;
-                if (Math.hypot(px / mL, py / mW) > 0.85) continue;
+            ctx.fillStyle = "rgba(40,15,20,0.26)";
+            for (let i = 0; i < 22; i++) {
+                const px = -mL * 0.6 + (i % 6) * mL * 0.22 + Math.sin(this.pulse + i) * 2.5;
+                const py = -mW * 0.65 + Math.floor(i / 6) * mW * 0.32 + Math.cos(this.pulse * 0.7 + i) * 2;
+                if (Math.hypot(px / mL, py / mW) > 0.9) continue;
                 ctx.beginPath();
-                ctx.ellipse(px, py, S * (0.04 + (i % 3) * 0.015), S * 0.03, i, 0, Math.PI * 2);
+                ctx.ellipse(px, py, S * (0.035 + (i % 3) * 0.012), S * 0.028, i * 0.4, 0, Math.PI * 2);
                 ctx.fill();
             }
-            ctx.fillStyle = "rgba(255,200,170,0.12)";
-            for (let i = 0; i < 8; i++) {
-                const px = -mL * 0.3 + (i % 4) * mL * 0.22;
-                const py = -mW * 0.2 + Math.floor(i / 4) * mW * 0.35;
+            ctx.fillStyle = "rgba(255,200,170,0.16)";
+            for (let i = 0; i < 12; i++) {
+                const px = -mL * 0.35 + (i % 4) * mL * 0.24;
+                const py = -mW * 0.35 + Math.floor(i / 4) * mW * 0.3;
                 ctx.beginPath();
-                ctx.arc(px, py, S * 0.035, 0, Math.PI * 2);
+                ctx.arc(px, py, S * (0.03 + (i % 2) * 0.015), 0, Math.PI * 2);
                 ctx.fill();
+            }
+            // Tiny skin texture flecks.
+            ctx.fillStyle = "rgba(20,8,12,0.18)";
+            for (let i = 0; i < 18; i++) {
+                const px = (Math.sin(i * 2.1 + this.pulse) * 0.55) * mL;
+                const py = (Math.cos(i * 1.7 + this.pulse * 0.8) * 0.5) * mW;
+                ctx.fillRect(px, py, 1.2, 1.2);
             }
         }
 
-        // Siphon under the mantle.
-        ctx.fillStyle = "rgba(40,20,28,0.65)";
+        // Funnel / siphon with rim.
+        ctx.fillStyle = "rgba(35,18,24,0.75)";
         ctx.beginPath();
-        ctx.ellipse(S * 0.05, mW * 0.55, S * 0.12, S * 0.06, 0.15, 0, Math.PI * 2);
+        ctx.ellipse(S * 0.02, mW * 0.62, S * 0.16, S * 0.08, 0.2, 0, Math.PI * 2);
         ctx.fill();
+        ctx.strokeStyle = "rgba(255,220,200,0.2)";
+        ctx.lineWidth = Math.max(1, S * 0.02);
+        ctx.beginPath();
+        ctx.ellipse(S * 0.02, mW * 0.62, S * 0.12, S * 0.05, 0.2, 0, Math.PI * 2);
+        ctx.stroke();
 
         if (this.eatPulse > 0) {
             ctx.fillStyle = `rgba(200,80,120,${this.eatPulse * 0.4})`;
             ctx.beginPath();
-            ctx.ellipse(S * 0.06, 0, mL, mW, 0, 0, Math.PI * 2);
+            ctx.ellipse(S * 0.05, 0, mL * 0.9, mW * 0.9, 0, 0, Math.PI * 2);
             ctx.fill();
         }
 
-        // Side eye with gold iris and horizontal slit pupil.
-        const eyeX = S * 0.12;
-        const eyeY = -mW * 0.55;
+        // Brow ridge + side eye with gold iris and horizontal slit pupil.
+        const eyeX = S * 0.1;
+        const eyeY = -mW * 0.42;
+        ctx.fillStyle = "rgba(50,22,30,0.45)";
+        ctx.beginPath();
+        ctx.ellipse(eyeX - S * 0.02, eyeY - S * 0.06, S * 0.16, S * 0.08, -0.35, 0, Math.PI * 2);
+        ctx.fill();
         if (this.petTimer > 0) {
             ctx.strokeStyle = "rgba(20,15,25,0.85)";
             ctx.lineWidth = Math.max(1.4, S * 0.04);
@@ -9199,25 +9283,29 @@ class Octopus {
             ctx.arc(eyeX, eyeY, S * 0.1, Math.PI * 1.15, Math.PI * 1.85);
             ctx.stroke();
         } else {
-            ctx.fillStyle = "rgba(40,25,30,0.5)";
+            ctx.fillStyle = "rgba(40,25,30,0.55)";
             ctx.beginPath();
-            ctx.ellipse(eyeX, eyeY + S * 0.02, S * 0.14, S * 0.11, 0, 0, Math.PI * 2);
+            ctx.ellipse(eyeX, eyeY + S * 0.02, S * 0.15, S * 0.12, 0, 0, Math.PI * 2);
             ctx.fill();
             ctx.fillStyle = "#e8c878";
             ctx.beginPath();
-            ctx.ellipse(eyeX, eyeY, S * 0.11, S * 0.13, 0, 0, Math.PI * 2);
+            ctx.ellipse(eyeX, eyeY, S * 0.115, S * 0.135, 0, 0, Math.PI * 2);
             ctx.fill();
-            ctx.fillStyle = "#f5e6b0";
+            const iris = ctx.createRadialGradient(eyeX - S * 0.02, eyeY - S * 0.02, S * 0.01, eyeX, eyeY, S * 0.11);
+            iris.addColorStop(0, "#f5e6b0");
+            iris.addColorStop(0.55, "#d4a84a");
+            iris.addColorStop(1, "#8a6020");
+            ctx.fillStyle = iris;
             ctx.beginPath();
-            ctx.ellipse(eyeX - S * 0.02, eyeY - S * 0.02, S * 0.05, S * 0.06, 0, 0, Math.PI * 2);
+            ctx.ellipse(eyeX, eyeY, S * 0.09, S * 0.1, 0, 0, Math.PI * 2);
             ctx.fill();
             ctx.fillStyle = "rgba(20,12,16,0.95)";
             ctx.beginPath();
-            ctx.ellipse(eyeX + S * 0.01, eyeY, S * 0.07, S * 0.028, 0, 0, Math.PI * 2);
+            ctx.ellipse(eyeX + S * 0.01, eyeY, S * 0.075, S * 0.026, 0, 0, Math.PI * 2);
             ctx.fill();
-            ctx.fillStyle = "rgba(255,255,255,0.45)";
+            ctx.fillStyle = "rgba(255,255,255,0.5)";
             ctx.beginPath();
-            ctx.arc(eyeX - S * 0.04, eyeY - S * 0.04, S * 0.022, 0, Math.PI * 2);
+            ctx.arc(eyeX - S * 0.04, eyeY - S * 0.045, S * 0.024, 0, Math.PI * 2);
             ctx.fill();
         }
         ctx.restore();
@@ -11469,6 +11557,7 @@ window.addEventListener("pointercancel", () => {
 });
 
 // Quiet food-variant keywords: type "rainbow", "golden", "green" (etc.) for the next drop.
+// Dev menu: type "dev code fartgoblin" (case ignored, spaces optional) or just "fartgoblin".
 window.addEventListener("keydown", (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === "Escape") {
@@ -11478,6 +11567,11 @@ window.addEventListener("keydown", (e) => {
             return;
         }
         setUiHidden(!document.body.classList.contains("ui-hidden"));
+        return;
+    }
+    // Feed passphrase before the U chrome toggle so codes are never eaten by shortcuts.
+    if (e.key.length === 1 && noteDevMenuCode(e.key)) {
+        e.preventDefault();
         return;
     }
     // U: immersive UI chrome toggle (safe with keyword typing).
@@ -12058,12 +12152,8 @@ if (nightBtn) {
 updateMarketUI();
 
 // ===========================================================================
-// DEV MENU (secret: type "dev code fartgoblin")
+// DEV MENU (secret: type "dev code fartgoblin", case ignored)
 // ===========================================================================
-let devMenuOpen = false;
-let devMenuBuilt = false;
-let devMenuPos = null; // { left, top } after the panel has been dragged
-
 function applyDevMenuPos(panel) {
     if (!panel) return;
     if (devMenuPos) {
