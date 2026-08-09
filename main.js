@@ -8320,6 +8320,130 @@ class Reptile {
 // NIGHT PREDATORS: swordfish + octopus (replace crocs while night mode is on)
 // Can be tamed (40 pets), eat fish food, turn gold / rainbow / plant like crocs.
 // ===========================================================================
+
+// Wild night predators only: never allies (tamed / hero), gold, rainbow, or plants.
+function isWildNightPredator(ent) {
+    return !!(ent && !ent.dead && !ent.tamed && !ent.isHero
+        && !ent.golden && !ent.isRainbow && !ent.plantMorph);
+}
+
+// Frame-rate friendly chase easing shared by fish and apex hero hunts.
+function chaseTowardPoint(ent, tx, ty, baseSpeed) {
+    const dx = tx - ent.x;
+    const dy = ty - ent.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const desired = Math.atan2(dy, dx);
+    const slowR = Math.max(32, (ent.size || 20) * 2.4);
+    let speed = baseSpeed;
+    if (dist < slowR) speed *= Math.max(0.2, dist / slowR);
+    const angErr = Math.abs(normAngle(desired - (ent.dir || 0)));
+    if (angErr > 0.45) speed *= Math.max(0.3, 1 - angErr / Math.PI);
+    return { desired, speed, dist };
+}
+
+function findEdibleWildSwordfish(hunter) {
+    if (!hunter || hunter.dead || hunter.golden) return null;
+    if (!isWildNightPredator(swordfish)) return null;
+    if (hunter.size <= swordfish.size) return null;
+    const d = Math.hypot(swordfish.x - hunter.x, swordfish.y - hunter.y);
+    const range = CONFIG.huntRange * (hunter.isHero ? 1.7 : 1.35);
+    return d < range ? swordfish : null;
+}
+
+function findEdibleWildOctopus(hunter) {
+    if (!hunter || hunter.dead || hunter.golden) return null;
+    if (!isWildNightPredator(octopus)) return null;
+    if (hunter.size <= octopus.size) return null;
+    const d = Math.hypot(octopus.x - hunter.x, octopus.y - hunter.y);
+    const range = CONFIG.huntRange * (hunter.isHero ? 1.7 : 1.35);
+    return d < range ? octopus : null;
+}
+
+function grantSwordTrait(ent) {
+    if (!ent || ent.dead) return;
+    ent.hasSword = true;
+    if (!ent.stuckPrey) ent.stuckPrey = [];
+    const pan = Math.max(-1, Math.min(1, (ent.x / viewW) * 2 - 1));
+    Audio.sharkStrike(pan);
+    water.disturb(ent.x, ent.y, ent.size * 0.8, 300);
+    spawnSplash(ent.x, ent.y, ent.size * 0.4, 0.55);
+}
+
+function grantTentacleTrait(ent) {
+    if (!ent || ent.dead) return;
+    ent.hasTentacles = true;
+    const pan = Math.max(-1, Math.min(1, (ent.x / viewW) * 2 - 1));
+    Audio.predatorEat(pan);
+    water.disturb(ent.x, ent.y, ent.size * 0.9, 320);
+    spawnSplash(ent.x, ent.y, ent.size * 0.45, 0.6);
+}
+
+// Kill a wild swordfish / octopus and inherit sword or tentacles.
+function consumeWildNightPredator(hunter, kind) {
+    const prey = kind === "swordfish" ? swordfish : octopus;
+    if (!hunter || !isWildNightPredator(prey) || hunter.size <= prey.size) return false;
+    const gain = prey.size * (hunter.isHero ? 0.35 : 0.4);
+    if (kind === "octopus" && typeof prey.clearApexWrap === "function") {
+        prey.clearApexWrap();
+    }
+    if (prey.legs) {
+        for (const leg of prey.legs) {
+            if (leg.grab && leg.grab.prey && leg.grab.prey.tentacleGrab) {
+                leg.grab.prey.tentacleGrab = null;
+            }
+            leg.grab = null;
+        }
+    }
+    prey.dead = true;
+    if (kind === "swordfish") swordfish = null;
+    else octopus = null;
+
+    if (typeof hunter.heroFinishKill === "function" && hunter.isHero) {
+        hunter.heroFinishKill(kind, gain);
+    } else {
+        const pan = Math.max(-1, Math.min(1, (hunter.x / viewW) * 2 - 1));
+        Audio.predatorEat(pan);
+        water.disturb(hunter.x, hunter.y, hunter.size * 0.8, 420);
+        spawnSplash(hunter.x, hunter.y, hunter.size * 0.45, 0.75);
+        if (typeof hunter.grow === "function") hunter.grow(gain, { huge: true });
+        else {
+            const cap = Math.min(viewW, viewH) * 0.48;
+            hunter.size = Math.min(cap, hunter.size + gain);
+        }
+    }
+    if (kind === "swordfish") grantSwordTrait(hunter);
+    else grantTentacleTrait(hunter);
+    return true;
+}
+
+// Hero (fish or apex) chase: ease toward a wild night predator and eat when close.
+function tryHeroHuntNightPredator(hunter, dt, baseSpeed) {
+    if (!hunter || !hunter.isHero || hunter.dead || hunter.golden || hunter.plantMorph) {
+        return null;
+    }
+    const sf = findEdibleWildSwordfish(hunter);
+    const oc = sf ? null : findEdibleWildOctopus(hunter);
+    const prey = sf || oc;
+    if (!prey) return null;
+    const chase = chaseTowardPoint(hunter, prey.x, prey.y, baseSpeed);
+    if (chase.dist < hunter.size * 0.5 + prey.size * 0.4 + 10) {
+        consumeWildNightPredator(hunter, sf ? "swordfish" : "octopus");
+    }
+    return chase;
+}
+
+// Larger heroes shrug off octopus grabs so wrap cannot block an intended eat.
+function releaseIfHeroOutgrowsOctopus(prey) {
+    if (!prey || !prey.tentacleGrab || prey.tentacleGrab.owner !== "octopus") return false;
+    if (!octopus || octopus.dead || !isWildNightPredator(octopus)) return false;
+    if (!(prey.isHero || prey.redeemed) || prey.size <= octopus.size) return false;
+    prey.tentacleGrab = null;
+    for (const leg of octopus.legs || []) {
+        if (leg.grab && leg.grab.prey === prey) leg.grab = null;
+    }
+    return true;
+}
+
 function initNightPredatorSocial(ent) {
     ent.tamed = false;
     ent.isHero = false;
