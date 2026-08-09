@@ -8235,6 +8235,47 @@ class Swordfish {
         };
     }
 
+    // Slowly consume speared trophies while swimming: shrink them, grow, and gain speed.
+    digestStuck(dt) {
+        if (!this.stuck.length || this.golden || this.plantMorph || this.tamed || this.isHero) {
+            return;
+        }
+        // Slide trophies toward the snout, then eat the innermost one first.
+        for (const s of this.stuck) {
+            s.along = Math.max(0.34, s.along - 0.04 * dt);
+        }
+        this.stuck.sort((a, b) => a.along - b.along);
+        const meal = this.stuck[0];
+        if (!meal) return;
+        const maxSize = meal.maxSize || meal.size;
+        // Roughly 4 to 6 seconds to finish a typical speared fish.
+        const eatRate = Math.max(2.2, maxSize * 0.2) * dt;
+        const before = meal.size;
+        meal.size = Math.max(0, meal.size - eatRate);
+        const eaten = before - meal.size;
+        if (eaten > 0) {
+            const sizeCap = Math.min(Math.min(viewW, viewH) * 0.45, CONFIG.swordfishSize[1] * 1.85);
+            this.size = Math.min(sizeCap, this.size + eaten * 0.62);
+            this.speed = Math.min(155, this.speed + eaten * 0.42);
+            if (Math.random() < 0.08) {
+                water.disturb(
+                    this.x + Math.cos(this.dir) * this.size * 0.35,
+                    this.y + Math.sin(this.dir) * this.size * 0.35,
+                    6, 28
+                );
+            }
+        }
+        if (meal.size <= 2.5) {
+            this.stuck.shift();
+            const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+            Audio.predatorEat(pan * 0.6);
+            // Re-space remaining trophies along the bill.
+            for (let i = 0; i < this.stuck.length; i++) {
+                this.stuck[i].along = 0.4 + i * 0.11;
+            }
+        }
+    }
+
     update(dt) {
         if (this.dead) return;
         // Held in an octopus wrap: body is driven by the octopus.
@@ -8264,6 +8305,8 @@ class Swordfish {
             this.sinkDepth = Math.min(1, this.sinkTimer / CONFIG.goldSinkTime);
             return;
         }
+
+        this.digestStuck(dt);
 
         let desired = this.dir;
         let spd = this.speed * (this.tamed || this.isHero ? 0.55 : 0.85);
@@ -8340,17 +8383,19 @@ class Swordfish {
     spear(prey) {
         if (!prey || prey.dead || this.tamed || this.isHero || this.golden) return;
         prey.dead = true;
+        const trophySize = Math.max(8, prey.size * 0.7);
         this.stuck.push({
-            along: 0.42 + this.stuck.length * 0.12,
+            along: 0.55 + this.stuck.length * 0.1,
             side: this.stuck.length % 2 === 0 ? 1 : -1,
-            size: Math.max(8, prey.size * 0.65),
+            size: trophySize,
+            maxSize: trophySize,
             body: prey.type ? prey.type.body : "#7a8a9a",
             belly: prey.type ? prey.type.belly : "#d0d8e0",
             wobble: Math.random() * Math.PI * 2,
         });
         this.spearCooldown = 0.55;
         this.target = null;
-        this.size = Math.min(this.size + prey.size * 0.08, CONFIG.swordfishSize[1] * 1.25);
+        // Growth comes from slowly eating trophies while swimming, not the spear hit.
         const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
         Audio.sharkStrike(pan);
         water.disturb(this.x, this.y, this.size * 0.45, 220);
@@ -11909,16 +11954,70 @@ updateMarketUI();
 // ===========================================================================
 let devMenuOpen = false;
 let devMenuBuilt = false;
+let devMenuPos = null; // { left, top } after the panel has been dragged
+
+function applyDevMenuPos(panel) {
+    if (!panel) return;
+    if (devMenuPos) {
+        panel.style.left = devMenuPos.left + "px";
+        panel.style.top = devMenuPos.top + "px";
+        panel.style.right = "auto";
+    } else {
+        panel.style.left = "";
+        panel.style.top = "";
+        panel.style.right = "";
+    }
+}
+
+function wireDevMenuDrag(panel, head) {
+    head.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0) return;
+        if (e.target.closest(".dev-close")) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const rect = panel.getBoundingClientRect();
+        const ox = e.clientX - rect.left;
+        const oy = e.clientY - rect.top;
+        panel.classList.add("dragging");
+        try { panel.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+
+        const onMove = (ev) => {
+            const pad = 8;
+            const w = panel.offsetWidth;
+            const h = Math.min(panel.offsetHeight, window.innerHeight - pad * 2);
+            let left = ev.clientX - ox;
+            let top = ev.clientY - oy;
+            left = Math.max(pad, Math.min(window.innerWidth - w - pad, left));
+            top = Math.max(pad, Math.min(window.innerHeight - Math.min(h, 48) - pad, top));
+            panel.style.left = left + "px";
+            panel.style.top = top + "px";
+            panel.style.right = "auto";
+            devMenuPos = { left, top };
+        };
+        const onUp = (ev) => {
+            panel.classList.remove("dragging");
+            try { panel.releasePointerCapture(ev.pointerId); } catch (_) { /* ignore */ }
+            panel.removeEventListener("pointermove", onMove);
+            panel.removeEventListener("pointerup", onUp);
+            panel.removeEventListener("pointercancel", onUp);
+        };
+        panel.addEventListener("pointermove", onMove);
+        panel.addEventListener("pointerup", onUp);
+        panel.addEventListener("pointercancel", onUp);
+    });
+}
 
 function setDevMenuOpen(open) {
     devMenuOpen = !!open;
-    if (devMenuOpen && !devMenuBuilt) buildDevMenu();
     const panel = document.getElementById("dev-panel");
     if (panel) {
         panel.classList.toggle("open", devMenuOpen);
         panel.setAttribute("aria-hidden", devMenuOpen ? "false" : "true");
     }
     if (devMenuOpen) {
+        // Rebuild each open so newly added demo rows always appear.
+        buildDevMenu();
+        applyDevMenuPos(panel);
         setUiHidden(false);
         refreshDevMenuToggles();
         markFirstInteraction();
@@ -12049,23 +12148,96 @@ function refreshDevMenuToggles() {
     });
 }
 
+// Wipe active finales so a demo button can start cleanly.
+function devClearFinales() {
+    povAttack = null;
+    giantEnding = null;
+    heroRemorseEnding = null;
+    frogFinale = null;
+    octopusWhaleFight = null;
+    pirateShipDrop = null;
+    apexDuel = null;
+    whaleRemorseDone = false;
+    if (shark) {
+        shark.duelMode = false;
+        shark.octopusWrap = null;
+    }
+    if (swordfish) swordfish.octopusWrap = null;
+    if (whale) whale.octopusWrap = null;
+    for (const r of reptiles) {
+        r.duelMode = false;
+        r.octopusWrap = null;
+        if (r.rainbowFinale) r.rainbowFinale = null;
+    }
+    for (const f of fishes) {
+        if (f) {
+            f.giantEnded = false;
+            f._giantFlyAlpha = null;
+        }
+    }
+}
+
+function devDemoFish(opts) {
+    devEnsurePond();
+    let f = devNearestFish();
+    if (!f || f.dead) {
+        const types = opts && opts.exotic ? EXOTIC_TYPES : FISH_TYPES;
+        f = new Fish(types[Math.floor(Math.random() * types.length)]);
+        const p = devSpawnPoint();
+        f.x = p.x;
+        f.y = p.y;
+        fishes.push(f);
+    }
+    f.dead = false;
+    f.golden = false;
+    f.isPlatinum = false;
+    f.isPink = false;
+    f.rainbowLeaving = false;
+    f.rainbowPhase = null;
+    f.plantMorph = null;
+    f.giantEnded = false;
+    f.insideShark = false;
+    f.target = null;
+    f.prey = null;
+    f.isHero = !!(opts && opts.hero);
+    f.redeemed = !!(opts && (opts.hero || opts.redeemed));
+    f.isPredator = !!(opts && opts.predator);
+    f.isMonster = !!(opts && opts.monster);
+    f.isRainbow = !!(opts && opts.rainbow);
+    if (opts && opts.monster) {
+        f.isPredator = true;
+        f.isHero = false;
+    }
+    if (opts && opts.size != null) f.size = opts.size;
+    const p = devSpawnPoint();
+    f.x = p.x;
+    f.y = p.y;
+    return f;
+}
+
 function buildDevMenu() {
     const panel = document.getElementById("dev-panel");
     if (!panel) return;
     panel.innerHTML = "";
-    panel.addEventListener("pointerdown", (e) => e.stopPropagation());
-    panel.addEventListener("click", (e) => e.stopPropagation());
+    panel.onpointerdown = (e) => e.stopPropagation();
+    panel.onclick = (e) => e.stopPropagation();
 
     const head = document.createElement("div");
     head.className = "dev-head";
+    head.title = "Drag to move";
     head.innerHTML = '<span class="dev-title">Dev</span>';
     const close = document.createElement("button");
     close.type = "button";
     close.className = "dev-close";
     close.textContent = "Close";
-    close.addEventListener("click", () => setDevMenuOpen(false));
+    close.addEventListener("click", (e) => {
+        e.stopPropagation();
+        setDevMenuOpen(false);
+    });
     head.appendChild(close);
     panel.appendChild(head);
+    wireDevMenuDrag(panel, head);
+    applyDevMenuPos(panel);
 
     const scroll = document.createElement("div");
     scroll.className = "dev-scroll";
@@ -12073,7 +12245,7 @@ function buildDevMenu() {
 
     const hint = document.createElement("p");
     hint.className = "dev-hint";
-    hint.textContent = "Spawns appear at the cursor. Escape closes.";
+    hint.textContent = "Drag the header to move. Spawns appear at the cursor. Escape closes.";
     scroll.appendChild(hint);
 
     function section(title) {
@@ -12373,15 +12545,149 @@ function buildDevMenu() {
         devSyncSceneryBtn("debris");
         rebuildObstacles();
     });
-    btn(elements, "Mariachi", () => { beginMariachiFiesta(); });
-    btn(elements, "Whale fight", () => {
+
+    const eggs = section("Easter eggs");
+    btn(eggs, "Mariachi fiesta", () => {
         devEnsurePond();
+        if (!fishes.some((f) => !f.dead)) {
+            for (let i = 0; i < 6; i++) {
+                const f = new Fish(FISH_TYPES[i % FISH_TYPES.length]);
+                const p = devSpawnPoint();
+                f.x = p.x + (Math.random() - 0.5) * 80;
+                f.y = p.y + (Math.random() - 0.5) * 60;
+                fishes.push(f);
+            }
+        }
+        beginMariachiFiesta();
+    });
+    btn(eggs, "Stop mariachi", () => { endMariachiFiesta(); });
+    btn(eggs, "Keyword alligator", () => {
+        devEnsurePond();
+        spawnKeywordAlligator();
+    });
+    btn(eggs, "Force rainbow food", () => {
+        nextFoodVariant = "rainbow";
+        guaranteeRainbow = true;
+    });
+    btn(eggs, "Hero guardians", () => {
+        devEnsurePond();
+        const p = devSpawnPoint();
+        spawnHeroApexGuardians(p.x, p.y);
+    });
+
+    const endings = section("Endings");
+    btn(endings, "Clear finales", () => {
+        devClearFinales();
+        endMariachiFiesta();
+    });
+    btn(endings, "POV lunge", () => {
+        devClearFinales();
+        const f = devDemoFish({
+            predator: true,
+            size: Math.max(48, CONFIG.predatorSize + 10),
+        });
+        beginPovAttack(f);
+    }, { warn: true });
+    btn(endings, "Giant peace", () => {
+        devClearFinales();
+        const f = devDemoFish({
+            hero: true,
+            size: giantSizeThreshold() + 8,
+        });
+        beginGiantEnding(f);
+    }, { warn: true });
+    btn(endings, "Giant shadow", () => {
+        devClearFinales();
+        const f = devDemoFish({
+            predator: true,
+            monster: true,
+            size: giantSizeThreshold() + 8,
+        });
+        beginGiantEnding(f);
+    }, { warn: true });
+    btn(endings, "Hero remorse", () => {
+        devClearFinales();
+        whaleRemorseDone = false;
+        const f = devDemoFish({
+            hero: true,
+            size: Math.max(70, Math.min(viewW, viewH) * 0.32),
+        });
+        beginHeroRemorseEnding(f);
+    }, { warn: true });
+    btn(endings, "Remorse school burst", () => {
+        devClearFinales();
+        const f = devDemoFish({
+            hero: true,
+            size: Math.max(70, Math.min(viewW, viewH) * 0.3),
+        });
+        explodeHeroIntoSchool(f);
+    }, { warn: true });
+    btn(endings, "Rainbow exit", () => {
+        devClearFinales();
+        const f = devDemoFish({ size: 36 });
+        f.turnToRainbow();
+        f.beginRainbowExit();
+    }, { warn: true });
+    btn(endings, "Rainbow croc", () => {
+        devEnsurePond();
+        devClearFinales();
+        let r = reptiles.find((x) => !x.dead && !x.golden);
+        if (!r) {
+            r = new Reptile(Math.random() < 0.5 ? "crocodile" : "alligator");
+            reptiles.push(r);
+        }
+        const p = devSpawnPoint();
+        r.x = p.x;
+        r.y = p.y;
+        r.turnToRainbow();
+    }, { warn: true });
+    btn(endings, "Apex duel", () => {
+        devEnsurePond();
+        devClearFinales();
+        let r = reptiles.find((x) => !x.dead && !x.tamed && !x.golden);
+        if (!r) {
+            r = new Reptile("crocodile");
+            reptiles.push(r);
+        }
+        r.tamed = false;
+        r.isHero = false;
+        r.golden = false;
+        const p = devSpawnPoint();
+        r.x = p.x;
+        r.y = p.y;
+        beginApexDuel();
+    }, { warn: true });
+    btn(endings, "Frog finale", () => {
+        devEnsurePond();
+        devClearFinales();
+        scenery.frogs = true;
+        devSyncSceneryBtn("frogs");
+        let frog = null;
+        for (const g of frogGroups) {
+            if (g.frog && !g.frog.dead) { frog = g.frog; break; }
+        }
+        if (!frog) {
+            spawnFrogGroup();
+            frog = frogGroups.length ? frogGroups[frogGroups.length - 1].frog : null;
+        }
+        if (!frog) return;
+        befriendFrog(frog);
+        frog.isHero = true;
+        frog.size = Math.max(frog.size, CONFIG.sharkSize * 1.02);
+        const p = devSpawnPoint();
+        frog.x = p.x;
+        frog.y = p.y;
+        beginFrogFinale(frog);
+    }, { warn: true });
+    btn(endings, "Octopus whale fight", () => {
+        devEnsurePond();
+        devClearFinales();
         if (!octopus || octopus.dead) {
             octopus = new Octopus();
-            const p = devSpawnPoint();
-            octopus.x = p.x;
-            octopus.y = p.y;
         }
+        const p = devSpawnPoint();
+        octopus.x = p.x;
+        octopus.y = p.y;
         beginOctopusWhaleFight();
     }, { warn: true });
 
@@ -12397,10 +12703,15 @@ function buildDevMenu() {
         if (shark) { shark.dead = true; shark = null; }
         if (whale) { whale.dead = true; whale = null; }
         if (swordfish) { swordfish.dead = true; swordfish = null; }
-        if (octopus) { octopus.dead = true; octopus = null; }
+        if (octopus) {
+            if (typeof octopus.clearApexWrap === "function") octopus.clearApexWrap();
+            octopus.dead = true;
+            octopus = null;
+        }
         for (const r of reptiles) r.dead = true;
         reptiles.length = 0;
         octopusWhaleFight = null;
+        apexDuel = null;
     }, { warn: true });
 
     devMenuBuilt = true;
