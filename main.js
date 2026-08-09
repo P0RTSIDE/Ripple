@@ -44,7 +44,7 @@ const CONFIG = {
     perception: 300,        // px within which a fish notices food
     maxFoods: 28,           // floating food pellets cap
     predatorSize: 40,       // size at which a well-fed fish turns predator
-    maxFishSize: 170,       // high enough that heavy feeding can outgrow crocs
+    maxFishSize: 240,       // raised so fish can outgrow night predators and keep growing
     sharkSize: 96,          // the shark's body length
     fleeRange: 210,         // px within which prey flee a predator/shark
     huntRange: 340,         // px within which a predator/shark spots prey
@@ -57,9 +57,9 @@ const CONFIG = {
     pinkChance: 0.014,      // breeding food: turns a fish pink; two pink fish can spawn young
     growerChance: 0.007,    // rare grower food: surges a fish past normal size
     growerBoost: 44,        // size gained from one grower pellet
-    growerMaxSize: 215,     // floor cap for grower / carcass; heroes & huge meals scale to ~half screen
-    giantSizeFrac: 0.45,    // ending when size >= min(viewW, viewH) * this
-    giantCapFrac: 0.5,      // grower/carcass (and hero) size ceiling vs shorter screen side
+    growerMaxSize: 280,     // floor cap for grower / carcass; heroes & huge meals scale higher
+    giantSizeFrac: 0.52,    // ending when size >= min(viewW, viewH) * this
+    giantCapFrac: 0.62,     // grower/carcass (and hero) size ceiling vs shorter screen side
     goldSinkTime: 2.4,      // seconds for a golden fish to settle on the lakebed
     rainbowSpeed: 2.35,     // rainbow chase speed (kept moderate so tracking stays stable)
     predatorFoodBoost: 1.045, // each food bite makes an evil fish a bit faster
@@ -74,6 +74,9 @@ const CONFIG = {
     reptileInterval: 60,    // seconds between crocodile/alligator chance rolls
     reptileChance: 0.18,    // chance a reptile arrives on each roll
     reptileSize: [88, 112], // croc/alligator body length range
+    swordfishSize: [125, 155], // night mode: larger than crocs, still edible if outgrown
+    octopusSize: [72, 98],  // night mode octopus mantle size
+    nightPredatorChance: 0.22, // chance a night predator arrives on a reptile roll
     exoticInterval: 48,     // seconds between exotic visitor rolls (medium-rare)
     exoticChance: 0.32,     // much more common than crocs; still not every roll
     exoticEdgeChance: 0.14, // chance a repopulating fish is an exotic
@@ -5033,6 +5036,10 @@ class Fish {
         // Heroes hunt smaller evil fish and exotic hunters; rainbow never becomes one.
         this.isHero = Math.random() < CONFIG.heroChance;
         this.plantMorph = null;
+        this.hasSword = false; // inherited from eating a swordfish
+        this.hasTentacles = false; // inherited from eating an octopus
+        this.stuckPrey = []; // fish speared on an inherited sword (display)
+        this.tentacleGrab = null; // { prey, t } while reeling with tentacles
         this.rainbowLeaving = false;
         this.rainbowPhase = null; // "write" | "exit" during victory lap
         this.eggPath = null;
@@ -5331,6 +5338,20 @@ class Fish {
             const d = Math.hypot(r.x - this.x, r.y - this.y);
             if (d < CONFIG.fleeRange * 1.8) return { x: r.x, y: r.y };
         }
+        if (swordfish && !swordfish.dead && this.size <= swordfish.size * 1.02) {
+            const d = Math.hypot(swordfish.x - this.x, swordfish.y - this.y);
+            if (d < CONFIG.fleeRange * 1.9
+                && !(this.isHero && this.size > swordfish.size)) {
+                return { x: swordfish.x, y: swordfish.y };
+            }
+        }
+        if (octopus && !octopus.dead && this.size <= octopus.size * 1.02) {
+            const d = Math.hypot(octopus.x - this.x, octopus.y - this.y);
+            if (d < CONFIG.fleeRange * 1.9
+                && !(this.isHero && this.size > octopus.size)) {
+                return { x: octopus.x, y: octopus.y };
+            }
+        }
         let best = null, bd = CONFIG.fleeRange;
         for (const p of fishes) {
             if (p === this || p.dead || p.golden) continue;
@@ -5355,6 +5376,137 @@ class Fish {
             if (d < bd) { bd = d; best = r; }
         }
         return best;
+    }
+
+    findEdibleSwordfish() {
+        if (!swordfish || swordfish.dead) return null;
+        if (this.size <= swordfish.size) return null;
+        const d = Math.hypot(swordfish.x - this.x, swordfish.y - this.y);
+        return d < CONFIG.huntRange * (this.isHero ? 1.7 : 1.35) ? swordfish : null;
+    }
+
+    findEdibleOctopus() {
+        if (!octopus || octopus.dead) return null;
+        if (this.size <= octopus.size) return null;
+        const d = Math.hypot(octopus.x - this.x, octopus.y - this.y);
+        return d < CONFIG.huntRange * (this.isHero ? 1.7 : 1.35) ? octopus : null;
+    }
+
+    gainSword() {
+        this.hasSword = true;
+        const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+        Audio.sharkStrike(pan);
+        water.disturb(this.x, this.y, this.size * 0.8, 300);
+        spawnSplash(this.x, this.y, this.size * 0.4, 0.55);
+    }
+
+    gainTentacles() {
+        this.hasTentacles = true;
+        const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+        Audio.predatorEat(pan);
+        water.disturb(this.x, this.y, this.size * 0.9, 320);
+        spawnSplash(this.x, this.y, this.size * 0.45, 0.6);
+    }
+
+    // Sword tip in world space (inherited bill).
+    swordTip() {
+        const blade = this.size * (this.hasSword ? 0.95 : 0.55);
+        return {
+            x: this.x + Math.cos(this.dir) * blade,
+            y: this.y + Math.sin(this.dir) * blade,
+        };
+    }
+
+    // Evil: spear smaller fish. Hero: spear predators / monsters. Also spears large food.
+    tryUseSword(dt) {
+        if (!this.hasSword || this.dead || this.golden || this.plantMorph) return null;
+        const tip = this.swordTip();
+
+        // Large floating food gets speared and eaten while swimming.
+        for (const food of foods) {
+            if (food.eaten || food.sinkProgress > 0.5) continue;
+            if (food.amount < 14 && !food.grower && !food.carcass && !food.rainbow) continue;
+            const d = Math.hypot(food.x - tip.x, food.y - tip.y);
+            if (d < this.size * 0.28 + food.radius()) {
+                this.target = food;
+                this.bite();
+                return { desired: this.dir, speed: this.baseSpeed * 1.1, used: true };
+            }
+        }
+
+        let best = null, bd = CONFIG.huntRange * 1.15;
+        for (const p of fishes) {
+            if (p === this || p.dead || p.golden || p.isRainbow || p.isPlatinum) continue;
+            if (this.isHero || this.redeemed) {
+                if (!p.isPredator && !p.isMonster) continue;
+            } else if (!this.isPredator && !this.isMonster) {
+                continue; // peaceful non-heroes do not spear fish
+            }
+            if (p.size >= this.size) continue;
+            const d = Math.hypot(p.x - tip.x, p.y - tip.y);
+            if (d < bd) { bd = d; best = p; }
+        }
+        if (!best) return null;
+        const desired = Math.atan2(best.y - this.y, best.x - this.x);
+        const dist = Math.hypot(best.x - tip.x, best.y - tip.y);
+        if (dist < this.size * 0.22 + best.size * 0.35) {
+            best.dead = true;
+            this.stuckPrey.push({
+                along: 0.4 + this.stuckPrey.length * 0.12,
+                side: this.stuckPrey.length % 2 === 0 ? 1 : -1,
+                size: Math.max(7, best.size * 0.6),
+                body: best.type ? best.type.body : "#8899aa",
+                belly: best.type ? best.type.belly : "#dde5ee",
+                wobble: Math.random() * Math.PI * 2,
+            });
+            this.grow(best.size * 0.35);
+            Audio.sharkStrike(Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1)));
+            water.disturb(tip.x, tip.y, 14, 160);
+        }
+        return { desired, speed: this.baseSpeed * (this.isHero ? CONFIG.heroChaseMult : CONFIG.predatorChaseMult), used: true };
+    }
+
+    // Tentacles: reel prey in. Evil grabs smaller fish; heroes grab predators.
+    tryUseTentacles(dt) {
+        if (!this.hasTentacles || this.dead || this.golden || this.plantMorph) return null;
+        if (this.tentacleGrab && this.tentacleGrab.prey && !this.tentacleGrab.prey.dead) {
+            const prey = this.tentacleGrab.prey;
+            this.tentacleGrab.t += dt;
+            prey.x += (this.x - prey.x) * Math.min(1, 2.4 * dt);
+            prey.y += (this.y - prey.y) * Math.min(1, 2.4 * dt);
+            const d = Math.hypot(prey.x - this.x, prey.y - this.y);
+            if (d < this.size * 0.5 || this.tentacleGrab.t > 1.2) {
+                this.eatFish(prey);
+                this.tentacleGrab = null;
+            }
+            return {
+                desired: Math.atan2(prey.y - this.y, prey.x - this.x),
+                speed: this.baseSpeed * 0.9,
+                used: true,
+            };
+        }
+        this.tentacleGrab = null;
+        let best = null, bd = CONFIG.huntRange * 1.05;
+        for (const p of fishes) {
+            if (p === this || p.dead || p.golden || p.isRainbow || p.isPlatinum) continue;
+            if (this.isHero || this.redeemed) {
+                if (!p.isPredator && !p.isMonster) continue;
+            } else if (!this.isPredator && !this.isMonster) {
+                continue;
+            }
+            if (p.size >= this.size) continue;
+            const d = Math.hypot(p.x - this.x, p.y - this.y);
+            if (d < bd) { bd = d; best = p; }
+        }
+        if (!best) return null;
+        if (bd < this.size * 1.6) {
+            this.tentacleGrab = { prey: best, t: 0 };
+        }
+        return {
+            desired: Math.atan2(best.y - this.y, best.x - this.x),
+            speed: this.baseSpeed * (this.isHero ? CONFIG.heroChaseMult : CONFIG.predatorChaseMult) * 0.95,
+            used: true,
+        };
     }
 
     // Aggressive exotic: exotic-type fish that is a predator or monster hunter.
@@ -5460,6 +5612,8 @@ class Fish {
             updatePlantMorph(this, dt);
             return;
         }
+        // Held by an octopus tentacle: body is reeled by the octopus update.
+        if (this.tentacleGrab && this.tentacleGrab.owner === "octopus") return;
 
         // Continuous stroking soothes evil fish even when quiet pet refreshes skip notes.
         if (this.petTimer > 0 && this.isPredator && !this.isMonster
@@ -5638,8 +5792,21 @@ class Fish {
                     const dist = Math.hypot(shark.x - this.x, shark.y - this.y);
                     if (dist < this.size * 0.5 + shark.size * 0.45 + 10) this.eatShark();
                 } else {
+                    const swordUse = this.tryUseSword(dt);
+                    const tentUse = !swordUse ? this.tryUseTentacles(dt) : null;
+                    if (swordUse) {
+                        desired = swordUse.desired;
+                        speed = swordUse.speed;
+                        hardChase = true;
+                    } else if (tentUse) {
+                        desired = tentUse.desired;
+                        speed = tentUse.speed;
+                        hardChase = true;
+                    } else {
                     // If we outgrew a reptile, hunt it and become a monster.
                     const meal = this.findEdibleReptile();
+                    const sf = this.findEdibleSwordfish();
+                    const oc = this.findEdibleOctopus();
                     if (meal) {
                         desired = Math.atan2(meal.y - this.y, meal.x - this.x);
                         speed = this.baseSpeed * CONFIG.predatorChaseMult * 1.15;
@@ -5647,6 +5814,26 @@ class Fish {
                         if (dist < this.size * 0.5 + meal.size * 0.45 + 8) {
                             meal.dead = true;
                             this.becomeMonster();
+                        }
+                    } else if (sf) {
+                        desired = Math.atan2(sf.y - this.y, sf.x - this.x);
+                        speed = this.baseSpeed * CONFIG.predatorChaseMult * 1.1;
+                        const dist = Math.hypot(sf.x - this.x, sf.y - this.y);
+                        if (dist < this.size * 0.5 + sf.size * 0.4 + 10) {
+                            sf.dead = true;
+                            swordfish = null;
+                            this.grow(sf.size * 0.4, { huge: true });
+                            this.gainSword();
+                        }
+                    } else if (oc) {
+                        desired = Math.atan2(oc.y - this.y, oc.x - this.x);
+                        speed = this.baseSpeed * CONFIG.predatorChaseMult * 1.1;
+                        const dist = Math.hypot(oc.x - this.x, oc.y - this.y);
+                        if (dist < this.size * 0.5 + oc.size * 0.4 + 10) {
+                            oc.dead = true;
+                            octopus = null;
+                            this.grow(oc.size * 0.4, { huge: true });
+                            this.gainTentacles();
                         }
                     } else {
                         // Evil fish prefer the nearest food over hunting other fish.
@@ -5670,6 +5857,7 @@ class Fish {
                             }
                         }
                     }
+                    }
                 }
             } else if (this.isHero) {
                 // Heroes: crocs/gators first, then aggressive exotics/evil fish,
@@ -5679,6 +5867,10 @@ class Fish {
                 const whaleRemorseHunt = whale && !whale.dead && !whale.isHero && whale.ateFish
                     && !whaleRemorseDone && heroCanHuntWhale(this);
                 const meal = whaleRemorseHunt ? null : this.findEdibleReptile();
+                const nightSf = whaleRemorseHunt ? null : this.findEdibleSwordfish();
+                const nightOc = whaleRemorseHunt ? null : this.findEdibleOctopus();
+                const swordUse = (!whaleRemorseHunt && !meal) ? this.tryUseSword(dt) : null;
+                const tentUse = (!whaleRemorseHunt && !meal && !swordUse) ? this.tryUseTentacles(dt) : null;
                 if (whaleRemorseHunt) {
                     const chase = this.chaseToward(
                         whale.x, whale.y,
@@ -5703,6 +5895,40 @@ class Fish {
                         meal.dead = true;
                         this.heroFinishKill("reptile", gain);
                     }
+                } else if (nightSf) {
+                    const chase = this.chaseToward(
+                        nightSf.x, nightSf.y,
+                        this.baseSpeed * CONFIG.heroChaseMult
+                    );
+                    desired = chase.desired;
+                    speed = chase.speed;
+                    if (chase.dist < this.size * 0.5 + nightSf.size * 0.4 + 10) {
+                        const gain = nightSf.size * 0.35;
+                        nightSf.dead = true;
+                        swordfish = null;
+                        this.heroFinishKill("swordfish", gain);
+                        this.gainSword();
+                    }
+                } else if (nightOc) {
+                    const chase = this.chaseToward(
+                        nightOc.x, nightOc.y,
+                        this.baseSpeed * CONFIG.heroChaseMult
+                    );
+                    desired = chase.desired;
+                    speed = chase.speed;
+                    if (chase.dist < this.size * 0.5 + nightOc.size * 0.4 + 10) {
+                        const gain = nightOc.size * 0.35;
+                        nightOc.dead = true;
+                        octopus = null;
+                        this.heroFinishKill("octopus", gain);
+                        this.gainTentacles();
+                    }
+                } else if (swordUse) {
+                    desired = swordUse.desired;
+                    speed = swordUse.speed;
+                } else if (tentUse) {
+                    desired = tentUse.desired;
+                    speed = tentUse.speed;
                 } else {
                     if (!this.heroPreyStillValid(this.prey)) {
                         this.prey = this.findHeroPrey();
@@ -5763,8 +5989,11 @@ class Fish {
                     }
                 }
             } else {
-                // Normal fish that outgrew a reptile can still hunt it.
+                // Normal fish that outgrew a reptile / night predator can still hunt it.
                 const meal = this.findEdibleReptile();
+                const sf = this.findEdibleSwordfish();
+                const oc = this.findEdibleOctopus();
+                const swordUse = this.hasSword ? this.tryUseSword(dt) : null;
                 if (meal) {
                     desired = Math.atan2(meal.y - this.y, meal.x - this.x);
                     speed = this.baseSpeed * 1.8;
@@ -5773,6 +6002,29 @@ class Fish {
                         meal.dead = true;
                         this.becomeMonster();
                     }
+                } else if (sf) {
+                    desired = Math.atan2(sf.y - this.y, sf.x - this.x);
+                    speed = this.baseSpeed * 1.75;
+                    const dist = Math.hypot(sf.x - this.x, sf.y - this.y);
+                    if (dist < this.size * 0.5 + sf.size * 0.4 + 10) {
+                        sf.dead = true;
+                        swordfish = null;
+                        this.grow(sf.size * 0.4, { huge: true });
+                        this.gainSword();
+                    }
+                } else if (oc) {
+                    desired = Math.atan2(oc.y - this.y, oc.x - this.x);
+                    speed = this.baseSpeed * 1.75;
+                    const dist = Math.hypot(oc.x - this.x, oc.y - this.y);
+                    if (dist < this.size * 0.5 + oc.size * 0.4 + 10) {
+                        oc.dead = true;
+                        octopus = null;
+                        this.grow(oc.size * 0.4, { huge: true });
+                        this.gainTentacles();
+                    }
+                } else if (swordUse) {
+                    desired = swordUse.desired;
+                    speed = swordUse.speed;
                 } else {
                     const foodChase = this.tryBiteFood(dt);
                     if (foodChase) {
@@ -6459,6 +6711,62 @@ class Fish {
                 ctx.fill();
             }
         }
+
+        // Inherited swordfish bill + speared trophies.
+        if (this.hasSword && !this.golden) {
+            ctx.strokeStyle = "rgba(210,225,240,0.95)";
+            ctx.lineWidth = Math.max(1.6, L * 0.045);
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            ctx.moveTo(L * 0.35, 0);
+            ctx.lineTo(L * 0.95, 0);
+            ctx.stroke();
+            for (const s of this.stuckPrey) {
+                const sx = L * s.along;
+                const sy = s.side * (W * 0.7 + s.size * 0.12);
+                ctx.save();
+                ctx.translate(sx, sy);
+                ctx.rotate(Math.sin(this.tailPhase * 2 + s.wobble) * 0.12);
+                ctx.fillStyle = s.body;
+                ctx.beginPath();
+                ctx.ellipse(0, 0, s.size * 0.5, s.size * 0.25, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = "rgba(20,25,30,0.9)";
+                ctx.lineWidth = Math.max(1, s.size * 0.08);
+                const e = s.size * 0.1;
+                ctx.beginPath();
+                ctx.moveTo(s.size * 0.15 - e, -e);
+                ctx.lineTo(s.size * 0.15 + e, e);
+                ctx.moveTo(s.size * 0.15 + e, -e);
+                ctx.lineTo(s.size * 0.15 - e, e);
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+
+        // Inherited octopus tentacles (trail behind, independent sway).
+        if (this.hasTentacles && !this.golden) {
+            ctx.strokeStyle = this.isHero
+                ? "rgba(80,120,180,0.75)"
+                : this.isPredator
+                    ? "rgba(140,50,90,0.8)"
+                    : "rgba(100,60,110,0.75)";
+            ctx.lineWidth = Math.max(1.8, L * 0.06);
+            ctx.lineCap = "round";
+            for (let i = 0; i < 4; i++) {
+                const side = i < 2 ? -1 : 1;
+                const base = -L * 0.15 + (i % 2) * L * 0.08;
+                const sway = Math.sin(this.age * 3.2 + i * 1.3) * W * 0.9;
+                ctx.beginPath();
+                ctx.moveTo(-L * 0.2, side * W * 0.35);
+                ctx.quadraticCurveTo(
+                    -L * 0.55, side * W * 0.2 + sway,
+                    -L * (0.85 + (i % 2) * 0.1), side * (W * 0.6) + sway * 0.6
+                );
+                ctx.stroke();
+            }
+        }
+
         drawCreatureHat(ctx, L, W, this.hatSeed);
         ctx.restore();
     }
@@ -6688,6 +6996,10 @@ function updateBreeding() {
 let shark = null;
 let whale = null;
 let reptiles = [];
+let swordfish = null; // night-mode spear hunter
+let octopus = null; // night-mode tentacle hunter
+let octopusWhaleFight = null; // { t, phase: "wrap"|"eat"|"ship", shipY, shipAlpha }
+let pirateShipDrop = null; // leftover alias during ship phase
 let povAttack = null; // { fish, t }
 let giantEnding = null; // { fish, t, kind: "peace" | "shadow" }
 let heroRemorseEnding = null; // { fish, t, burst }
@@ -6700,7 +7012,7 @@ let reptileCheckTimer = 0;
 let exoticCheckTimer = 0;
 
 function pondFinaleActive() {
-    return !!(povAttack || giantEnding || heroRemorseEnding || frogFinale);
+    return !!(povAttack || giantEnding || heroRemorseEnding || frogFinale || octopusWhaleFight);
 }
 
 function giantSizeThreshold() {
@@ -7510,6 +7822,572 @@ class Reptile {
     }
 }
 
+// ===========================================================================
+// NIGHT PREDATORS: swordfish + octopus (replace crocs while night mode is on)
+// ===========================================================================
+class Swordfish {
+    constructor() {
+        this.size = rand(CONFIG.swordfishSize[0], CONFIG.swordfishSize[1]);
+        this.dead = false;
+        this.tailPhase = Math.random() * Math.PI * 2;
+        this.stuck = []; // speared fish hanging on the sword
+        this.huntTimer = 0;
+        this.wanderTimer = 0;
+        this._wanderDir = 0;
+        this.spearCooldown = 0;
+        const side = Math.floor(Math.random() * 4);
+        if (side === 0) { this.x = -this.size; this.y = Math.random() * viewH; }
+        else if (side === 1) { this.x = viewW + this.size; this.y = Math.random() * viewH; }
+        else if (side === 2) { this.x = Math.random() * viewW; this.y = -this.size; }
+        else { this.x = Math.random() * viewW; this.y = viewH + this.size; }
+        this.dir = Math.atan2(viewH * 0.5 - this.y, viewW * 0.5 - this.x);
+        this.speed = 62 + Math.random() * 18;
+        this.target = null;
+        Audio.predatorEat(this.x < viewW * 0.5 ? -0.35 : 0.35);
+    }
+
+    tipPos() {
+        const blade = this.size * 0.95;
+        return {
+            x: this.x + Math.cos(this.dir) * blade,
+            y: this.y + Math.sin(this.dir) * blade,
+        };
+    }
+
+    update(dt) {
+        if (this.dead) return;
+        this.tailPhase += dt * 4.2;
+        this.spearCooldown = Math.max(0, this.spearCooldown - dt);
+        this.huntTimer -= dt;
+
+        if (!this.target || this.target.dead || this.target.golden
+            || this.target.isRainbow || this.target.isPlatinum
+            || this.target.size >= this.size * 0.95) {
+            this.target = null;
+            let best = null, bd = CONFIG.huntRange * 1.55;
+            for (const f of fishes) {
+                if (f.dead || f.golden || f.isRainbow || f.isPlatinum || f.isMonster) continue;
+                if (f.size >= this.size * 0.95) continue;
+                const d = Math.hypot(f.x - this.x, f.y - this.y);
+                if (d < bd) { bd = d; best = f; }
+            }
+            this.target = best;
+        }
+
+        let desired = this.dir;
+        let spd = this.speed * 0.7;
+        if (this.target) {
+            desired = Math.atan2(this.target.y - this.y, this.target.x - this.x);
+            spd = this.speed * 1.25;
+            const tip = this.tipPos();
+            const dist = Math.hypot(this.target.x - tip.x, this.target.y - tip.y);
+            if (dist < this.size * 0.22 + this.target.size * 0.35 && this.spearCooldown <= 0) {
+                this.spear(this.target);
+            }
+        } else {
+            this.wanderTimer -= dt;
+            if (this.wanderTimer <= 0) {
+                this.wanderTimer = 1.4 + Math.random() * 2;
+                this._wanderDir = this.dir + (Math.random() - 0.5) * 1.1;
+            }
+            desired = this._wanderDir;
+        }
+
+        const margin = 50;
+        if (this.x < margin) desired = 0;
+        else if (this.x > viewW - margin) desired = Math.PI;
+        if (this.y < margin) desired = Math.PI / 2;
+        else if (this.y > viewH - margin) desired = -Math.PI / 2;
+
+        const diff = normAngle(desired - this.dir);
+        this.dir += Math.max(-2.4 * dt, Math.min(2.4 * dt, diff));
+        this.x += Math.cos(this.dir) * spd * dt;
+        this.y += Math.sin(this.dir) * spd * dt;
+        this.x = Math.max(12, Math.min(viewW - 12, this.x));
+        this.y = Math.max(12, Math.min(viewH - 12, this.y));
+        if (Math.random() < 0.28) {
+            water.disturb(
+                this.x - Math.cos(this.dir) * this.size * 0.4,
+                this.y - Math.sin(this.dir) * this.size * 0.4, 9, 40
+            );
+        }
+    }
+
+    spear(prey) {
+        if (!prey || prey.dead) return;
+        prey.dead = true;
+        this.stuck.push({
+            along: 0.35 + this.stuck.length * 0.14,
+            side: this.stuck.length % 2 === 0 ? 1 : -1,
+            size: Math.max(8, prey.size * 0.65),
+            body: prey.type ? prey.type.body : "#7a8a9a",
+            belly: prey.type ? prey.type.belly : "#d0d8e0",
+            wobble: Math.random() * Math.PI * 2,
+        });
+        this.spearCooldown = 0.55;
+        this.target = null;
+        this.size = Math.min(this.size + prey.size * 0.08, CONFIG.swordfishSize[1] * 1.25);
+        const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+        Audio.sharkStrike(pan);
+        water.disturb(this.x, this.y, this.size * 0.45, 220);
+        spawnSplash(this.x, this.y, 14, 0.55);
+    }
+
+    draw(ctx) {
+        if (this.dead) return;
+        const L = this.size;
+        const W = this.size * 0.22;
+        const wig = Math.sin(this.tailPhase) * 0.25;
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.dir);
+        ctx.globalAlpha = 0.92;
+
+        // Sword / bill.
+        ctx.strokeStyle = "rgba(200,215,230,0.95)";
+        ctx.lineWidth = Math.max(2.2, L * 0.04);
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(L * 0.35, 0);
+        ctx.lineTo(L * 0.95, 0);
+        ctx.stroke();
+        ctx.strokeStyle = "rgba(240,248,255,0.55)";
+        ctx.lineWidth = Math.max(1, L * 0.018);
+        ctx.beginPath();
+        ctx.moveTo(L * 0.4, -L * 0.02);
+        ctx.lineTo(L * 0.92, 0);
+        ctx.stroke();
+
+        // Speared fish with X eyes along the bill.
+        for (const s of this.stuck) {
+            const sx = L * s.along;
+            const sy = s.side * (W * 0.55 + s.size * 0.15);
+            const wob = Math.sin(this.tailPhase * 2 + s.wobble) * 0.15;
+            ctx.save();
+            ctx.translate(sx, sy);
+            ctx.rotate(wob);
+            ctx.fillStyle = s.body;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, s.size * 0.55, s.size * 0.28, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = s.belly;
+            ctx.globalAlpha *= 0.7;
+            ctx.beginPath();
+            ctx.ellipse(s.size * 0.05, s.size * 0.08, s.size * 0.28, s.size * 0.14, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha /= 0.7;
+            ctx.strokeStyle = "rgba(20,25,30,0.9)";
+            ctx.lineWidth = Math.max(1.1, s.size * 0.08);
+            const e = s.size * 0.12;
+            ctx.beginPath();
+            ctx.moveTo(s.size * 0.2 - e, -e);
+            ctx.lineTo(s.size * 0.2 + e, e);
+            ctx.moveTo(s.size * 0.2 + e, -e);
+            ctx.lineTo(s.size * 0.2 - e, e);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // Body.
+        const g = ctx.createLinearGradient(0, -W, 0, W);
+        g.addColorStop(0, "#8aa4b8");
+        g.addColorStop(0.5, "#4a6578");
+        g.addColorStop(1, "#c5d6e2");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(L * 0.35, 0);
+        ctx.quadraticCurveTo(L * 0.05, -W * 1.1, -L * 0.35, -W * 0.55);
+        ctx.quadraticCurveTo(-L * 0.55, 0, -L * 0.35, W * 0.55);
+        ctx.quadraticCurveTo(L * 0.05, W * 1.1, L * 0.35, 0);
+        ctx.fill();
+
+        // Dorsal sail.
+        ctx.fillStyle = "rgba(60,80,100,0.75)";
+        ctx.beginPath();
+        ctx.moveTo(-L * 0.05, -W * 0.7);
+        ctx.lineTo(L * 0.05, -W * 2.1);
+        ctx.lineTo(L * 0.22, -W * 0.55);
+        ctx.closePath();
+        ctx.fill();
+
+        // Tail.
+        ctx.fillStyle = "#5a7488";
+        ctx.beginPath();
+        ctx.moveTo(-L * 0.35, 0);
+        ctx.lineTo(-L * 0.7, -W * 1.1 + wig * W);
+        ctx.lineTo(-L * 0.55, 0);
+        ctx.lineTo(-L * 0.7, W * 1.1 + wig * W);
+        ctx.closePath();
+        ctx.fill();
+
+        // Eye.
+        ctx.fillStyle = "rgba(245,248,250,0.95)";
+        ctx.beginPath();
+        ctx.arc(L * 0.18, -W * 0.25, Math.max(2, L * 0.04), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(15,20,28,0.95)";
+        ctx.beginPath();
+        ctx.arc(L * 0.2, -W * 0.25, Math.max(1.1, L * 0.022), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+}
+
+class Octopus {
+    constructor() {
+        this.size = rand(CONFIG.octopusSize[0], CONFIG.octopusSize[1]);
+        this.dead = false;
+        this.phase = Math.random() * Math.PI * 2;
+        this.pulse = 0;
+        this.grabCooldown = 0;
+        this.eatPulse = 0;
+        const side = Math.floor(Math.random() * 4);
+        if (side === 0) { this.x = -this.size; this.y = Math.random() * viewH; }
+        else if (side === 1) { this.x = viewW + this.size; this.y = Math.random() * viewH; }
+        else if (side === 2) { this.x = Math.random() * viewW; this.y = -this.size; }
+        else { this.x = Math.random() * viewW; this.y = viewH + this.size; }
+        this.vx = 0;
+        this.vy = 0;
+        this.legs = [];
+        for (let i = 0; i < 8; i++) {
+            const ang = (i / 8) * Math.PI * 2 + Math.random() * 0.2;
+            this.legs.push({
+                baseAng: ang,
+                phase: Math.random() * Math.PI * 2,
+                len: this.size * (0.9 + Math.random() * 0.55),
+                tipX: this.x + Math.cos(ang) * this.size,
+                tipY: this.y + Math.sin(ang) * this.size,
+                planted: false,
+                grab: null, // { prey, reel }
+                autonomy: 0.6 + Math.random() * 0.8,
+            });
+        }
+        Audio.predatorEat(this.x < viewW * 0.5 ? -0.2 : 0.2);
+    }
+
+    update(dt) {
+        if (this.dead) return;
+        if (octopusWhaleFight) return;
+        this.phase += dt * 1.6;
+        this.pulse += dt * 2.4;
+        this.grabCooldown = Math.max(0, this.grabCooldown - dt);
+        this.eatPulse = Math.max(0, this.eatPulse - dt);
+
+        // If this octopus is alone with no swimmers, summon a whale fight.
+        const swimmers = fishes.filter((f) => !f.dead && !f.golden && !f.rainbowLeaving);
+        if (swimmers.length === 0 && !whale && !shark && !swordfish
+            && reptiles.every((r) => r.dead) && !pondFinaleActive()) {
+            beginOctopusWhaleFight();
+            return;
+        }
+
+        // Autonomous leg motion + pull the body toward planted tips.
+        let pullX = 0, pullY = 0, pulls = 0;
+        for (let i = 0; i < this.legs.length; i++) {
+            const leg = this.legs[i];
+            leg.phase += dt * (1.4 + leg.autonomy);
+            const reach = this.size * (1.05 + 0.35 * Math.sin(leg.phase));
+            const wanderAng = leg.baseAng + Math.sin(leg.phase * 0.7 + i) * 0.7
+                + Math.sin(this.phase + i * 0.4) * 0.35;
+
+            if (leg.grab && leg.grab.prey && !leg.grab.prey.dead) {
+                const prey = leg.grab.prey;
+                leg.tipX += (prey.x - leg.tipX) * Math.min(1, 5 * dt);
+                leg.tipY += (prey.y - leg.tipY) * Math.min(1, 5 * dt);
+                prey.x += (leg.tipX - prey.x) * Math.min(1, 3.5 * dt);
+                prey.y += (leg.tipY - prey.y) * Math.min(1, 3.5 * dt);
+                leg.grab.reel += dt;
+                // Reel toward body.
+                const toBody = Math.hypot(this.x - prey.x, this.y - prey.y);
+                prey.x += (this.x - prey.x) * Math.min(1, 1.8 * dt);
+                prey.y += (this.y - prey.y) * Math.min(1, 1.8 * dt);
+                if (toBody < this.size * 0.55 || leg.grab.reel > 1.4) {
+                    this.eatGrabbed(prey);
+                    leg.grab = null;
+                }
+            } else {
+                leg.grab = null;
+                const goalX = this.x + Math.cos(wanderAng) * reach;
+                const goalY = this.y + Math.sin(wanderAng) * reach;
+                leg.tipX += (goalX - leg.tipX) * Math.min(1, (1.8 + leg.autonomy) * dt);
+                leg.tipY += (goalY - leg.tipY) * Math.min(1, (1.8 + leg.autonomy) * dt);
+                // Plant tip briefly to yank the body.
+                leg.planted = Math.sin(leg.phase * 1.3) > 0.55;
+                if (leg.planted) {
+                    pullX += leg.tipX;
+                    pullY += leg.tipY;
+                    pulls++;
+                }
+            }
+            leg.tipX = Math.max(8, Math.min(viewW - 8, leg.tipX));
+            leg.tipY = Math.max(8, Math.min(viewH - 8, leg.tipY));
+        }
+
+        if (pulls > 0) {
+            const tx = pullX / pulls;
+            const ty = pullY / pulls;
+            this.vx += (tx - this.x) * 1.6 * dt;
+            this.vy += (ty - this.y) * 1.6 * dt;
+        }
+        this.vx *= Math.exp(-1.8 * dt);
+        this.vy *= Math.exp(-1.8 * dt);
+        const maxSpd = 55 + this.size * 0.15;
+        const spd = Math.hypot(this.vx, this.vy);
+        if (spd > maxSpd) {
+            this.vx *= maxSpd / spd;
+            this.vy *= maxSpd / spd;
+        }
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+        this.x = Math.max(20, Math.min(viewW - 20, this.x));
+        this.y = Math.max(20, Math.min(viewH - 20, this.y));
+
+        // Free legs try to grab nearby fish.
+        if (this.grabCooldown <= 0) {
+            let best = null, bd = this.size * 2.4;
+            for (const f of fishes) {
+                if (f.dead || f.golden || f.isRainbow || f.isPlatinum || f.isMonster) continue;
+                if (f.size >= this.size * 1.05) continue;
+                if (f.tentacleGrab) continue;
+                const d = Math.hypot(f.x - this.x, f.y - this.y);
+                if (d < bd) { bd = d; best = f; }
+            }
+            if (best) {
+                let free = null;
+                for (const leg of this.legs) {
+                    if (!leg.grab) { free = leg; break; }
+                }
+                if (free) {
+                    free.grab = { prey: best, reel: 0 };
+                    best.tentacleGrab = { owner: "octopus" };
+                    this.grabCooldown = 0.85;
+                }
+            }
+        }
+
+        if (Math.random() < 0.12) water.disturb(this.x, this.y, this.size * 0.35, 35);
+    }
+
+    eatGrabbed(prey) {
+        if (!prey || prey.dead) return;
+        prey.dead = true;
+        prey.tentacleGrab = null;
+        this.size = Math.min(Math.min(viewW, viewH) * 0.45, this.size + prey.size * 0.28);
+        for (const leg of this.legs) {
+            leg.len = this.size * (0.9 + Math.random() * 0.5);
+        }
+        this.eatPulse = 0.45;
+        const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+        Audio.predatorEat(pan);
+        water.disturb(this.x, this.y, this.size * 0.7, 280);
+        spawnSplash(this.x, this.y, 16, 0.65);
+    }
+
+    draw(ctx) {
+        if (this.dead) return;
+        const S = this.size;
+        const breath = 1 + Math.sin(this.pulse) * 0.05;
+        ctx.save();
+
+        // Legs first (under body), each tip moves on its own.
+        for (let i = 0; i < this.legs.length; i++) {
+            const leg = this.legs[i];
+            const bx = this.x + Math.cos(leg.baseAng + Math.sin(this.phase) * 0.1) * S * 0.35;
+            const by = this.y + Math.sin(leg.baseAng + Math.sin(this.phase) * 0.1) * S * 0.35;
+            const mx = (bx + leg.tipX) * 0.5 + Math.sin(leg.phase) * S * 0.2;
+            const my = (by + leg.tipY) * 0.5 + Math.cos(leg.phase * 1.1) * S * 0.2;
+            ctx.strokeStyle = leg.grab
+                ? "rgba(140,70,110,0.85)"
+                : "rgba(90,55,95,0.78)";
+            ctx.lineWidth = Math.max(2.5, S * 0.09);
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            ctx.moveTo(bx, by);
+            ctx.quadraticCurveTo(mx, my, leg.tipX, leg.tipY);
+            ctx.stroke();
+            // Sucker dots near tip.
+            ctx.fillStyle = "rgba(180,120,150,0.45)";
+            for (let k = 0; k < 3; k++) {
+                const t = 0.55 + k * 0.15;
+                const sx = bx + (leg.tipX - bx) * t;
+                const sy = by + (leg.tipY - by) * t;
+                ctx.beginPath();
+                ctx.arc(sx, sy, Math.max(1.2, S * 0.03), 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Mantle / head.
+        const g = ctx.createRadialGradient(
+            this.x - S * 0.15, this.y - S * 0.15, S * 0.1,
+            this.x, this.y, S * 0.7
+        );
+        g.addColorStop(0, "#c070a0");
+        g.addColorStop(0.55, "#6a3a68");
+        g.addColorStop(1, "#3a2040");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.ellipse(this.x, this.y, S * 0.55 * breath, S * 0.48 * breath, 0, 0, Math.PI * 2);
+        ctx.fill();
+        if (this.eatPulse > 0) {
+            ctx.fillStyle = `rgba(200,80,120,${this.eatPulse * 0.45})`;
+            ctx.beginPath();
+            ctx.ellipse(this.x, this.y, S * 0.55, S * 0.48, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        // Eyes.
+        ctx.fillStyle = "rgba(240,230,200,0.95)";
+        ctx.beginPath();
+        ctx.ellipse(this.x - S * 0.16, this.y - S * 0.08, S * 0.1, S * 0.12, 0, 0, Math.PI * 2);
+        ctx.ellipse(this.x + S * 0.16, this.y - S * 0.08, S * 0.1, S * 0.12, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(20,15,25,0.95)";
+        ctx.beginPath();
+        ctx.arc(this.x - S * 0.14, this.y - S * 0.08, S * 0.045, 0, Math.PI * 2);
+        ctx.arc(this.x + S * 0.18, this.y - S * 0.08, S * 0.045, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+}
+
+function beginOctopusWhaleFight() {
+    if (octopusWhaleFight || !octopus || octopus.dead) return;
+    if (!whale || whale.dead) {
+        whale = new Whale();
+        whale.x = viewW * 0.5;
+        whale.y = viewH * 0.45;
+        whale.isHero = false;
+    }
+    octopusWhaleFight = { t: 0, phase: "wrap", shipY: -120, shipAlpha: 0 };
+    whale.ateFish = true;
+    const pan = 0;
+    Audio.predatorEat(pan);
+    Audio.sharkStrike(pan);
+    water.disturb(viewW * 0.5, viewH * 0.5, 80, 400);
+}
+
+function updateOctopusWhaleFight(dt) {
+    if (!octopusWhaleFight) return;
+    octopusWhaleFight.t += dt;
+    const fight = octopusWhaleFight;
+    const cx = viewW * 0.5;
+    const cy = viewH * 0.48;
+
+    if (octopus && !octopus.dead) {
+        octopus.x += (cx - octopus.x) * Math.min(1, dt * 1.5);
+        octopus.y += (cy + 10 - octopus.y) * Math.min(1, dt * 1.5);
+        for (const leg of octopus.legs) {
+            const ang = leg.baseAng + fight.t * 0.8;
+            const rad = (whale ? whale.size * 0.35 : 80) + Math.sin(fight.t * 3 + leg.phase) * 20;
+            leg.tipX = cx + Math.cos(ang) * rad;
+            leg.tipY = cy + Math.sin(ang) * rad * 0.7;
+            leg.grab = null;
+        }
+    }
+    if (whale && !whale.dead) {
+        whale.x += (cx - whale.x) * Math.min(1, dt * 1.2);
+        whale.y += (cy - whale.y) * Math.min(1, dt * 1.2);
+        whale.dir += dt * 0.9;
+    }
+
+    if (fight.phase === "wrap" && fight.t >= 2.8) {
+        fight.phase = "eat";
+        fight.t = 0;
+        Audio.predatorEat(0);
+        water.disturb(cx, cy, 100, 500);
+    } else if (fight.phase === "eat") {
+        if (whale && !whale.dead) {
+            whale.size *= Math.max(0.2, 1 - dt * 0.55);
+            if (fight.t > 1.6) {
+                whale.dead = true;
+                whale = null;
+                if (octopus) octopus.size = Math.min(octopus.size + 40, Math.min(viewW, viewH) * 0.4);
+            }
+        }
+        if (fight.t >= 2.2) {
+            fight.phase = "ship";
+            fight.t = 0;
+            fight.shipY = -140;
+            fight.shipAlpha = 0;
+            Audio.sharkStrike(0);
+        }
+    } else if (fight.phase === "ship") {
+        fight.shipAlpha = Math.min(1, fight.shipAlpha + dt * 0.7);
+        fight.shipY += (cy - 40 - fight.shipY) * Math.min(1, dt * 1.1);
+        if (octopus && !octopus.dead) {
+            // Haul the ship down with tentacles.
+            for (let i = 0; i < octopus.legs.length; i++) {
+                const leg = octopus.legs[i];
+                const ang = -Math.PI * 0.5 + (i / 8 - 0.5) * 0.9;
+                leg.tipX = cx + Math.cos(ang) * (40 + i * 6);
+                leg.tipY = fight.shipY + 30;
+            }
+        }
+        if (fight.t > 1.2 && Math.random() < 0.2) {
+            water.disturb(cx + (Math.random() - 0.5) * 80, fight.shipY + 40, 20, 80);
+        }
+        if (fight.t >= 3.4) {
+            spawnSplash(cx, cy, 40, 1);
+            water.disturb(cx, cy, 120, 700);
+            if (Audio.rainbowChime) Audio.rainbowChime(0);
+            octopusWhaleFight = null;
+            if (octopus) octopus.dead = true;
+            octopus = null;
+            swordfish = null;
+            resetPond();
+        }
+    }
+}
+
+function drawOctopusWhaleFight(ctx) {
+    if (!octopusWhaleFight) return;
+    const fight = octopusWhaleFight;
+    const t = fight.t;
+    ctx.save();
+    if (fight.phase === "wrap" || fight.phase === "eat") {
+        const dark = fight.phase === "eat" ? 0.35 + Math.min(0.4, t * 0.2) : 0.15 + Math.min(0.25, t * 0.08);
+        ctx.fillStyle = `rgba(20, 8, 18, ${dark})`;
+        ctx.fillRect(0, 0, viewW, viewH);
+    }
+    if (fight.phase === "ship" || (fight.phase === "eat" && t > 1.5)) {
+        const cx = viewW * 0.5;
+        const y = fight.shipY;
+        const a = fight.shipAlpha || Math.min(1, (t - 1.5) * 0.8);
+        ctx.globalAlpha = a;
+        // Simple pirate ship silhouette pulled from above.
+        ctx.fillStyle = "#3a2a22";
+        ctx.beginPath();
+        ctx.moveTo(cx - 70, y + 28);
+        ctx.lineTo(cx - 55, y);
+        ctx.lineTo(cx + 55, y);
+        ctx.lineTo(cx + 70, y + 28);
+        ctx.lineTo(cx + 40, y + 42);
+        ctx.lineTo(cx - 40, y + 42);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#5a4030";
+        ctx.fillRect(cx - 4, y - 55, 8, 55);
+        ctx.beginPath();
+        ctx.moveTo(cx + 4, y - 50);
+        ctx.lineTo(cx + 48, y - 28);
+        ctx.lineTo(cx + 4, y - 10);
+        ctx.closePath();
+        ctx.fillStyle = "rgba(40,40,48,0.9)";
+        ctx.fill();
+        // Skull mark.
+        ctx.fillStyle = "rgba(220,210,190,0.75)";
+        ctx.beginPath();
+        ctx.arc(cx, y + 16, 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(20,15,12,0.85)";
+        ctx.beginPath();
+        ctx.arc(cx - 2.5, y + 15, 1.4, 0, Math.PI * 2);
+        ctx.arc(cx + 2.5, y + 15, 1.4, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.restore();
+}
+
 function beginPovAttack(fish) {
     if (pondFinaleActive()) return;
     povAttack = { fish, t: 0 };
@@ -8032,9 +8910,13 @@ function resetPond() {
     povAttack = null;
     giantEnding = null;
     heroRemorseEnding = null;
+    octopusWhaleFight = null;
+    pirateShipDrop = null;
     apexDuel = null;
     shark = null;
     whale = null;
+    swordfish = null;
+    octopus = null;
     reptiles.length = 0;
     frogGroups.length = 0;
     hungryTadpoles.length = 0;
@@ -8489,6 +9371,10 @@ function manageEcosystem(dt) {
         updateHeroRemorseEnding(dt);
         return;
     }
+    if (octopusWhaleFight) {
+        updateOctopusWhaleFight(dt);
+        return;
+    }
 
     // Golden fish rest on the lakebed until refresh; they are not active swimmers.
     const alive = fishes.filter((f) => !f.dead);
@@ -8519,14 +9405,21 @@ function manageEcosystem(dt) {
         }
     }
 
-    // Rare crocodile / alligator: chance checked once per minute.
+    // Day: crocodile / alligator. Night: swordfish or octopus instead.
     reptileCheckTimer += dt;
     if (reptileCheckTimer >= CONFIG.reptileInterval) {
         reptileCheckTimer = 0;
         if (!whale && !shark && !repopulating && !pondFinaleActive() && !apexDuel
-            && reptiles.length === 0 && swimmers.length > 2
-            && Math.random() < CONFIG.reptileChance) {
-            reptiles.push(new Reptile());
+            && swimmers.length > 2) {
+            if (nightMode) {
+                const canSpawn = !swordfish && !octopus && reptiles.length === 0;
+                if (canSpawn && Math.random() < CONFIG.nightPredatorChance) {
+                    if (Math.random() < 0.5) swordfish = new Swordfish();
+                    else octopus = new Octopus();
+                }
+            } else if (reptiles.length === 0 && Math.random() < CONFIG.reptileChance) {
+                reptiles.push(new Reptile());
+            }
         }
     }
 
@@ -8547,11 +9440,20 @@ function manageEcosystem(dt) {
         if (reptiles[i].dead) reptiles.splice(i, 1);
     }
 
+    if (swordfish) {
+        swordfish.update(dt);
+        if (swordfish.dead) swordfish = null;
+    }
+    if (octopus) {
+        octopus.update(dt);
+        if (octopus.dead) octopus = null;
+    }
+
     if (whale) {
         whale.update(dt);
         if (whale.dead) {
             whale = null;
-            if (fishes.filter((f) => !f.dead).length === 0 && !apexDuel) {
+            if (fishes.filter((f) => !f.dead).length === 0 && !apexDuel && !octopus) {
                 repopulating = true;
                 repopTimer = 0.8;
             }
@@ -10043,6 +10945,8 @@ function frame(now) {
             if (!fish.golden) fish.draw(ctx);
         }
         for (const r of reptiles) r.draw(ctx);
+        if (swordfish) swordfish.draw(ctx);
+        if (octopus) octopus.draw(ctx);
         if (shark) shark.draw(ctx);
         if (whale) whale.draw(ctx);
 
@@ -10082,6 +10986,7 @@ function frame(now) {
         if (povAttack) drawPovAttack(ctx);
         if (giantEnding) drawGiantEnding(ctx);
         if (heroRemorseEnding) drawHeroRemorseEnding(ctx);
+        if (octopusWhaleFight) drawOctopusWhaleFight(ctx);
     } else {
         ctx.globalCompositeOperation = "source-over";
         ctx.fillStyle = "rgba(7, 10, 15, 0.22)";
