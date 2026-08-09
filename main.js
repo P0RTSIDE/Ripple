@@ -5013,22 +5013,22 @@ function nearestFood(x, y, range) {
 // Rainbow trail that spells the exit message, then fades after the fish leaves.
 const rainbowScriptTrail = [];
 
-// Continuous cursive-friendly letterforms (each letter is one flowing polyline).
+// Continuous cursive-friendly letterforms (clearer proportions for pond-scale reading).
 function letterCursive(ch) {
     switch (ch) {
-        case "E": return [[0.15, 0.95], [0.1, 0.5], [0.12, 0.08], [0.85, 0.08], [0.2, 0.1], [0.18, 0.5], [0.7, 0.5], [0.2, 0.52], [0.18, 0.95], [0.88, 0.95]];
-        case "A": return [[0.08, 0.98], [0.22, 0.55], [0.5, 0.05], [0.78, 0.55], [0.25, 0.58], [0.75, 0.58], [0.78, 0.55], [0.92, 0.98]];
-        case "S": return [[0.85, 0.22], [0.55, 0.05], [0.18, 0.22], [0.2, 0.42], [0.78, 0.58], [0.82, 0.78], [0.5, 0.98], [0.15, 0.82]];
-        case "T": return [[0.08, 0.1], [0.5, 0.08], [0.92, 0.1], [0.5, 0.1], [0.5, 0.98]];
-        case "R": return [[0.12, 0.98], [0.12, 0.08], [0.7, 0.08], [0.88, 0.22], [0.7, 0.42], [0.12, 0.42], [0.48, 0.45], [0.92, 0.98]];
-        case "G": return [[0.85, 0.25], [0.55, 0.05], [0.18, 0.28], [0.1, 0.55], [0.2, 0.85], [0.55, 0.98], [0.9, 0.78], [0.9, 0.55], [0.55, 0.55]];
-        case "a": return [[0.2, 0.62], [0.45, 0.42], [0.78, 0.55], [0.82, 0.85], [0.55, 1.0], [0.22, 0.85], [0.25, 0.6], [0.78, 0.55], [0.85, 0.42], [0.85, 1.02]];
-        case "e": return [[0.2, 0.7], [0.55, 0.55], [0.82, 0.65], [0.7, 0.42], [0.35, 0.42], [0.15, 0.65], [0.25, 0.92], [0.55, 1.02], [0.88, 0.88]];
-        case "s": return [[0.8, 0.52], [0.5, 0.4], [0.2, 0.52], [0.25, 0.7], [0.75, 0.8], [0.78, 0.95], [0.45, 1.08], [0.18, 0.95]];
-        case "t": return [[0.42, 0.15], [0.45, 0.55], [0.18, 0.5], [0.78, 0.5], [0.48, 0.52], [0.5, 1.05], [0.7, 0.95]];
-        case "r": return [[0.2, 1.02], [0.22, 0.45], [0.25, 0.55], [0.5, 0.4], [0.78, 0.48]];
-        case "g": return [[0.25, 0.62], [0.5, 0.42], [0.8, 0.55], [0.82, 0.82], [0.55, 0.98], [0.25, 0.82], [0.28, 0.58], [0.8, 0.55], [0.85, 0.4], [0.85, 1.15], [0.55, 1.28], [0.22, 1.12]];
-        case " ": return [[0.15, 0.75], [0.5, 0.55], [0.85, 0.75]];
+        case "E": return [[0.12, 0.98], [0.1, 0.5], [0.12, 0.06], [0.9, 0.06], [0.18, 0.08], [0.16, 0.5], [0.78, 0.5], [0.18, 0.52], [0.16, 0.98], [0.92, 0.98]];
+        case "A": return [[0.06, 0.98], [0.2, 0.52], [0.5, 0.04], [0.8, 0.52], [0.22, 0.56], [0.78, 0.56], [0.8, 0.52], [0.94, 0.98]];
+        case "S": return [[0.88, 0.2], [0.58, 0.04], [0.16, 0.2], [0.14, 0.4], [0.82, 0.58], [0.86, 0.8], [0.5, 0.98], [0.12, 0.82]];
+        case "T": return [[0.06, 0.08], [0.5, 0.06], [0.94, 0.08], [0.5, 0.1], [0.5, 0.98]];
+        case "R": return [[0.1, 0.98], [0.1, 0.06], [0.72, 0.06], [0.92, 0.22], [0.72, 0.42], [0.12, 0.42], [0.5, 0.46], [0.94, 0.98]];
+        case "G": return [[0.88, 0.22], [0.55, 0.04], [0.16, 0.26], [0.08, 0.55], [0.18, 0.88], [0.55, 0.98], [0.92, 0.8], [0.92, 0.54], [0.52, 0.54]];
+        case "a": return [[0.18, 0.58], [0.48, 0.38], [0.8, 0.52], [0.84, 0.84], [0.52, 1.0], [0.18, 0.84], [0.22, 0.56], [0.8, 0.52], [0.88, 0.38], [0.88, 1.02]];
+        case "e": return [[0.18, 0.68], [0.52, 0.5], [0.86, 0.62], [0.72, 0.38], [0.32, 0.38], [0.12, 0.62], [0.22, 0.92], [0.55, 1.02], [0.9, 0.88]];
+        case "s": return [[0.84, 0.48], [0.5, 0.36], [0.16, 0.5], [0.2, 0.68], [0.78, 0.8], [0.82, 0.96], [0.46, 1.08], [0.14, 0.94]];
+        case "t": return [[0.4, 0.1], [0.44, 0.52], [0.12, 0.48], [0.82, 0.48], [0.46, 0.5], [0.5, 1.04], [0.74, 0.94]];
+        case "r": return [[0.16, 1.02], [0.18, 0.4], [0.22, 0.5], [0.52, 0.36], [0.84, 0.46]];
+        case "g": return [[0.22, 0.58], [0.5, 0.38], [0.82, 0.52], [0.86, 0.82], [0.52, 0.98], [0.2, 0.8], [0.24, 0.54], [0.82, 0.52], [0.88, 0.36], [0.88, 1.18], [0.52, 1.32], [0.18, 1.14]];
+        case " ": return [[0.2, 0.72], [0.5, 0.62], [0.8, 0.72]];
         default: return [[0.2, 0.7], [0.8, 0.7]];
     }
 }
@@ -5169,7 +5169,7 @@ function drawRainbowTrail(ctx) {
     ctx.lineJoin = "round";
     ctx.shadowBlur = 0;
     // Batch into short polylines: one stroke per chunk instead of two glow strokes per segment.
-    const chunk = 18;
+    const chunk = 22;
     for (let start = 1; start < n; start += chunk) {
         const end = Math.min(n, start + chunk);
         const head = rainbowScriptTrail[end - 1];
@@ -5182,11 +5182,12 @@ function drawRainbowTrail(ctx) {
             const p = rainbowScriptTrail[i];
             ctx.lineTo(p.x, p.y);
         }
-        ctx.strokeStyle = `hsla(${head.hue}, 90%, 62%, ${0.22 * fade})`;
-        ctx.lineWidth = Math.max(3.5, head.r * 2.1 * fade);
+        // Soft under-stroke for contrast on bright water, then a brighter core.
+        ctx.strokeStyle = `hsla(${head.hue}, 85%, 42%, ${0.38 * fade})`;
+        ctx.lineWidth = Math.max(6.5, head.r * 2.45 * fade);
         ctx.stroke();
-        ctx.strokeStyle = `hsla(${(head.hue + 35) % 360}, 100%, 72%, ${0.55 * fade})`;
-        ctx.lineWidth = Math.max(1.4, head.r * 0.85 * fade);
+        ctx.strokeStyle = `hsla(${(head.hue + 28) % 360}, 100%, 68%, ${0.82 * fade})`;
+        ctx.lineWidth = Math.max(2.8, head.r * 1.15 * fade);
         ctx.stroke();
     }
     ctx.restore();
@@ -5512,7 +5513,7 @@ class Fish {
             const n = this.eggPath[1];
             this.dir = Math.atan2(n.y - this.y, n.x - this.x);
         }
-        pushRainbowTrail(this.x, this.y, 8, 0);
+        pushRainbowTrail(this.x, this.y, 10, 0);
     }
 
     // Nearest threat: whale, shark, reptiles (if bigger), larger predators, rainbow/monster.
@@ -5825,12 +5826,12 @@ class Fish {
         }
 
         // Fish picker: body is driven by the hold / throw helpers.
-        if (this.pickerHeld) {
-            this.tailPhase += dt * (this.pickerLiftZ > 4 ? 14 : 5);
-            return;
-        }
         if (this.pickerThrow) {
             updatePickerThrow(this, dt);
+            return;
+        }
+        if (this.pickerHeld) {
+            this.tailPhase += dt * (this.pickerLiftZ > 4 ? 14 : 5);
             return;
         }
 
@@ -5874,21 +5875,21 @@ class Fish {
             if (this.rainbowPhase === "write" && this.eggPath && this.eggIndex < this.eggPath.length) {
                 this.trailDrop -= dt;
                 // Look ahead a little so turns stay rounded instead of corner-snapping.
-                const look = Math.min(this.eggPath.length - 1, this.eggIndex + 3);
+                const look = Math.min(this.eggPath.length - 1, this.eggIndex + 5);
                 const wp = this.eggPath[look];
                 const desiredWrite = Math.atan2(wp.y - this.y, wp.x - this.x);
-                const turnRate = 5.5;
+                const turnRate = 7.2;
                 const diff = normAngle(desiredWrite - this.dir);
                 this.dir += Math.max(-turnRate * dt, Math.min(turnRate * dt, diff));
                 // Ease speed in corners; keep a steady ink flow on straights.
                 const align = 1 - Math.min(1, Math.abs(diff) / Math.PI);
-                const writeSpeed = 175 + 55 * align;
+                const writeSpeed = 310 + 95 * align;
                 this.x += Math.cos(this.dir) * writeSpeed * dt;
                 this.y += Math.sin(this.dir) * writeSpeed * dt;
                 // Advance along the ribbon when close enough to the current knot.
                 while (this.eggIndex < this.eggPath.length) {
                     const p = this.eggPath[this.eggIndex];
-                    if (Math.hypot(p.x - this.x, p.y - this.y) > 14) break;
+                    if (Math.hypot(p.x - this.x, p.y - this.y) > 18) break;
                     this.eggIndex++;
                 }
                 // Also advance if we have mostly passed the waypoint along our heading.
@@ -5900,11 +5901,11 @@ class Fish {
                     }
                 }
                 if (this.trailDrop <= 0) {
-                    this.trailDrop = 0.055;
+                    this.trailDrop = 0.032;
                     this._writePathI = (this._writePathI || 0) + 1;
-                    pushRainbowTrail(this.x, this.y, 5.5, this._writePathI);
+                    pushRainbowTrail(this.x, this.y, 8, this._writePathI);
                 }
-                this.tailPhase += dt * 9;
+                this.tailPhase += dt * 11;
                 if (Math.random() < 0.06) {
                     water.disturb(this.x, this.y, 5, 18);
                 }
@@ -5912,7 +5913,7 @@ class Fish {
                     this.rainbowPhase = "exit";
                     this._exitDir = undefined;
                     for (const p of rainbowScriptTrail) {
-                        p.life = Math.max(p.life, p.age + 4.5);
+                        p.life = Math.max(p.life, p.age + 5.5);
                     }
                 }
                 return;
@@ -6749,6 +6750,21 @@ class Fish {
         const morphA = this.plantMorph && this._morphAlpha != null ? this._morphAlpha : 1;
         const giantA = (giantEnding && giantEnding.fish === this && this._giantFlyAlpha != null)
             ? this._giantFlyAlpha : 1;
+        const peaceParts = (giantEnding && giantEnding.fish === this
+            && giantEnding.kind === "peace" && giantEnding.parts)
+            ? giantEnding.parts : null;
+        const withPeacePart = (key, drawFn) => {
+            if (!peaceParts || !peaceParts[key]) {
+                drawFn();
+                return;
+            }
+            const p = peaceParts[key];
+            ctx.save();
+            ctx.translate(p.x || 0, p.y || 0);
+            ctx.rotate(p.a || 0);
+            drawFn();
+            ctx.restore();
+        };
         ctx.globalAlpha = (this.golden
             ? (0.42 + 0.38 * (1 - sink))
             : this.isPlatinum ? 0.98 * ghost
@@ -6791,55 +6807,59 @@ class Fish {
         }
 
         // Caudal fin: lobed, not a flat triangle.
-        ctx.fillStyle = body;
-        ctx.beginPath();
-        if (shape === "koi" || shape === "longfin") {
-            // Broader, softer koi twin lobes with trailing veil.
-            const spread = isKoi ? 1.15 : 1;
-            ctx.moveTo(-L * 0.4, 0);
-            ctx.bezierCurveTo(-L * 0.62, -W * (0.95 + wig * 0.3) * spread, -L * 0.9, -W * (1.45 + wig) * spread, -L * 1.15, -W * (1.15 + wig) * spread);
-            ctx.quadraticCurveTo(-L * 0.82, -W * 0.12, -L * 0.55, 0);
-            ctx.quadraticCurveTo(-L * 0.82, W * 0.12, -L * 1.15, W * (1.15 + wig) * spread);
-            ctx.bezierCurveTo(-L * 0.9, W * (1.45 + wig) * spread, -L * 0.62, W * (0.95 + wig * 0.3) * spread, -L * 0.4, 0);
-        } else if (shape === "diamond") {
-            ctx.moveTo(-L * 0.34, 0);
-            ctx.quadraticCurveTo(-L * 0.55, -W * 0.9, -L * 0.78, -W * 1.45);
-            ctx.quadraticCurveTo(-L * 0.58, 0, -L * 0.78, W * 1.45);
-            ctx.quadraticCurveTo(-L * 0.55, W * 0.9, -L * 0.34, 0);
-        } else {
-            ctx.moveTo(-L * 0.42, 0);
-            ctx.quadraticCurveTo(-L * 0.62, -W * 0.55, -L * 0.92, -W * (0.95 + wig * 0.5));
-            ctx.quadraticCurveTo(-L * 0.7, 0, -L * 0.92, W * (0.95 + wig * 0.5));
-            ctx.quadraticCurveTo(-L * 0.62, W * 0.55, -L * 0.42, 0);
-        }
-        ctx.fill();
+        withPeacePart("tail", () => {
+            ctx.fillStyle = body;
+            ctx.beginPath();
+            if (shape === "koi" || shape === "longfin") {
+                // Broader, softer koi twin lobes with trailing veil.
+                const spread = isKoi ? 1.15 : 1;
+                ctx.moveTo(-L * 0.4, 0);
+                ctx.bezierCurveTo(-L * 0.62, -W * (0.95 + wig * 0.3) * spread, -L * 0.9, -W * (1.45 + wig) * spread, -L * 1.15, -W * (1.15 + wig) * spread);
+                ctx.quadraticCurveTo(-L * 0.82, -W * 0.12, -L * 0.55, 0);
+                ctx.quadraticCurveTo(-L * 0.82, W * 0.12, -L * 1.15, W * (1.15 + wig) * spread);
+                ctx.bezierCurveTo(-L * 0.9, W * (1.45 + wig) * spread, -L * 0.62, W * (0.95 + wig * 0.3) * spread, -L * 0.4, 0);
+            } else if (shape === "diamond") {
+                ctx.moveTo(-L * 0.34, 0);
+                ctx.quadraticCurveTo(-L * 0.55, -W * 0.9, -L * 0.78, -W * 1.45);
+                ctx.quadraticCurveTo(-L * 0.58, 0, -L * 0.78, W * 1.45);
+                ctx.quadraticCurveTo(-L * 0.55, W * 0.9, -L * 0.34, 0);
+            } else {
+                ctx.moveTo(-L * 0.42, 0);
+                ctx.quadraticCurveTo(-L * 0.62, -W * 0.55, -L * 0.92, -W * (0.95 + wig * 0.5));
+                ctx.quadraticCurveTo(-L * 0.7, 0, -L * 0.92, W * (0.95 + wig * 0.5));
+                ctx.quadraticCurveTo(-L * 0.62, W * 0.55, -L * 0.42, 0);
+            }
+            ctx.fill();
+        });
 
         // Body: fusiform curves instead of plain ellipses / diamonds.
-        const g = ctx.createLinearGradient(0, -W, 0, W);
-        g.addColorStop(0, body);
-        g.addColorStop(0.55, body);
-        g.addColorStop(1, belly);
-        ctx.fillStyle = g;
-        if (shape === "diamond") {
-            ctx.beginPath();
-            ctx.moveTo(L * 0.48, 0);
-            ctx.bezierCurveTo(L * 0.2, -W * 0.9, -L * 0.05, -W * 1.2, -L * 0.38, 0);
-            ctx.bezierCurveTo(-L * 0.05, W * 1.2, L * 0.2, W * 0.9, L * 0.48, 0);
-            ctx.closePath();
-        } else {
-            pathFishFusiform(ctx, L, W, shape);
-        }
-        ctx.fill();
+        withPeacePart("body", () => {
+            const g = ctx.createLinearGradient(0, -W, 0, W);
+            g.addColorStop(0, body);
+            g.addColorStop(0.55, body);
+            g.addColorStop(1, belly);
+            ctx.fillStyle = g;
+            if (shape === "diamond") {
+                ctx.beginPath();
+                ctx.moveTo(L * 0.48, 0);
+                ctx.bezierCurveTo(L * 0.2, -W * 0.9, -L * 0.05, -W * 1.2, -L * 0.38, 0);
+                ctx.bezierCurveTo(-L * 0.05, W * 1.2, L * 0.2, W * 0.9, L * 0.48, 0);
+                ctx.closePath();
+            } else {
+                pathFishFusiform(ctx, L, W, shape);
+            }
+            ctx.fill();
 
-        // Soft belly highlight.
-        ctx.globalAlpha *= 0.35;
-        ctx.fillStyle = belly;
-        ctx.beginPath();
-        ctx.moveTo(L * 0.25, W * 0.15);
-        ctx.quadraticCurveTo(0, W * 0.75, -L * 0.25, W * 0.2);
-        ctx.quadraticCurveTo(0, W * 0.35, L * 0.25, W * 0.15);
-        ctx.fill();
-        ctx.globalAlpha /= 0.35;
+            // Soft belly highlight.
+            ctx.globalAlpha *= 0.35;
+            ctx.fillStyle = belly;
+            ctx.beginPath();
+            ctx.moveTo(L * 0.25, W * 0.15);
+            ctx.quadraticCurveTo(0, W * 0.75, -L * 0.25, W * 0.2);
+            ctx.quadraticCurveTo(0, W * 0.35, L * 0.25, W * 0.15);
+            ctx.fill();
+            ctx.globalAlpha /= 0.35;
+        });
 
         // Platinum: traveling specular band + sparkle glints.
         if (this.isPlatinum) {
@@ -6877,62 +6897,67 @@ class Fish {
         }
 
         // Dorsal fin.
-        if (!this.golden) {
-            ctx.fillStyle = body;
-            ctx.globalAlpha *= 0.8;
-            ctx.beginPath();
-            ctx.moveTo(-L * 0.05, -W * 0.7);
-            ctx.quadraticCurveTo(L * 0.08, -W * (shape === "longfin" ? 2.0 : 1.45), L * 0.28, -W * 0.45);
-            ctx.quadraticCurveTo(L * 0.1, -W * 0.7, -L * 0.05, -W * 0.7);
-            ctx.fill();
-            ctx.globalAlpha /= 0.8;
-        }
+        withPeacePart("dorsal", () => {
+            if (!this.golden) {
+                ctx.fillStyle = body;
+                ctx.globalAlpha *= 0.8;
+                ctx.beginPath();
+                ctx.moveTo(-L * 0.05, -W * 0.7);
+                ctx.quadraticCurveTo(L * 0.08, -W * (shape === "longfin" ? 2.0 : 1.45), L * 0.28, -W * 0.45);
+                ctx.quadraticCurveTo(L * 0.1, -W * 0.7, -L * 0.05, -W * 0.7);
+                ctx.fill();
+                ctx.globalAlpha /= 0.8;
+            }
+            // Longfin top sail already covered by taller dorsal; add soft trailing veil.
+            if (shape === "longfin") {
+                ctx.fillStyle = body;
+                ctx.globalAlpha *= 0.45;
+                ctx.beginPath();
+                ctx.moveTo(-L * 0.15, -W * 0.5);
+                ctx.quadraticCurveTo(L * 0.1, -W * 2.1, L * 0.35, -W * 0.35);
+                ctx.quadraticCurveTo(L * 0.05, -W * 0.9, -L * 0.15, -W * 0.5);
+                ctx.fill();
+                ctx.globalAlpha /= 0.45;
+            }
+        });
 
         // Pectoral fin hint.
-        ctx.globalAlpha *= 0.55;
-        ctx.fillStyle = body;
-        ctx.beginPath();
-        ctx.moveTo(L * 0.05, W * 0.25);
-        ctx.quadraticCurveTo(L * 0.18, W * 0.7, L * 0.02, W * 0.85);
-        ctx.quadraticCurveTo(-L * 0.02, W * 0.5, L * 0.05, W * 0.25);
-        ctx.fill();
-        ctx.globalAlpha /= 0.55;
-
-        // Gill plate mark.
-        ctx.strokeStyle = "rgba(20,30,35,0.22)";
-        ctx.lineWidth = Math.max(0.7, L * 0.025);
-        ctx.beginPath();
-        ctx.arc(L * 0.18, 0, W * 0.55, -1.1, 1.1);
-        ctx.stroke();
-
-        // Koi / catfish whiskers (barbels).
-        if ((shape === "koi" || this.type.whiskers) && !this.golden) {
-            ctx.strokeStyle = isKoi ? "rgba(50,35,25,0.65)" : "rgba(40,30,20,0.55)";
-            ctx.lineWidth = Math.max(0.8, L * (isKoi ? 0.035 : 0.03));
-            ctx.lineCap = "round";
-            ctx.beginPath();
-            ctx.moveTo(L * 0.38, W * 0.18);
-            ctx.quadraticCurveTo(L * 0.58, W * 0.5, L * 0.5, W * 0.78);
-            ctx.moveTo(L * 0.38, W * 0.02);
-            ctx.quadraticCurveTo(L * 0.6, W * 0.22, L * 0.55, W * 0.42);
-            if (isKoi) {
-                ctx.moveTo(L * 0.36, -W * 0.08);
-                ctx.quadraticCurveTo(L * 0.52, -W * 0.02, L * 0.48, W * 0.12);
-            }
-            ctx.stroke();
-        }
-
-        // Longfin top sail already covered by taller dorsal; add soft trailing veil.
-        if (shape === "longfin") {
+        withPeacePart("pectoral", () => {
+            ctx.globalAlpha *= 0.55;
             ctx.fillStyle = body;
-            ctx.globalAlpha *= 0.45;
             ctx.beginPath();
-            ctx.moveTo(-L * 0.15, -W * 0.5);
-            ctx.quadraticCurveTo(L * 0.1, -W * 2.1, L * 0.35, -W * 0.35);
-            ctx.quadraticCurveTo(L * 0.05, -W * 0.9, -L * 0.15, -W * 0.5);
+            ctx.moveTo(L * 0.05, W * 0.25);
+            ctx.quadraticCurveTo(L * 0.18, W * 0.7, L * 0.02, W * 0.85);
+            ctx.quadraticCurveTo(-L * 0.02, W * 0.5, L * 0.05, W * 0.25);
             ctx.fill();
-            ctx.globalAlpha /= 0.45;
-        }
+            ctx.globalAlpha /= 0.55;
+        });
+
+        // Gill plate mark + whiskers ride with the head during peace dissolve.
+        withPeacePart("head", () => {
+            ctx.strokeStyle = "rgba(20,30,35,0.22)";
+            ctx.lineWidth = Math.max(0.7, L * 0.025);
+            ctx.beginPath();
+            ctx.arc(L * 0.18, 0, W * 0.55, -1.1, 1.1);
+            ctx.stroke();
+
+            // Koi / catfish whiskers (barbels).
+            if ((shape === "koi" || this.type.whiskers) && !this.golden) {
+                ctx.strokeStyle = isKoi ? "rgba(50,35,25,0.65)" : "rgba(40,30,20,0.55)";
+                ctx.lineWidth = Math.max(0.8, L * (isKoi ? 0.035 : 0.03));
+                ctx.lineCap = "round";
+                ctx.beginPath();
+                ctx.moveTo(L * 0.38, W * 0.18);
+                ctx.quadraticCurveTo(L * 0.58, W * 0.5, L * 0.5, W * 0.78);
+                ctx.moveTo(L * 0.38, W * 0.02);
+                ctx.quadraticCurveTo(L * 0.6, W * 0.22, L * 0.55, W * 0.42);
+                if (isKoi) {
+                    ctx.moveTo(L * 0.36, -W * 0.08);
+                    ctx.quadraticCurveTo(L * 0.52, -W * 0.02, L * 0.48, W * 0.12);
+                }
+                ctx.stroke();
+            }
+        });
 
         // Koi: soft scale shimmer and pelvic fin for a fuller carp silhouette.
         if (isKoi && !this.golden && !this.isRainbow && !this.isMonster) {
@@ -7018,112 +7043,117 @@ class Fish {
         }
 
         ctx.shadowBlur = 0;
-        const eyeX = L * (shape === "diamond" ? 0.22 : 0.3);
-        const eyeY = -W * (shape === "round" ? 0.12 : 0.22);
-        const eyeR = Math.max(1.1, L * 0.055);
-        if (this.petTimer > 0 && !this.golden && !this.isRainbow && !this.isMonster) {
-            ctx.strokeStyle = this.isPredator
-                ? "rgba(80,20,20,0.9)"
-                : "rgba(20,25,30,0.9)";
-            ctx.lineWidth = Math.max(1.2, L * 0.05);
-            ctx.lineCap = "round";
-            ctx.beginPath();
-            ctx.arc(eyeX, eyeY + eyeR * 0.2, eyeR * 1.3, Math.PI * 1.15, Math.PI * 1.85);
-            ctx.stroke();
-            ctx.lineWidth = Math.max(0.8, L * 0.03);
-            ctx.globalAlpha *= 0.55;
-            ctx.beginPath();
-            ctx.arc(eyeX, eyeY + eyeR * 0.55, eyeR * 0.9, Math.PI * 1.2, Math.PI * 1.8);
-            ctx.stroke();
-        } else {
-            // Eye socket + wet highlight.
-            ctx.fillStyle = "rgba(245,245,240,0.88)";
-            ctx.beginPath();
-            ctx.ellipse(eyeX, eyeY, eyeR * 1.15, eyeR * 0.95, 0, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = this.golden
-                ? "rgba(120,80,20,0.9)"
-                : this.isRainbow ? "rgba(40,40,50,0.95)"
-                : this.isPlatinum ? "rgba(70,110,150,0.95)"
-                : this.isMonster ? "rgba(255,40,40,0.95)"
-                : this.isPredator ? "rgba(180,30,25,0.95)"
-                : this.isHero ? "rgba(30,90,160,0.95)" : "rgba(12,16,22,0.95)";
-            ctx.beginPath();
-            ctx.arc(eyeX, eyeY, eyeR * 0.72, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = "rgba(255,255,255,0.7)";
-            ctx.beginPath();
-            ctx.arc(eyeX - eyeR * 0.25, eyeY - eyeR * 0.28, eyeR * 0.22, 0, Math.PI * 2);
-            ctx.fill();
-            if (this.isRainbow) {
-                ctx.fillStyle = `hsl(${(this.age * 200) % 360}, 90%, 45%)`;
+        withPeacePart("head", () => {
+            const eyeX = L * (shape === "diamond" ? 0.22 : 0.3);
+            const eyeY = -W * (shape === "round" ? 0.12 : 0.22);
+            const eyeR = Math.max(1.1, L * 0.055);
+            if (this.petTimer > 0 && !this.golden && !this.isRainbow && !this.isMonster) {
+                ctx.strokeStyle = this.isPredator
+                    ? "rgba(80,20,20,0.9)"
+                    : "rgba(20,25,30,0.9)";
+                ctx.lineWidth = Math.max(1.2, L * 0.05);
+                ctx.lineCap = "round";
                 ctx.beginPath();
-                ctx.arc(eyeX, eyeY, eyeR * 0.35, 0, Math.PI * 2);
-                ctx.fill();
-            } else if (this.isPlatinum) {
-                ctx.fillStyle = "rgba(230,245,255,0.95)";
-                ctx.beginPath();
-                ctx.arc(eyeX + eyeR * 0.12, eyeY - eyeR * 0.1, eyeR * 0.28, 0, Math.PI * 2);
-                ctx.fill();
-            }
-        }
-
-        // Inherited swordfish bill + speared trophies (pierced through midsection).
-        if (this.hasSword && !this.golden) {
-            for (const s of this.stuckPrey) {
-                const sx = L * s.along;
-                ctx.save();
-                ctx.translate(sx, 0);
-                ctx.rotate(s.side * (Math.PI * 0.5)
-                    + Math.sin(this.tailPhase * 2 + s.wobble) * 0.1);
-                ctx.fillStyle = s.body;
-                ctx.beginPath();
-                ctx.ellipse(0, 0, s.size * 0.5, s.size * 0.24, 0, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.strokeStyle = "rgba(20,25,30,0.9)";
-                ctx.lineWidth = Math.max(1, s.size * 0.08);
-                const e = s.size * 0.1;
-                ctx.beginPath();
-                ctx.moveTo(s.size * 0.15 - e, -e);
-                ctx.lineTo(s.size * 0.15 + e, e);
-                ctx.moveTo(s.size * 0.15 + e, -e);
-                ctx.lineTo(s.size * 0.15 - e, e);
+                ctx.arc(eyeX, eyeY + eyeR * 0.2, eyeR * 1.3, Math.PI * 1.15, Math.PI * 1.85);
                 ctx.stroke();
-                ctx.restore();
+                ctx.lineWidth = Math.max(0.8, L * 0.03);
+                ctx.globalAlpha *= 0.55;
+                ctx.beginPath();
+                ctx.arc(eyeX, eyeY + eyeR * 0.55, eyeR * 0.9, Math.PI * 1.2, Math.PI * 1.8);
+                ctx.stroke();
+                ctx.globalAlpha /= 0.55;
+            } else {
+                // Eye socket + wet highlight.
+                ctx.fillStyle = "rgba(245,245,240,0.88)";
+                ctx.beginPath();
+                ctx.ellipse(eyeX, eyeY, eyeR * 1.15, eyeR * 0.95, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = this.golden
+                    ? "rgba(120,80,20,0.9)"
+                    : this.isRainbow ? "rgba(40,40,50,0.95)"
+                    : this.isPlatinum ? "rgba(70,110,150,0.95)"
+                    : this.isMonster ? "rgba(255,40,40,0.95)"
+                    : this.isPredator ? "rgba(180,30,25,0.95)"
+                    : this.isHero ? "rgba(30,90,160,0.95)" : "rgba(12,16,22,0.95)";
+                ctx.beginPath();
+                ctx.arc(eyeX, eyeY, eyeR * 0.72, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = "rgba(255,255,255,0.7)";
+                ctx.beginPath();
+                ctx.arc(eyeX - eyeR * 0.25, eyeY - eyeR * 0.28, eyeR * 0.22, 0, Math.PI * 2);
+                ctx.fill();
+                if (this.isRainbow) {
+                    ctx.fillStyle = `hsl(${(this.age * 200) % 360}, 90%, 45%)`;
+                    ctx.beginPath();
+                    ctx.arc(eyeX, eyeY, eyeR * 0.35, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (this.isPlatinum) {
+                    ctx.fillStyle = "rgba(230,245,255,0.95)";
+                    ctx.beginPath();
+                    ctx.arc(eyeX + eyeR * 0.12, eyeY - eyeR * 0.1, eyeR * 0.28, 0, Math.PI * 2);
+                    ctx.fill();
+                }
             }
-            ctx.strokeStyle = "rgba(210,225,240,0.95)";
-            ctx.lineWidth = Math.max(1.6, L * 0.045);
-            ctx.lineCap = "round";
-            ctx.beginPath();
-            ctx.moveTo(L * 0.35, 0);
-            ctx.lineTo(L * 0.95, 0);
-            ctx.stroke();
-        }
+
+            // Inherited swordfish bill + speared trophies (pierced through midsection).
+            if (this.hasSword && !this.golden) {
+                for (const s of this.stuckPrey) {
+                    const sx = L * s.along;
+                    ctx.save();
+                    ctx.translate(sx, 0);
+                    ctx.rotate(s.side * (Math.PI * 0.5)
+                        + Math.sin(this.tailPhase * 2 + s.wobble) * 0.1);
+                    ctx.fillStyle = s.body;
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, s.size * 0.5, s.size * 0.24, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.strokeStyle = "rgba(20,25,30,0.9)";
+                    ctx.lineWidth = Math.max(1, s.size * 0.08);
+                    const e = s.size * 0.1;
+                    ctx.beginPath();
+                    ctx.moveTo(s.size * 0.15 - e, -e);
+                    ctx.lineTo(s.size * 0.15 + e, e);
+                    ctx.moveTo(s.size * 0.15 + e, -e);
+                    ctx.lineTo(s.size * 0.15 - e, e);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+                ctx.strokeStyle = "rgba(210,225,240,0.95)";
+                ctx.lineWidth = Math.max(1.6, L * 0.045);
+                ctx.lineCap = "round";
+                ctx.beginPath();
+                ctx.moveTo(L * 0.35, 0);
+                ctx.lineTo(L * 0.95, 0);
+                ctx.stroke();
+            }
+
+            drawCreatureHat(ctx, L, W, this.hatSeed);
+        });
 
         // Inherited octopus tentacles (trail behind, independent sway).
-        if (this.hasTentacles && !this.golden) {
-            ctx.strokeStyle = this.isHero
-                ? "rgba(80,120,180,0.75)"
-                : this.isPredator
-                    ? "rgba(140,50,90,0.8)"
-                    : "rgba(100,60,110,0.75)";
-            ctx.lineWidth = Math.max(1.8, L * 0.06);
-            ctx.lineCap = "round";
-            for (let i = 0; i < 4; i++) {
-                const side = i < 2 ? -1 : 1;
-                const base = -L * 0.15 + (i % 2) * L * 0.08;
-                const sway = Math.sin(this.age * 3.2 + i * 1.3) * W * 0.9;
-                ctx.beginPath();
-                ctx.moveTo(-L * 0.2, side * W * 0.35);
-                ctx.quadraticCurveTo(
-                    -L * 0.55, side * W * 0.2 + sway,
-                    -L * (0.85 + (i % 2) * 0.1), side * (W * 0.6) + sway * 0.6
-                );
-                ctx.stroke();
+        withPeacePart("tail", () => {
+            if (this.hasTentacles && !this.golden) {
+                ctx.strokeStyle = this.isHero
+                    ? "rgba(80,120,180,0.75)"
+                    : this.isPredator
+                        ? "rgba(140,50,90,0.8)"
+                        : "rgba(100,60,110,0.75)";
+                ctx.lineWidth = Math.max(1.8, L * 0.06);
+                ctx.lineCap = "round";
+                for (let i = 0; i < 4; i++) {
+                    const side = i < 2 ? -1 : 1;
+                    const sway = Math.sin(this.age * 3.2 + i * 1.3) * W * 0.9;
+                    ctx.beginPath();
+                    ctx.moveTo(-L * 0.2, side * W * 0.35);
+                    ctx.quadraticCurveTo(
+                        -L * 0.55, side * W * 0.2 + sway,
+                        -L * (0.85 + (i % 2) * 0.1), side * (W * 0.6) + sway * 0.6
+                    );
+                    ctx.stroke();
+                }
             }
-        }
+        });
 
-        drawCreatureHat(ctx, L, W, this.hatSeed);
         ctx.restore();
     }
 }
@@ -8851,32 +8881,34 @@ class Swordfish {
             ctx.shadowBlur = 14;
         }
 
-        // Speared fish first (under the horn): bill pierces through their midsection.
+        // Speared fish first (under the horn): pierced through mid-body on the bill axis.
         for (const s of this.stuck) {
-            const sx = L * s.along;
-            const wob = Math.sin(this.tailPhase * 2 + s.wobble) * 0.1;
+            const along = this.clampStuckAlong(s.along);
+            const sx = L * along;
+            const wob = Math.sin(this.tailPhase * 2 + s.wobble) * 0.08;
             ctx.save();
             ctx.translate(sx, 0);
             // Body lies across the bill so the horn reads as driven through the middle.
             ctx.rotate(s.side * (Math.PI * 0.5) + wob);
             ctx.fillStyle = s.body;
             ctx.beginPath();
-            ctx.ellipse(0, 0, s.size * 0.55, s.size * 0.26, 0, 0, Math.PI * 2);
+            // Long axis across the sword; center stays on the blade (no forward float).
+            ctx.ellipse(0, 0, s.size * 0.52, s.size * 0.22, 0, 0, Math.PI * 2);
             ctx.fill();
             ctx.fillStyle = s.belly;
             ctx.globalAlpha *= 0.7;
             ctx.beginPath();
-            ctx.ellipse(s.size * 0.04, s.size * 0.06, s.size * 0.26, s.size * 0.12, 0, 0, Math.PI * 2);
+            ctx.ellipse(0, s.size * 0.05, s.size * 0.24, s.size * 0.1, 0, 0, Math.PI * 2);
             ctx.fill();
             ctx.globalAlpha /= 0.7;
             ctx.strokeStyle = "rgba(20,25,30,0.9)";
             ctx.lineWidth = Math.max(1.1, s.size * 0.08);
-            const e = s.size * 0.11;
+            const e = s.size * 0.1;
             ctx.beginPath();
-            ctx.moveTo(s.size * 0.18 - e, -e);
-            ctx.lineTo(s.size * 0.18 + e, e);
-            ctx.moveTo(s.size * 0.18 + e, -e);
-            ctx.lineTo(s.size * 0.18 - e, e);
+            ctx.moveTo(-e, -e);
+            ctx.lineTo(e, e);
+            ctx.moveTo(e, -e);
+            ctx.lineTo(-e, e);
             ctx.stroke();
             ctx.restore();
         }
@@ -8886,14 +8918,14 @@ class Swordfish {
         ctx.lineWidth = Math.max(2, L * 0.035);
         ctx.lineCap = "round";
         ctx.beginPath();
-        ctx.moveTo(L * 0.34, 0);
-        ctx.lineTo(L * 0.62, 0);
+        ctx.moveTo(L * SF_BILL_BASE, 0);
+        ctx.lineTo(L * SF_BILL_TIP, 0);
         ctx.stroke();
         ctx.strokeStyle = "rgba(240,248,255,0.55)";
         ctx.lineWidth = Math.max(1, L * 0.016);
         ctx.beginPath();
-        ctx.moveTo(L * 0.38, -L * 0.015);
-        ctx.lineTo(L * 0.6, 0);
+        ctx.moveTo(L * (SF_BILL_BASE + 0.04), -L * 0.015);
+        ctx.lineTo(L * (SF_BILL_TIP - 0.02), 0);
         ctx.stroke();
 
         // Body.
@@ -10125,15 +10157,44 @@ function drawOrcaFeastEnding(ctx) {
     ctx.restore();
 }
 
-function beginSwordfishSpearEnding(sf) {
+function swordfishReadyForSpearEnding(sf) {
+    if (!sf || sf.dead || sf.tamed || sf.isHero || sf.golden || sf.plantMorph) return false;
+    if (swordfishSpearEnding) return false;
+    const refSize = (shark && !shark.dead && shark.isOrca) ? shark.size : CONFIG.orcaSize;
+    return sf.size >= refSize * 0.88;
+}
+
+// If the orca dies to a croc/duel/other apex before the spear lands, still honor the hunt.
+function tryBeginSwordfishSpearFromOrcaLoss() {
+    if (swordfishSpearEnding) return true;
+    const sf = swordfish && !swordfish.dead ? swordfish : null;
+    if (!sf) return false;
+    if (!(sf.orcaHunt || swordfishReadyForSpearEnding(sf))) return false;
+    beginSwordfishSpearEnding(sf, { force: true });
+    return !!swordfishSpearEnding;
+}
+
+function beginSwordfishSpearEnding(sf, opts) {
     if (!sf || sf.dead) return;
-    // Allow start even if orca feast is somehow active; clear softer finales first.
-    if (orcaFeastEnding) orcaFeastEnding = null;
-    if (povAttack || giantEnding || heroRemorseEnding || frogFinale || octopusWhaleFight) return;
     if (swordfishSpearEnding) return;
+    // Clear competing soft finales so a ready spear story is not skipped.
+    orcaFeastEnding = null;
+    apexDuel = null;
+    const force = !!(opts && opts.force);
+    if (force) {
+        povAttack = null;
+        giantEnding = null;
+        heroRemorseEnding = null;
+        frogFinale = null;
+        octopusWhaleFight = null;
+    } else if (povAttack || giantEnding || heroRemorseEnding || frogFinale || octopusWhaleFight) {
+        return;
+    }
     swordfishSpearEnding = { sf, t: 0 };
     sf.target = null;
     sf.orcaHunt = false;
+    // Keep the swordfish entity available for the charge even if globals churn.
+    if (swordfish !== sf) swordfish = sf;
     Audio.sharkStrike(0);
     Audio.predatorEat(0);
 }
@@ -10143,6 +10204,7 @@ function updateSwordfishSpearEnding(dt) {
     swordfishSpearEnding.t += dt;
     const t = swordfishSpearEnding.t;
     const sf = swordfishSpearEnding.sf;
+    // Finale still completes if whale/orca/shark are already gone or the body was nulled.
     if (sf && !sf.dead) {
         const cx = viewW * 0.5;
         const cy = viewH * 0.5;
@@ -10165,7 +10227,7 @@ function updateSwordfishSpearEnding(dt) {
             }
         }
     }
-    if (t >= 3.45) resetPond();
+    if (t >= 3.45) resetPond({ fromSwordfishSpear: true });
 }
 
 function drawSwordfishSpearEnding(ctx) {
@@ -10318,44 +10380,157 @@ function placeNearBurst(cx, cy, ang, rad) {
     };
 }
 
-// Friendly apex guardians born from the remorse burst.
+// Current pond environment key (day / night; future modes can extend this).
+function environmentModeKey() {
+    return nightMode ? "night" : "day";
+}
+
+// Fish and apex sets for the active environment. Plug in new modes here.
+function environmentRoster(mode) {
+    const key = mode || environmentModeKey();
+    if (key === "night") {
+        return {
+            mode: "night",
+            commons: NIGHT_FISH_TYPES,
+            exotics: EXOTIC_TYPES,
+            apex: {
+                reptiles: [],
+                shark: false,
+                orca: true,
+                swordfish: true,
+                octopus: true,
+                whale: false,
+            },
+        };
+    }
+    // Default day roster.
+    return {
+        mode: "day",
+        commons: FISH_TYPES,
+        exotics: EXOTIC_TYPES,
+        apex: {
+            reptiles: ["crocodile", "alligator"],
+            shark: true,
+            orca: false,
+            swordfish: false,
+            octopus: false,
+            whale: false,
+        },
+    };
+}
+
+function markFriendlyHeroFish(f) {
+    if (!f) return f;
+    f.isHero = true;
+    f.isPredator = false;
+    f.isMonster = false;
+    f.isRainbow = false;
+    f.redeemed = true;
+    f.isPink = false;
+    f.golden = false;
+    f.giantEnded = false;
+    return f;
+}
+
+function spawnEnvironmentHeroApex(cx, cy, roster) {
+    const r = roster || environmentRoster();
+    const apex = r.apex || {};
+
+    if (apex.reptiles && apex.reptiles.length) {
+        const kind = apex.reptiles[Math.floor(Math.random() * apex.reptiles.length)];
+        const reptile = new Reptile(kind, { quiet: true });
+        reptile.isHero = true;
+        reptile.tamed = true;
+        reptile.target = null;
+        reptile.duelMode = false;
+        const rp = placeNearBurst(cx, cy, -0.9, 110);
+        reptile.x = rp.x;
+        reptile.y = rp.y;
+        reptile.dir = Math.atan2(cy - reptile.y, cx - reptile.x);
+        reptiles.push(reptile);
+    }
+
+    if (apex.shark || apex.orca) {
+        if (shark && !shark.dead) shark.dead = true;
+        shark = new Shark(null, { orca: !!apex.orca });
+        shark.isHero = true;
+        shark.leaving = false;
+        shark.duelMode = false;
+        shark.target = null;
+        const sp = placeNearBurst(cx, cy, 2.2, 130);
+        shark.x = sp.x;
+        shark.y = sp.y;
+        shark.dir = Math.atan2(cy - shark.y, cx - shark.x);
+    }
+
+    if (apex.swordfish) {
+        if (swordfish && !swordfish.dead) swordfish.dead = true;
+        swordfish = new Swordfish();
+        swordfish.tamed = true;
+        swordfish.isHero = true;
+        swordfish.target = null;
+        swordfish.orcaHunt = false;
+        const sp = placeNearBurst(cx, cy, 0.4, 120);
+        swordfish.x = sp.x;
+        swordfish.y = sp.y;
+        swordfish.dir = Math.atan2(cy - swordfish.y, cx - swordfish.x);
+    }
+
+    if (apex.octopus) {
+        if (octopus && !octopus.dead) octopus.dead = true;
+        octopus = new Octopus();
+        octopus.tamed = true;
+        octopus.isHero = true;
+        octopus.huntTarget = null;
+        if (typeof octopus.clearApexWrap === "function") octopus.clearApexWrap();
+        const op = placeNearBurst(cx, cy, 3.5, 100);
+        octopus.x = op.x;
+        octopus.y = op.y;
+        octopus.dir = Math.atan2(cy - octopus.y, cx - octopus.x);
+    }
+
+    if (apex.whale) {
+        if (whale && !whale.dead) whale.dead = true;
+        whale = new Whale();
+        whale.isHero = true;
+        whale.ateFish = false;
+        whale.x = Math.max(whale.size * 0.35, Math.min(viewW - whale.size * 0.35, cx));
+        whale.y = Math.max(viewH * 0.28, Math.min(viewH * 0.72, cy + 70));
+        whale.dir = Math.random() < 0.5 ? 0 : Math.PI;
+        whale.speed = 42;
+    }
+}
+
+// Restock the pond with friendly hero-trait fish for the current environment only.
+function spawnFriendlyHeroSchool(cx, cy) {
+    const roster = environmentRoster();
+    const types = (roster.commons || []).concat(roster.exotics || []);
+    const n = types.length;
+    const ox = cx != null ? cx : viewW * 0.5;
+    const oy = cy != null ? cy : viewH * 0.5;
+    for (let i = 0; i < n; i++) {
+        const baby = markFriendlyHeroFish(new Fish(types[i]));
+        const ang = (i / n) * Math.PI * 2 + Math.random() * 0.12;
+        const rad = 36 + (i % 5) * 14 + Math.random() * 28;
+        const p = placeNearBurst(ox, oy, ang, rad);
+        baby.x = p.x;
+        baby.y = p.y;
+        baby.dir = ang + Math.PI * (0.65 + Math.random() * 0.3);
+        fishes.push(baby);
+    }
+    spawnEnvironmentHeroApex(ox, oy, roster);
+    water.disturb(ox, oy, 90, 420);
+    spawnSplash(ox, oy, 36, 0.85);
+    if (Audio.rainbowChime) Audio.rainbowChime(0);
+    if (Audio.goldChime) Audio.goldChime(0);
+}
+
+// Friendly apex guardians born from the remorse burst (day-leaning school + whale).
 function spawnHeroApexGuardians(cx, cy) {
-    // Hero crocodile / alligator (tamed + hero so it never hunts fish).
-    const reptile = new Reptile(
-        Math.random() < 0.5 ? "alligator" : "crocodile",
-        { quiet: true }
-    );
-    reptile.isHero = true;
-    reptile.tamed = true;
-    reptile.target = null;
-    reptile.duelMode = false;
-    const rp = placeNearBurst(cx, cy, -0.9, 110);
-    reptile.x = rp.x;
-    reptile.y = rp.y;
-    reptile.dir = Math.atan2(cy - reptile.y, cx - reptile.x);
-    reptiles.push(reptile);
-
-    // Hero shark: patrols calmly, does not eat.
-    if (shark && !shark.dead) shark.dead = true;
-    shark = new Shark(null);
-    shark.isHero = true;
-    shark.leaving = false;
-    shark.duelMode = false;
-    shark.target = null;
-    const sp = placeNearBurst(cx, cy, 2.2, 130);
-    shark.x = sp.x;
-    shark.y = sp.y;
-    shark.dir = Math.atan2(cy - shark.y, cx - shark.x);
-
-    // Hero whale: stays in the pond and never swallows fish.
-    if (whale && !whale.dead) whale.dead = true;
-    whale = new Whale();
-    whale.isHero = true;
-    whale.ateFish = false;
-    whale.x = Math.max(whale.size * 0.35, Math.min(viewW - whale.size * 0.35, cx));
-    whale.y = Math.max(viewH * 0.28, Math.min(viewH * 0.72, cy + 70));
-    whale.dir = Math.random() < 0.5 ? 0 : Math.PI;
-    whale.speed = 42;
+    const roster = environmentRoster();
+    // Remorse keeps a friendly whale companion on top of the environment apex set.
+    roster.apex = Object.assign({}, roster.apex, { whale: true });
+    spawnEnvironmentHeroApex(cx, cy, roster);
 }
 
 function explodeHeroIntoSchool(hero) {
@@ -10502,48 +10677,58 @@ function updateGiantEnding(dt) {
     giantEnding.t += dt;
     const f = giantEnding.fish;
     const t = giantEnding.t;
+    const ease = (rate) => 1 - Math.exp(-rate * dt);
     if (f && !f.dead) {
         const cx = viewW * 0.5;
         const cy = viewH * 0.5;
         if (giantEnding.kind === "peace") {
-            if (t < 2.2) {
-                f.x += (cx - f.x) * Math.min(1, dt * 1.0);
-                f.y += (cy - f.y) * Math.min(1, dt * 1.0);
-                f.y -= dt * 6;
-                f.dir += dt * 0.45;
-                f.tailPhase += dt * 4.5;
-                f.petTimer = Math.max(f.petTimer, 1.2);
-                f._giantFlyAlpha = 1;
-                if (Math.random() < 0.1) {
-                    water.disturb(f.x, f.y, f.size * 0.3, 40);
+            // Stay near center: ease, never teleport or fly off-screen.
+            easeToward(f, cx, cy - 8, dt, 46, 0.85);
+            f.dir += dt * 0.35;
+            f.tailPhase += dt * (3.2 + Math.min(4, t * 0.8));
+            f.petTimer = Math.max(f.petTimer, 1.2);
+
+            // Parts drift apart after a short gather beat.
+            const dissolve = clamp01((t - 1.35) / 2.8);
+            if (giantEnding.parts && dissolve > 0) {
+                const k = ease(1.1 + dissolve * 1.4);
+                for (const key of Object.keys(giantEnding.parts)) {
+                    const p = giantEnding.parts[key];
+                    p.x += (p.gx * dissolve - p.x) * k;
+                    p.y += (p.gy * dissolve - p.y) * k;
+                    p.a += (p.ga * dissolve - p.a) * k;
                 }
-            } else {
-                if (f._giantExitDir === undefined) {
-                    const toLeft = f.x, toRight = viewW - f.x;
-                    const toTop = f.y, toBottom = viewH - f.y;
-                    const m = Math.min(toLeft, toRight, toTop, toBottom);
-                    if (m === toLeft) f._giantExitDir = Math.PI;
-                    else if (m === toRight) f._giantExitDir = 0;
-                    else if (m === toTop) f._giantExitDir = -Math.PI / 2;
-                    else f._giantExitDir = Math.PI / 2;
+            }
+            // Soft fade of the assembled body as light takes over.
+            f._giantFlyAlpha = 1 - dissolve * dissolve * 0.85;
+            if (Math.random() < 0.08 + dissolve * 0.1) {
+                water.disturb(f.x, f.y, f.size * (0.25 + dissolve * 0.2), 36);
+            }
+
+            // Brighten toward full white, then restock under the peak.
+            const whiteGoal = t < 1.2 ? t / 1.2 * 0.12
+                : t < 4.0 ? 0.12 + clamp01((t - 1.2) / 2.8) * 0.88
+                : 1;
+            giantEnding.white += (whiteGoal - (giantEnding.white || 0)) * ease(2.2);
+
+            if (t >= 4.05 && !giantEnding.restocked) {
+                giantEnding.restocked = true;
+                f.dead = true;
+                f._giantFlyAlpha = 0;
+                const hx = f.x;
+                const hy = f.y;
+                resetPond({ keepGiantEnding: true, skipRepop: true });
+                // resetPond clears giantEnding unless keep is set; restore fade state.
+                if (!giantEnding) {
+                    giantEnding = {
+                        fish: f, t, kind: "peace",
+                        white: 1, restocked: true, parts: null,
+                    };
+                } else {
+                    giantEnding.white = Math.max(giantEnding.white || 0, 0.98);
+                    giantEnding.parts = null;
                 }
-                const turn = 1.8 * dt;
-                const diff = normAngle(f._giantExitDir - f.dir);
-                f.dir += Math.max(-turn, Math.min(turn, diff));
-                const glide = 48 + Math.min(100, (t - 2.2) * 36);
-                const lift = 18 + Math.min(40, (t - 2.2) * 22);
-                f.x += Math.cos(f.dir) * glide * dt;
-                f.y += Math.sin(f.dir) * glide * dt - lift * dt;
-                f.tailPhase += dt * 6.5;
-                const fadeU = clamp01((t - 3.2) / 2.0);
-                f._giantFlyAlpha = 1 - fadeU * fadeU;
-                if (Math.random() < 0.08) {
-                    water.disturb(
-                        f.x - Math.cos(f.dir) * f.size * 0.4,
-                        f.y - Math.sin(f.dir) * f.size * 0.4,
-                        7, 22
-                    );
-                }
+                spawnFriendlyHeroSchool(hx, hy);
             }
         } else {
             f.x += (cx - f.x) * Math.min(1, dt * 1.6);
@@ -10554,9 +10739,15 @@ function updateGiantEnding(dt) {
                 water.disturb(f.x, f.y, f.size * 0.5, 90);
             }
         }
+    } else if (giantEnding.kind === "peace" && giantEnding.restocked) {
+        // Fade white back into the restocked pond.
+        giantEnding.white = Math.max(0, (giantEnding.white || 0) - dt * 0.42);
+        if ((giantEnding.white || 0) <= 0.02 && t >= 5.6) {
+            giantEnding = null;
+            return;
+        }
     }
-    const doneAt = giantEnding.kind === "peace" ? 5.4 : 3.5;
-    if (t >= doneAt) {
+    if (giantEnding.kind !== "peace" && t >= 3.5) {
         resetPond();
     }
 }
@@ -10570,45 +10761,39 @@ function drawGiantEnding(ctx) {
     ctx.save();
     if (kind === "peace") {
         const glow = Math.min(1, t / 1.4);
-        const fade = t > 3.4 ? Math.min(1, (t - 3.4) / 2.0) : 0;
-        const wash = ctx.createRadialGradient(
-            viewW * 0.5, viewH * 0.42, Math.min(viewW, viewH) * 0.06,
-            viewW * 0.5, viewH * 0.5, Math.max(viewW, viewH) * 0.78
-        );
-        wash.addColorStop(0, `rgba(200, 230, 255, ${0.1 + glow * 0.2})`);
-        wash.addColorStop(0.35, `rgba(150, 200, 230, ${0.06 + glow * 0.12})`);
-        wash.addColorStop(0.7, `rgba(90, 140, 180, ${0.04 + glow * 0.08})`);
-        wash.addColorStop(1, `rgba(18, 36, 52, ${0.04 + glow * 0.1})`);
-        ctx.fillStyle = wash;
-        ctx.fillRect(0, 0, viewW, viewH);
-        if (f && !f.dead) {
-            const flyA = f._giantFlyAlpha != null ? f._giantFlyAlpha : 1;
-            ctx.save();
-            ctx.globalAlpha = (0.3 + glow * 0.4) * flyA;
-            ctx.shadowColor = "rgba(150, 215, 255, 0.85)";
-            ctx.shadowBlur = 32 + glow * 40;
-            const trail = ctx.createRadialGradient(
-                f.x, f.y, f.size * 0.1,
-                f.x, f.y, f.size * 1.4
+        const white = Math.max(0, Math.min(1, giantEnding.white || 0));
+        if (!giantEnding.restocked) {
+            const wash = ctx.createRadialGradient(
+                viewW * 0.5, viewH * 0.42, Math.min(viewW, viewH) * 0.06,
+                viewW * 0.5, viewH * 0.5, Math.max(viewW, viewH) * 0.78
             );
-            trail.addColorStop(0, "rgba(190, 225, 255, 0.45)");
-            trail.addColorStop(0.5, "rgba(130, 190, 230, 0.18)");
-            trail.addColorStop(1, "rgba(80, 140, 190, 0)");
-            ctx.fillStyle = trail;
-            ctx.beginPath();
-            ctx.ellipse(f.x, f.y, f.size * 0.95, f.size * 0.5, f.dir, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
+            wash.addColorStop(0, `rgba(220, 238, 255, ${0.1 + glow * 0.22})`);
+            wash.addColorStop(0.4, `rgba(180, 215, 240, ${0.06 + glow * 0.14})`);
+            wash.addColorStop(1, `rgba(40, 70, 100, ${0.04 + glow * 0.1})`);
+            ctx.fillStyle = wash;
+            ctx.fillRect(0, 0, viewW, viewH);
+            if (f && !f.dead) {
+                const flyA = f._giantFlyAlpha != null ? f._giantFlyAlpha : 1;
+                ctx.save();
+                ctx.globalAlpha = (0.28 + glow * 0.4) * flyA;
+                ctx.shadowColor = "rgba(180, 230, 255, 0.9)";
+                ctx.shadowBlur = 28 + glow * 50;
+                const trail = ctx.createRadialGradient(
+                    f.x, f.y, f.size * 0.08,
+                    f.x, f.y, f.size * (1.1 + white * 0.6)
+                );
+                trail.addColorStop(0, "rgba(230, 245, 255, 0.55)");
+                trail.addColorStop(0.45, "rgba(170, 215, 245, 0.2)");
+                trail.addColorStop(1, "rgba(120, 180, 220, 0)");
+                ctx.fillStyle = trail;
+                ctx.beginPath();
+                ctx.ellipse(f.x, f.y, f.size * 0.95, f.size * 0.5, f.dir, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
         }
-        if (fade > 0) {
-            const soft = ctx.createRadialGradient(
-                viewW * 0.5, viewH * 0.45, Math.min(viewW, viewH) * 0.05,
-                viewW * 0.5, viewH * 0.5, Math.max(viewW, viewH) * 0.85
-            );
-            soft.addColorStop(0, `rgba(230, 242, 255, ${fade * 0.55})`);
-            soft.addColorStop(0.45, `rgba(190, 215, 235, ${fade * 0.72})`);
-            soft.addColorStop(1, `rgba(150, 185, 215, ${fade * 0.9})`);
-            ctx.fillStyle = soft;
+        if (white > 0.01) {
+            ctx.fillStyle = `rgba(255, 255, 255, ${white})`;
             ctx.fillRect(0, 0, viewW, viewH);
         }
     } else {
@@ -10750,13 +10935,18 @@ function drawPovAttack(ctx) {
     }
 }
 
-function resetPond() {
+function resetPond(opts) {
+    // Do not abort an in-progress screen-spear finale (it will reset when done).
+    // Dev Danger "Reset pond" passes force to wipe immediately.
+    if (swordfishSpearEnding && !(opts && (opts.fromSwordfishSpear || opts.force))) {
+        return;
+    }
     povAttack = null;
-    giantEnding = null;
+    if (!(opts && opts.keepGiantEnding)) giantEnding = null;
     heroRemorseEnding = null;
     orcaFeastEnding = null;
     swordfishSpearEnding = null;
-    octopusWhaleFight = null;
+    if (!(opts && opts.keepOctopusFight)) octopusWhaleFight = null;
     pirateShipDrop = null;
     apexDuel = null;
     shark = null;
@@ -10781,8 +10971,13 @@ function resetPond() {
     petStreak = 0;
     guaranteeRainbow = false;
     nextFoodVariant = null;
-    repopulating = true;
-    repopTimer = 0.5;
+    if (opts && opts.skipRepop) {
+        repopulating = false;
+        repopTimer = 0;
+    } else {
+        repopulating = true;
+        repopTimer = 0.5;
+    }
     // Soft surface settle.
     if (water) water.disturb(viewW * 0.5, viewH * 0.5, 80, 200);
 }
@@ -11537,8 +11732,13 @@ function manageEcosystem(dt) {
     const livingReptiles = reptiles.filter((r) => !r.dead && !r.leaving && !r.tamed && !r.golden);
     // Wild croc/alligator cleared the pond: summon the shark for a fight to the death.
     // Glow fish do not count, so the duel still starts while they float unharmed.
+    // Prefer a ready swordfish orca hunt over stealing the orca into a croc duel.
+    const swordfishOrcaStory = !!(swordfish && !swordfish.dead
+        && shark && !shark.dead && shark.isOrca
+        && (swordfish.orcaHunt || swordfishReadyForSpearEnding(swordfish)));
     if (!apexDuel && !pondFinaleActive() && !whale && !rainbowExiting
-        && livingReptiles.length > 0 && countable.length === 0) {
+        && livingReptiles.length > 0 && countable.length === 0
+        && !swordfishOrcaStory) {
         beginApexDuel();
     }
     if (apexDuel) updateApexDuel(dt);
@@ -11546,9 +11746,11 @@ function manageEcosystem(dt) {
     if (shark) {
         shark.update(dt);
         if (shark.dead && !apexDuel) {
+            const wasOrca = !!shark.isOrca;
             shark = null;
+            if (wasOrca) tryBeginSwordfishSpearFromOrcaLoss();
             if (!rainbowExiting && !hasMonster && countable.length === 0
-                && livingReptiles.length === 0) {
+                && livingReptiles.length === 0 && !swordfishSpearEnding) {
                 repopulating = true;
                 repopTimer = 0.8;
             }
@@ -12100,6 +12302,15 @@ function updateGoldHold(dt) {
 
 function onPointerDown(ev) {
     Audio.ensure();
+    // Dev kill tool: click or right-click any pond creature to remove it instantly.
+    if (devKillTool && mode === "pond" && (ev.button === 0 || ev.button === 2)) {
+        pointerNow = { x: ev.clientX, y: ev.clientY };
+        if (devKillAt(ev.clientX, ev.clientY)) {
+            ev.preventDefault();
+            pointerDownAt = null;
+            return;
+        }
+    }
     // Armed stash: left-click places the saved pellet in the pond.
     if (ev.button === 0 && mode === "pond" && armedStashIndex != null) {
         pointerNow = { x: ev.clientX, y: ev.clientY };
@@ -12864,10 +13075,10 @@ function releasePickerHold() {
         const ty = pointerNow ? pointerNow.y : sy;
         const dist = Math.hypot(tx - sx, ty - sy);
         const thrown = dist > 10;
-        ent.pickerHeld = true; // stays held until the throw lands
+        ent.pickerHeld = false;
         ent.pickerThrow = {
             sx,
-            sy: sy, // water-plane start
+            sy,
             tx: Math.max(16, Math.min(viewW - 16, thrown ? tx : sx)),
             ty: Math.max(16, Math.min(viewH - 16, thrown ? ty : sy)),
             age: 0,
@@ -13463,6 +13674,24 @@ function wireDevMenuDrag(panel, head) {
     });
 }
 
+function applyDevKillToolChrome() {
+    if (!canvas) return;
+    if (devKillTool) {
+        canvas.style.cursor = "cell";
+        canvas.title = "Kill tool";
+        document.body.classList.add("dev-kill-tool");
+    } else {
+        canvas.style.cursor = "";
+        canvas.title = "";
+        document.body.classList.remove("dev-kill-tool");
+    }
+}
+
+function setDevKillTool(on) {
+    devKillTool = !!on;
+    applyDevKillToolChrome();
+}
+
 function setDevMenuOpen(open) {
     devMenuOpen = !!open;
     const panel = document.getElementById("dev-panel");
@@ -13481,7 +13710,63 @@ function setDevMenuOpen(open) {
         if (Audio.playDrop) {
             Audio.playDrop({ freq: 280, decay: 0.7, velocity: 0.25, pan: 0, plunk: false });
         }
+    } else {
+        // Kill tool is Dev-only: clear it when the secret menu closes.
+        setDevKillTool(false);
     }
+}
+
+function devKillAt(x, y) {
+    let best = null;
+    let bestD = 56;
+    const consider = (ent, radius, kill) => {
+        if (!ent || ent.dead) return;
+        const d = Math.hypot(x - ent.x, y - ent.y);
+        const reach = Math.max(28, radius);
+        if (d < reach && d < bestD) {
+            bestD = d;
+            best = { ent, kill };
+        }
+    };
+    for (const f of fishes) {
+        consider(f, f.size * 0.9, () => { f.dead = true; });
+    }
+    consider(swordfish, swordfish ? swordfish.size * 0.55 : 0, () => {
+        swordfish.dead = true;
+        swordfish = null;
+    });
+    consider(octopus, octopus ? octopus.size * 0.7 : 0, () => {
+        if (typeof octopus.clearApexWrap === "function") octopus.clearApexWrap();
+        octopus.dead = true;
+        octopus = null;
+    });
+    consider(shark, shark ? shark.size * 0.55 : 0, () => {
+        const wasOrca = !!shark.isOrca;
+        shark.dead = true;
+        shark = null;
+        if (wasOrca) tryBeginSwordfishSpearFromOrcaLoss();
+    });
+    consider(whale, whale ? whale.size * 0.48 : 0, () => {
+        whale.dead = true;
+        whale = null;
+    });
+    for (const r of reptiles) {
+        consider(r, r.size * 0.5, () => { r.dead = true; });
+    }
+    for (const g of frogGroups) {
+        const frog = g.frog;
+        if (!frog || frog.dead) continue;
+        consider(frog, Math.max(22, frog.size * 0.95), () => { frog.dead = true; });
+    }
+    if (!best) return false;
+    best.kill();
+    const ent = best.ent;
+    const pan = Math.max(-1, Math.min(1, (ent.x / viewW) * 2 - 1));
+    if (Audio.sharkStrike) Audio.sharkStrike(pan);
+    else if (Audio.predatorEat) Audio.predatorEat(pan);
+    water.disturb(ent.x, ent.y, Math.max(16, (ent.size || 24) * 0.55), 260);
+    spawnSplash(ent.x, ent.y, 14, 0.7);
+    return true;
 }
 
 function devEnsurePond() {
@@ -13599,6 +13884,7 @@ function refreshDevMenuToggles() {
         else if (key === "catcher") on = catcherMode;
         else if (key === "market") on = marketOpen;
         else if (key === "pond") on = mode === "pond";
+        else if (key === "killTool") on = devKillTool;
         else if (key in scenery) on = !!scenery[key];
         btn.classList.toggle("on", on);
     });
@@ -14188,8 +14474,11 @@ function buildDevMenu() {
     }, { warn: true });
 
     const danger = section("Danger");
+    btn(danger, "Kill tool", () => {
+        setDevKillTool(!devKillTool);
+    }, { toggle: "killTool", warn: true });
     btn(danger, "Reset pond", () => {
-        resetPond();
+        resetPond({ force: true });
         initFish();
     }, { warn: true });
     btn(danger, "Clear fish", () => {
