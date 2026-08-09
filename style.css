@@ -434,6 +434,27 @@ body.pond #pond-controls {
         4px 0 0 -2.5px currentColor;
 }
 
+.ico-frog {
+    width: 12px;
+    height: 10px;
+    border: 1.3px solid currentColor;
+    border-radius: 45% 50% 40% 45%;
+}
+
+.ico-frog::before,
+.ico-frog::after {
+    content: "";
+    position: absolute;
+    width: 2.5px;
+    height: 2.5px;
+    border: 1.1px solid currentColor;
+    border-radius: 50%;
+    top: -1px;
+}
+
+.ico-frog::before { left: 1px; }
+.ico-frog::after { right: 1px; }
+
 .ico-net {
     width: 12px;
     height: 12px;

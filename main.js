@@ -85,6 +85,9 @@ const CONFIG = {
     breedCooldown: 6.5,     // seconds before a pink pair can breed again
     maxBreedPop: 24,        // soft cap on living fish from breeding (above fishCount)
     foodStashMax: 14,       // pellets saved from the net (normal + specials)
+    frogInterval: 42,       // seconds between frog spawn chance rolls
+    frogChance: 0.38,       // chance a frog group arrives on each roll
+    frogMaxGroups: 3,       // max frog+tadpole clusters on the bank
 };
 
 // Hidden streak: consecutive pets with no food thrown unlock a guaranteed rainbow pellet.
@@ -346,6 +349,10 @@ const GOLD_FOOD_NORMAL_COST = 20;
 const GOLD_HOLD_TIME = 5;
 const MAGNET_HOLD_MULT = 0.32; // magnet: lift gold much faster
 const CATCHER_MAX_RADIUS = 44; // tight circle so rainbow catch stays hard
+// Gold payout scales with settled fish size: 1 at tiny spawn size, 10 at half-screen.
+const GOLD_AWARD_MIN = 1;
+const GOLD_AWARD_MAX = 10;
+const GOLD_AWARD_SIZE_MIN = 9; // typical smallest fish spawn (tetra)
 let goldCollected = 0;
 let hatsUnlocked = false;
 let hatsOn = false;
@@ -422,6 +429,12 @@ function resize() {
 
     if (water) water.resize();
     if (typeof rebuildScenery === "function") rebuildScenery();
+    // Keep bank frogs inside the new viewport after resize.
+    for (const g of frogGroups) {
+        g.frog.x = Math.max(viewW * 0.06, Math.min(viewW * 0.94, g.frog.x));
+        g.frog.baseY = Math.max(viewH * 0.72, Math.min(viewH * 0.94, g.frog.baseY));
+        if (g.frog.state === "idle" || g.frog.state === "land") g.frog.y = g.frog.baseY;
+    }
 }
 window.addEventListener("resize", resize);
 
@@ -1401,6 +1414,7 @@ const scenery = {
     debris: true, // solid movable lake clutter (logs, rocks, driftwood, pots, and more)
     bed: true,    // rocky / sandy pond floor seen through the water
     sun: true,    // warm golden-hour light, soft floor caustics, and sharp shadows
+    frogs: true,  // bank frogs jumping with tadpole clusters (background)
 };
 let sceneryItems = {
     stones: [], sticks: [], reeds: [], lilies: [],
@@ -2718,6 +2732,442 @@ function drawLeaves(ctx, t, dt) {
         ctx.quadraticCurveTo(L.len * 0.1, 0, L.len * 0.35, L.len * 0.12);
         ctx.stroke();
         ctx.restore();
+    }
+}
+
+// ===========================================================================
+// FROGS + TADPOLES (background bank life)
+// Occasional frog groups along the lower pond with six tadpoles each. Smooth
+// jump arcs and detailed silhouettes; they do not interact with fish gameplay.
+// ===========================================================================
+let frogGroups = [];
+let frogCheckTimer = 0;
+
+function easeInOutCubic(t) {
+    const x = clamp01(t);
+    return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+}
+function easeOutQuad(t) {
+    const x = clamp01(t);
+    return 1 - (1 - x) * (1 - x);
+}
+function easeInQuad(t) {
+    const x = clamp01(t);
+    return x * x;
+}
+
+function spawnFrogGroup() {
+    const x = viewW * (0.12 + Math.random() * 0.76);
+    const baseY = viewH * (0.76 + Math.random() * 0.16);
+    const facing = Math.random() < 0.5 ? 1 : -1;
+    const frog = {
+        x,
+        y: baseY,
+        baseY,
+        size: 13 + Math.random() * 9,
+        facing,
+        tone: Math.random(), // green / olive variation
+        state: "idle",
+        stateT: 0,
+        idleFor: 1.8 + Math.random() * 4.5,
+        jump: null,
+        breath: Math.random() * Math.PI * 2,
+        blink: 0,
+        nextBlink: 1.5 + Math.random() * 3,
+        crouch: 0,
+        stretch: 0,
+        landSquash: 0,
+        age: 0,
+    };
+    const tadpoles = [];
+    for (let i = 0; i < 6; i++) {
+        const ang = (i / 6) * Math.PI * 2 + Math.random() * 0.5;
+        tadpoles.push({
+            x: x + Math.cos(ang) * (22 + Math.random() * 28),
+            y: baseY + Math.sin(ang) * (10 + Math.random() * 16) + 6,
+            ang,
+            orbit: 20 + Math.random() * 34,
+            orbitY: 0.45 + Math.random() * 0.35,
+            speed: 0.55 + Math.random() * 0.7,
+            phase: Math.random() * Math.PI * 2,
+            size: 4.6 + Math.random() * 3.2,
+            dir: Math.random() * Math.PI * 2,
+            tone: Math.random(),
+        });
+    }
+    frogGroups.push({
+        frog,
+        tadpoles,
+        life: 36 + Math.random() * 48,
+        fade: 0,
+        leaving: false,
+    });
+}
+
+function beginFrogJump(frog) {
+    const span = 36 + Math.random() * 70;
+    const dir = Math.random() < 0.55 ? frog.facing : -frog.facing;
+    frog.facing = dir;
+    let tx = frog.x + dir * span;
+    tx = Math.max(viewW * 0.06, Math.min(viewW * 0.94, tx));
+    const ty = Math.max(viewH * 0.72, Math.min(viewH * 0.94, frog.baseY + (Math.random() - 0.5) * 28));
+    frog.jump = {
+        x0: frog.x,
+        y0: frog.y,
+        x1: tx,
+        y1: ty,
+        peak: 28 + Math.random() * 34,
+        dur: 0.48 + Math.random() * 0.18,
+        t: 0,
+    };
+    frog.baseY = ty;
+    frog.state = "crouch";
+    frog.stateT = 0;
+    frog.crouch = 0;
+    frog.stretch = 0;
+}
+
+function updateFrogGroups(dt) {
+    if (!scenery.frogs) return;
+    for (let i = frogGroups.length - 1; i >= 0; i--) {
+        const g = frogGroups[i];
+        g.life -= dt;
+        if (g.life <= 0 && !g.leaving) g.leaving = true;
+        if (g.leaving) {
+            g.fade += dt * 0.7;
+            if (g.fade >= 1) {
+                frogGroups.splice(i, 1);
+                continue;
+            }
+        }
+        const frog = g.frog;
+        frog.age += dt;
+        frog.breath += dt * 2.4;
+        frog.nextBlink -= dt;
+        if (frog.nextBlink <= 0) {
+            frog.blink = 0.14;
+            frog.nextBlink = 1.8 + Math.random() * 3.4;
+        }
+        if (frog.blink > 0) frog.blink = Math.max(0, frog.blink - dt);
+        frog.landSquash = Math.max(0, frog.landSquash - dt * 3.2);
+
+        if (frog.state === "idle") {
+            frog.stateT += dt;
+            frog.crouch = Math.sin(frog.breath) * 0.04;
+            frog.stretch = 0;
+            if (frog.stateT >= frog.idleFor) beginFrogJump(frog);
+        } else if (frog.state === "crouch") {
+            frog.stateT += dt;
+            const u = clamp01(frog.stateT / 0.22);
+            frog.crouch = easeInQuad(u) * 0.42;
+            frog.stretch = -easeInQuad(u) * 0.15;
+            if (u >= 1) {
+                frog.state = "air";
+                frog.stateT = 0;
+                frog.crouch = 0;
+                if (water) water.disturb(frog.x, frog.y, 6, 28);
+            }
+        } else if (frog.state === "air" && frog.jump) {
+            const j = frog.jump;
+            j.t += dt;
+            const u = clamp01(j.t / j.dur);
+            const fly = easeInOutCubic(u);
+            frog.x = j.x0 + (j.x1 - j.x0) * fly;
+            const arc = Math.sin(Math.PI * fly) * j.peak;
+            frog.y = j.y0 + (j.y1 - j.y0) * fly - arc;
+            // Legs tuck mid-air, extend near landing.
+            frog.stretch = 0.55 * Math.sin(Math.PI * fly);
+            frog.crouch = fly > 0.75 ? easeInQuad((fly - 0.75) / 0.25) * 0.2 : -0.08 * Math.sin(Math.PI * fly);
+            if (u >= 1) {
+                frog.x = j.x1;
+                frog.y = j.y1;
+                frog.jump = null;
+                frog.state = "land";
+                frog.stateT = 0;
+                frog.landSquash = 1;
+                frog.stretch = 0;
+                if (water) {
+                    water.disturb(frog.x, frog.y, 10, 55);
+                    spawnSplash(frog.x, frog.y, 5, 0.25);
+                }
+            }
+        } else if (frog.state === "land") {
+            frog.stateT += dt;
+            const u = clamp01(frog.stateT / 0.28);
+            frog.crouch = (1 - easeOutQuad(u)) * 0.35;
+            frog.stretch = -0.08 * (1 - u);
+            if (u >= 1) {
+                frog.state = "idle";
+                frog.stateT = 0;
+                frog.idleFor = 2.2 + Math.random() * 5;
+                frog.crouch = 0;
+                frog.stretch = 0;
+            }
+        }
+
+        // Tadpoles circle and weave near the frog's bank spot.
+        const cx = frog.state === "air" ? (frog.jump ? frog.jump.x0 : frog.x) : frog.x;
+        const cy = frog.baseY + 8;
+        for (const t of g.tadpoles) {
+            t.phase += dt * t.speed;
+            t.ang += dt * t.speed * 0.55;
+            const ox = Math.cos(t.ang) * t.orbit + Math.sin(t.phase * 1.7) * 5;
+            const oy = Math.sin(t.ang * 1.15) * t.orbit * t.orbitY + Math.cos(t.phase * 1.3) * 3;
+            const tx = cx + ox;
+            const ty = cy + oy;
+            const dx = tx - t.x;
+            const dy = ty - t.y;
+            t.x += dx * Math.min(1, 3.2 * dt);
+            t.y += dy * Math.min(1, 3.2 * dt);
+            if (Math.hypot(dx, dy) > 0.4) t.dir = Math.atan2(dy, dx);
+        }
+    }
+}
+
+function drawTadpole(ctx, t, alpha) {
+    const L = t.size;
+    const tailWave = Math.sin(t.phase * 3.4) * 0.55;
+    ctx.save();
+    ctx.translate(t.x, t.y);
+    ctx.rotate(t.dir);
+    ctx.globalAlpha = 0.72 * alpha;
+
+    // Soft shadow on the bed.
+    ctx.fillStyle = "rgba(20,30,25,0.18)";
+    ctx.beginPath();
+    ctx.ellipse(1, L * 0.35, L * 0.7, L * 0.28, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    const g = 70 + Math.floor(t.tone * 40);
+    const body = ctx.createLinearGradient(-L * 0.2, -L * 0.4, L * 0.3, L * 0.5);
+    body.addColorStop(0, `rgba(${40 + g * 0.2},${g + 20},${55},0.92)`);
+    body.addColorStop(0.55, `rgba(${30 + g * 0.15},${g},${48},0.88)`);
+    body.addColorStop(1, `rgba(${25 + g * 0.1},${g - 10},${40},0.55)`);
+
+    // Head / yolk sac.
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.ellipse(L * 0.15, 0, L * 0.55, L * 0.42, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Belly highlight.
+    ctx.fillStyle = `rgba(160,190,120,${0.28 * alpha})`;
+    ctx.beginPath();
+    ctx.ellipse(L * 0.2, L * 0.12, L * 0.28, L * 0.18, 0.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // External gill wisps.
+    ctx.strokeStyle = `rgba(${50 + g * 0.2},${g + 10},70,0.45)`;
+    ctx.lineWidth = Math.max(0.6, L * 0.08);
+    ctx.lineCap = "round";
+    for (let i = -1; i <= 1; i++) {
+        ctx.beginPath();
+        ctx.moveTo(-L * 0.05, i * L * 0.18);
+        ctx.quadraticCurveTo(-L * 0.35, i * L * 0.35 + tailWave * 2, -L * 0.55, i * L * 0.1);
+        ctx.stroke();
+    }
+
+    // Tail with undulating fin membrane.
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.15, 0);
+    ctx.quadraticCurveTo(-L * 0.7, -L * 0.08 + tailWave * L * 0.15, -L * 1.55, tailWave * L * 0.55);
+    ctx.quadraticCurveTo(-L * 0.95, L * 0.35, -L * 0.55, L * 0.12);
+    ctx.quadraticCurveTo(-L * 0.3, L * 0.05, -L * 0.15, 0);
+    ctx.closePath();
+    const tailG = ctx.createLinearGradient(-L * 0.2, 0, -L * 1.5, 0);
+    tailG.addColorStop(0, `rgba(${35 + g * 0.15},${g},${50},0.75)`);
+    tailG.addColorStop(0.5, `rgba(${40 + g * 0.1},${g - 5},${55},0.4)`);
+    tailG.addColorStop(1, `rgba(80,120,90,0.05)`);
+    ctx.fillStyle = tailG;
+    ctx.fill();
+    // Tail nerve line.
+    ctx.strokeStyle = `rgba(30,50,35,${0.35 * alpha})`;
+    ctx.lineWidth = 0.7;
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.2, 0);
+    ctx.quadraticCurveTo(-L * 0.85, tailWave * L * 0.1, -L * 1.4, tailWave * L * 0.4);
+    ctx.stroke();
+
+    // Eye.
+    ctx.fillStyle = "rgba(245,245,230,0.9)";
+    ctx.beginPath();
+    ctx.arc(L * 0.35, -L * 0.12, Math.max(0.9, L * 0.12), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(15,20,18,0.92)";
+    ctx.beginPath();
+    ctx.arc(L * 0.38, -L * 0.12, Math.max(0.55, L * 0.07), 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+function drawFrogModel(ctx, frog, alpha) {
+    const S = frog.size;
+    const crouch = frog.crouch || 0;
+    const stretch = frog.stretch || 0;
+    const squash = 1 - frog.landSquash * 0.18;
+    const tall = (1 + stretch * 0.35) * squash;
+    const wide = (1 + crouch * 0.35) / squash;
+    const breath = 1 + Math.sin(frog.breath) * 0.03;
+    const tone = frog.tone;
+    const r = 55 + Math.floor(tone * 35);
+    const g = 110 + Math.floor(tone * 55);
+    const b = 55 + Math.floor(tone * 25);
+    const bellyR = 150 + Math.floor(tone * 40);
+    const bellyG = 170 + Math.floor(tone * 30);
+    const bellyB = 90 + Math.floor(tone * 20);
+
+    ctx.save();
+    ctx.translate(frog.x, frog.y);
+    ctx.scale(frog.facing, 1);
+    ctx.globalAlpha = 0.88 * alpha;
+
+    // Contact shadow.
+    ctx.fillStyle = "rgba(15,22,18,0.22)";
+    ctx.beginPath();
+    ctx.ellipse(0, S * 0.42, S * 0.85 * wide, S * 0.22, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.scale(wide, tall);
+
+    // Hind legs (folded / extended).
+    const hindExt = 0.35 + stretch * 0.9 - crouch * 0.25;
+    ctx.fillStyle = `rgb(${r - 15},${g - 20},${b - 10})`;
+    // Left hind thigh + calf + webbed foot.
+    ctx.beginPath();
+    ctx.moveTo(-S * 0.15, S * 0.05);
+    ctx.quadraticCurveTo(-S * (0.55 + hindExt * 0.15), S * 0.15, -S * (0.7 + hindExt * 0.35), S * (0.35 - stretch * 0.1));
+    ctx.quadraticCurveTo(-S * (0.85 + hindExt * 0.4), S * 0.48, -S * (0.55 + hindExt * 0.2), S * 0.42);
+    ctx.quadraticCurveTo(-S * 0.35, S * 0.28, -S * 0.1, S * 0.12);
+    ctx.closePath();
+    ctx.fill();
+    // Webbing
+    ctx.fillStyle = `rgba(${r},${g + 10},${b},0.55)`;
+    ctx.beginPath();
+    ctx.moveTo(-S * (0.72 + hindExt * 0.35), S * 0.38);
+    ctx.lineTo(-S * (0.95 + hindExt * 0.45), S * 0.52);
+    ctx.lineTo(-S * (0.7 + hindExt * 0.25), S * 0.55);
+    ctx.lineTo(-S * (0.55 + hindExt * 0.15), S * 0.45);
+    ctx.closePath();
+    ctx.fill();
+    // Right hind (mirrored slightly back)
+    ctx.fillStyle = `rgb(${r - 20},${g - 25},${b - 12})`;
+    ctx.beginPath();
+    ctx.moveTo(-S * 0.05, S * 0.08);
+    ctx.quadraticCurveTo(-S * (0.4 + hindExt * 0.1), S * 0.22, -S * (0.55 + hindExt * 0.3), S * (0.4 - stretch * 0.08));
+    ctx.quadraticCurveTo(-S * (0.7 + hindExt * 0.35), S * 0.55, -S * (0.4 + hindExt * 0.15), S * 0.5);
+    ctx.quadraticCurveTo(-S * 0.2, S * 0.32, 0, S * 0.14);
+    ctx.closePath();
+    ctx.fill();
+
+    // Forelegs.
+    const foreReach = 0.15 + stretch * 0.25 + crouch * 0.1;
+    ctx.fillStyle = `rgb(${r - 10},${g - 15},${b - 8})`;
+    ctx.beginPath();
+    ctx.moveTo(S * 0.25, S * 0.05);
+    ctx.quadraticCurveTo(S * (0.45 + foreReach), S * 0.2, S * (0.55 + foreReach), S * 0.38);
+    ctx.quadraticCurveTo(S * (0.4 + foreReach), S * 0.4, S * 0.28, S * 0.18);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(S * 0.15, S * 0.08);
+    ctx.quadraticCurveTo(S * (0.3 + foreReach * 0.7), S * 0.25, S * (0.38 + foreReach), S * 0.4);
+    ctx.quadraticCurveTo(S * (0.25 + foreReach), S * 0.38, S * 0.12, S * 0.16);
+    ctx.closePath();
+    ctx.fill();
+
+    // Body.
+    const bodyG = ctx.createLinearGradient(0, -S * 0.45, 0, S * 0.35);
+    bodyG.addColorStop(0, `rgb(${r + 25},${g + 20},${b + 10})`);
+    bodyG.addColorStop(0.45, `rgb(${r},${g},${b})`);
+    bodyG.addColorStop(1, `rgb(${bellyR},${bellyG},${bellyB})`);
+    ctx.fillStyle = bodyG;
+    ctx.beginPath();
+    ctx.moveTo(S * 0.55, -S * 0.05);
+    ctx.bezierCurveTo(S * 0.65, -S * 0.4 * breath, -S * 0.05, -S * 0.55 * breath, -S * 0.55, -S * 0.1);
+    ctx.bezierCurveTo(-S * 0.7, S * 0.25, -S * 0.2, S * 0.42, S * 0.35, S * 0.28);
+    ctx.bezierCurveTo(S * 0.55, S * 0.18, S * 0.62, S * 0.05, S * 0.55, -S * 0.05);
+    ctx.closePath();
+    ctx.fill();
+
+    // Dorsal ridges / spots.
+    ctx.fillStyle = `rgba(${r - 30},${g - 40},${b - 20},0.35)`;
+    for (const [sx, sy, sr] of [[-0.1, -0.2, 0.1], [0.15, -0.15, 0.08], [-0.25, 0.05, 0.07], [0.05, 0.08, 0.06]]) {
+        ctx.beginPath();
+        ctx.ellipse(S * sx, S * sy, S * sr, S * sr * 0.7, 0.3, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Head.
+    ctx.fillStyle = `rgb(${r + 10},${g + 15},${b + 5})`;
+    ctx.beginPath();
+    ctx.ellipse(S * 0.42, -S * 0.22, S * 0.38, S * 0.32 * breath, -0.15, 0, Math.PI * 2);
+    ctx.fill();
+    // Tympanum.
+    ctx.strokeStyle = `rgba(${r - 20},${g - 30},${b - 15},0.55)`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(S * 0.28, -S * 0.18, S * 0.1, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Snout.
+    ctx.fillStyle = `rgb(${r + 5},${g + 8},${b})`;
+    ctx.beginPath();
+    ctx.ellipse(S * 0.68, -S * 0.18, S * 0.18, S * 0.14, 0.1, 0, Math.PI * 2);
+    ctx.fill();
+    // Nostrils.
+    ctx.fillStyle = "rgba(30,40,28,0.55)";
+    ctx.beginPath();
+    ctx.arc(S * 0.78, -S * 0.22, S * 0.025, 0, Math.PI * 2);
+    ctx.arc(S * 0.74, -S * 0.14, S * 0.022, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eyes (bulging).
+    const eyeY = -S * 0.42;
+    for (const ex of [S * 0.38, S * 0.55]) {
+        ctx.fillStyle = `rgb(${r + 20},${g + 25},${b + 10})`;
+        ctx.beginPath();
+        ctx.ellipse(ex, eyeY, S * 0.13, S * 0.12, 0, 0, Math.PI * 2);
+        ctx.fill();
+        if (frog.blink > 0.02) {
+            ctx.strokeStyle = "rgba(30,40,28,0.85)";
+            ctx.lineWidth = Math.max(1.2, S * 0.06);
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            ctx.moveTo(ex - S * 0.08, eyeY);
+            ctx.quadraticCurveTo(ex, eyeY + S * 0.04, ex + S * 0.08, eyeY);
+            ctx.stroke();
+        } else {
+            ctx.fillStyle = "rgba(250,250,240,0.95)";
+            ctx.beginPath();
+            ctx.ellipse(ex, eyeY - S * 0.01, S * 0.08, S * 0.075, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "rgba(20,28,22,0.95)";
+            ctx.beginPath();
+            ctx.arc(ex + S * 0.015, eyeY - S * 0.01, S * 0.045, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "rgba(255,255,255,0.7)";
+            ctx.beginPath();
+            ctx.arc(ex, eyeY - S * 0.03, S * 0.018, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    // Throat pulse.
+    ctx.fillStyle = `rgba(${bellyR},${bellyG},${bellyB},0.55)`;
+    ctx.beginPath();
+    ctx.ellipse(S * 0.35, S * 0.02, S * 0.22 * breath, S * 0.12 * breath, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+function drawFrogGroups(ctx) {
+    if (!scenery.frogs) return;
+    for (const g of frogGroups) {
+        const alpha = g.leaving ? 1 - clamp01(g.fade) : 1;
+        // Tadpoles under the frog so it reads as a cluster at the bank.
+        for (const t of g.tadpoles) drawTadpole(ctx, t, alpha);
+        drawFrogModel(ctx, g.frog, alpha);
     }
 }
 
@@ -6701,6 +7151,8 @@ function resetPond() {
     shark = null;
     whale = null;
     reptiles.length = 0;
+    frogGroups.length = 0;
+    frogCheckTimer = 0;
     fishes.length = 0;
     foods.length = 0;
     rocks.length = 0;
@@ -7128,6 +7580,18 @@ function manageEcosystem(dt) {
             reptiles.push(new Reptile());
         }
     }
+
+    // Background frogs along the lower bank with tadpole clusters.
+    frogCheckTimer += dt;
+    if (frogCheckTimer >= CONFIG.frogInterval) {
+        frogCheckTimer = 0;
+        if (scenery.frogs && !pondFinaleActive()
+            && frogGroups.length < CONFIG.frogMaxGroups
+            && Math.random() < CONFIG.frogChance) {
+            spawnFrogGroup();
+        }
+    }
+    updateFrogGroups(dt);
 
     for (const r of reptiles) r.update(dt);
     for (let i = reptiles.length - 1; i >= 0; i--) {
@@ -7602,7 +8066,7 @@ function updateGoldCountUI() {
     if (wrap) {
         wrap.classList.toggle("active",
             goldCollected > 0 || !!liftState || hatsUnlocked || marketUnlocked);
-        wrap.title = goldCollected + " gold fish";
+        wrap.title = goldCollected + " gold";
     }
     updateMarketUI();
 }
@@ -7620,12 +8084,21 @@ function cancelGoldLift() {
     updateGoldCountUI();
 }
 
+// Larger settled gold fish pay more; caps at GOLD_AWARD_MAX near half-screen size.
+function goldAwardForSize(size) {
+    const sizeMax = giantSizeCap(); // min(viewW, viewH) * giantCapFrac (0.5)
+    const span = Math.max(1, sizeMax - GOLD_AWARD_SIZE_MIN);
+    const t = Math.max(0, Math.min(1, (size - GOLD_AWARD_SIZE_MIN) / span));
+    const award = Math.round(GOLD_AWARD_MIN + (GOLD_AWARD_MAX - GOLD_AWARD_MIN) * t);
+    return Math.max(GOLD_AWARD_MIN, Math.min(GOLD_AWARD_MAX, award));
+}
+
 function collectGoldFish(fish) {
     if (!fish || fish.dead) return;
     fish.dead = true;
     fish.lifting = false;
     liftState = null;
-    goldCollected += 1;
+    goldCollected += goldAwardForSize(fish.size || GOLD_AWARD_SIZE_MIN);
     const pan = Math.max(-1, Math.min(1, (fish.x / viewW) * 2 - 1));
     Audio.goldChime(pan);
     water.disturb(fish.x, Math.max(20, fish.y), fish.size, 160);
@@ -8414,6 +8887,8 @@ function frame(now) {
         drawSticks(ctx, dt);
         drawReeds(ctx, sceneryTime, dt);
         drawCattails(ctx, sceneryTime, dt);
+        // Frogs and tadpoles live along the lower bank as quiet background life.
+        drawFrogGroups(ctx);
         updateObstacles(dt);
         drawObstacles(ctx, dt);
         // Green-food plants stay permanently (until refresh).
