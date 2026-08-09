@@ -30,6 +30,12 @@ body {
     -webkit-tap-highlight-color: transparent;
 }
 
+/* Dev-only kill tool: subtle cursor change while the secret menu mode is armed. */
+body.dev-kill-tool,
+body.dev-kill-tool canvas {
+    cursor: cell;
+}
+
 body.pond {
     background: var(--bg-pond);
 }
@@ -230,24 +236,51 @@ body.pond #pond-controls {
     opacity: 0.85;
 }
 
-/* Aesthetic toggles live in one flyout so the left column stays short. */
+/* Looks button + horizontal aesthetic flyout (no scrollbar chrome). */
+#looks-wrap {
+    position: relative;
+}
+
 #looks-panel {
     position: absolute;
-    left: 42px;
-    top: 0;
+    left: calc(100% + 8px);
+    bottom: 0;
     display: none;
-    flex-direction: column;
+    flex-flow: row wrap;
+    align-content: flex-end;
     gap: 6px;
+    width: max-content;
+    max-width: min(248px, calc(100vw - 72px));
     padding: 6px;
     border-radius: 12px;
     border: 1px solid rgba(180, 210, 200, 0.22);
     background: rgba(8, 16, 18, 0.55);
-    max-height: min(70vh, 420px);
-    overflow-y: auto;
+    overflow: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    z-index: 12;
+}
+
+#looks-panel::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
 }
 
 #looks-panel.open {
     display: flex;
+}
+
+#looks-panel .scenery-btn,
+#looks-panel #hats-btn {
+    flex: 0 0 34px;
+}
+
+/* Narrow viewports: keep the grid compact, still wrap instead of scroll. */
+@media (max-width: 420px) {
+    #looks-panel {
+        max-width: min(168px, calc(100vw - 64px));
+    }
 }
 
 .scenery-btn,
