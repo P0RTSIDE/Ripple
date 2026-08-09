@@ -59,8 +59,8 @@ const CONFIG = {
     growerChance: 0.007,    // rare grower food: surges a fish past normal size
     growerBoost: 44,        // size gained from one grower pellet
     growerMaxSize: 280,     // floor cap for grower / carcass; heroes & huge meals scale higher
-    giantSizeFrac: 0.52,    // ending when size >= min(viewW, viewH) * this
-    giantCapFrac: 0.62,     // grower/carcass (and hero) size ceiling vs shorter screen side
+    giantSizeFrac: 0.78,    // ending when size >= min(viewW, viewH) * this (near screen-filling)
+    giantCapFrac: 0.9,      // grower/carcass (and hero) size ceiling vs shorter screen side
     goldSinkTime: 2.4,      // seconds for a golden fish to settle on the lakebed
     rainbowSpeed: 2.35,     // rainbow chase speed (kept moderate so tracking stays stable)
     predatorFoodBoost: 1.045, // each food bite makes an evil fish a bit faster
@@ -5261,7 +5261,7 @@ class Fish {
         this.plantMorph = null;
         this.hasSword = false; // inherited from eating a swordfish
         this.hasTentacles = false; // inherited from eating an octopus
-        this.stuckPrey = []; // fish speared on an inherited sword (display)
+        this.stuckPrey = []; // fish speared on an inherited sword (digest while swimming)
         this.tentacleGrab = null; // { prey, t } while reeling with tentacles
         this.rainbowLeaving = false;
         this.rainbowPhase = null; // "write" | "exit" during victory lap
@@ -5649,7 +5649,55 @@ class Fish {
             body: opts.body || "#8899aa",
             belly: opts.belly || "#dde5ee",
             wobble: Math.random() * Math.PI * 2,
+            // Normal sword fish digest trophies for growth; paid kills stay display-only.
+            nourishing: opts.nourishing !== false,
         });
+    }
+
+    // Slowly eat speared trophies while swimming (same idea as wild swordfish).
+    digestStuckPrey(dt) {
+        if (!this.hasSword || this.dead || this.golden || this.plantMorph) return;
+        if (!this.stuckPrey || !this.stuckPrey.length) return;
+
+        for (const s of this.stuckPrey) {
+            s.along = Math.max(0.28, (s.along || 0.42) - 0.035 * dt);
+        }
+        this.stuckPrey.sort((a, b) => a.along - b.along);
+        const gap = 0.07;
+        for (let i = 1; i < this.stuckPrey.length; i++) {
+            const minAlong = this.stuckPrey[i - 1].along + gap;
+            if (this.stuckPrey[i].along < minAlong) {
+                this.stuckPrey[i].along = Math.min(0.88, minAlong);
+            }
+        }
+
+        const meal = this.stuckPrey[0];
+        if (!meal) return;
+        const maxSize = meal.maxSize || meal.size;
+        // Roughly 4 to 6 seconds to finish a typical speared fish.
+        const eatRate = Math.max(2.2, maxSize * 0.2) * dt;
+        const before = meal.size;
+        meal.size = Math.max(0, meal.size - eatRate);
+        const eaten = before - meal.size;
+        if (eaten > 0 && meal.nourishing !== false) {
+            this.grow(eaten * 0.62 * preySizeGainMult(this.size, maxSize));
+            this.baseSpeed = Math.min(
+                CONFIG.predatorSpeedCap * 0.9,
+                this.baseSpeed + eaten * 0.02
+            );
+            if (Math.random() < 0.08) {
+                const tip = this.swordTip();
+                water.disturb(tip.x, tip.y, 6, 28);
+            }
+        }
+        if (meal.size <= 2.5) {
+            this.stuckPrey.shift();
+            const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+            Audio.predatorEat(pan * 0.6);
+            for (let i = 0; i < this.stuckPrey.length; i++) {
+                this.stuckPrey[i].along = this.swordTrophyAlong(i);
+            }
+        }
     }
 
     // Pond-fish spear gate: near-equal OK (hunter at least ~95% of prey size).
@@ -5745,12 +5793,17 @@ class Fish {
         if (kind === "fish") {
             if (!this.canSwordSpearFish(prey)) return;
             prey.dead = true;
+            // Peaceful sword fish grow by slowly eating the trophy while swimming.
+            const slowEat = !this.isHero && !this.isPredator && !this.isMonster;
             this.pushSwordTrophy({
                 size: Math.max(7, prey.size * 0.6),
                 body: prey.type ? prey.type.body : (prey.golden ? "#d4b84a" : "#8899aa"),
                 belly: prey.type ? prey.type.belly : (prey.golden ? "#f0e6a8" : "#dde5ee"),
+                nourishing: slowEat,
             });
-            this.grow(prey.size * 0.35 * preySizeGainMult(this.size, prey.size));
+            if (!slowEat) {
+                this.grow(prey.size * 0.35 * preySizeGainMult(this.size, prey.size));
+            }
             Audio.sharkStrike(Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1)));
             water.disturb(tipX, tipY, 14, 160);
             return;
@@ -5765,6 +5818,7 @@ class Fish {
                 size: Math.max(10, prey.size * 0.45),
                 body: "#3d5a38",
                 belly: "#8a9a70",
+                nourishing: false,
             });
             if (this.isHero) this.heroFinishKill("reptile", gain);
             else this.becomeMonster();
@@ -5777,6 +5831,7 @@ class Fish {
                 size: Math.max(10, prey.size * 0.45),
                 body: kind === "swordfish" ? "#7a8a9a" : "#8a4060",
                 belly: kind === "swordfish" ? "#d0d8e0" : "#c08090",
+                nourishing: false,
             });
             consumeWildNightPredator(this, kind);
             return;
@@ -5789,6 +5844,7 @@ class Fish {
                 size: Math.max(12, shark.size * (isOrca ? 0.22 : 0.4)),
                 body: isOrca ? "#0c1018" : "#5a6a78",
                 belly: isOrca ? "#f2f4f8" : "#c8d0d8",
+                nourishing: false,
             });
             this.eatShark();
         }
@@ -5986,6 +6042,9 @@ class Fish {
             }
             return;
         }
+
+        // Speared trophies slide toward the snout and get eaten over a few seconds.
+        this.digestStuckPrey(dt);
 
         let speed = this.baseSpeed;
         let desired = this.dir;
@@ -6842,21 +6901,23 @@ class Fish {
         const morphA = this.plantMorph && this._morphAlpha != null ? this._morphAlpha : 1;
         const giantA = (giantEnding && giantEnding.fish === this && this._giantFlyAlpha != null)
             ? this._giantFlyAlpha : 1;
-        const peaceParts = (giantEnding && giantEnding.fish === this
-            && giantEnding.kind === "peace" && giantEnding.parts)
+        const giantParts = (giantEnding && giantEnding.fish === this && giantEnding.parts)
             ? giantEnding.parts : null;
-        const withPeacePart = (key, drawFn) => {
-            if (!peaceParts || !peaceParts[key]) {
+        const withGiantPart = (key, drawFn) => {
+            if (!giantParts || !giantParts[key]) {
                 drawFn();
                 return;
             }
-            const p = peaceParts[key];
+            const p = giantParts[key];
             ctx.save();
             ctx.translate(p.x || 0, p.y || 0);
             ctx.rotate(p.a || 0);
+            ctx.globalAlpha *= p.alpha != null ? p.alpha : 1;
             drawFn();
             ctx.restore();
         };
+        // Alias kept for the body-part draw sites below.
+        const withPeacePart = withGiantPart;
         ctx.globalAlpha = (this.golden
             ? (0.42 + 0.38 * (1 - sink))
             : this.isPlatinum ? 0.98 * ghost
@@ -6884,9 +6945,17 @@ class Fish {
         } else if (this.isHero) {
             const giantGlow = giantEnding && giantEnding.fish === this && giantEnding.kind === "peace";
             const remorseGlow = heroRemorseEnding && heroRemorseEnding.fish === this;
-            ctx.shadowColor = (giantGlow || remorseGlow)
-                ? "rgba(160,220,255,0.95)" : "rgba(70,160,220,0.8)";
-            ctx.shadowBlur = (giantGlow || remorseGlow) ? 26 : 14;
+            if (giantGlow) {
+                // Warm ember glow for giant farewell (distinct from blue hero remorse).
+                ctx.shadowColor = "rgba(255,170,70,0.92)";
+                ctx.shadowBlur = 24;
+            } else if (remorseGlow) {
+                ctx.shadowColor = "rgba(160,220,255,0.95)";
+                ctx.shadowBlur = 26;
+            } else {
+                ctx.shadowColor = "rgba(70,160,220,0.8)";
+                ctx.shadowBlur = 14;
+            }
         } else if (isKoi) {
             ctx.shadowColor = "rgba(40,70,90,0.45)";
             ctx.shadowBlur = 10;
@@ -7492,9 +7561,9 @@ let octopus = null; // night-mode tentacle hunter
 let octopusWhaleFight = null; // { t, phase: "wrap"|"eat"|"ship", shipY, shipAlpha }
 let pirateShipDrop = null; // leftover alias during ship phase
 let povAttack = null; // { fish, t }
-let giantEnding = null; // { fish, t, kind: "peace" | "shadow" }
+let giantEnding = null; // { fish, t, kind: "peace" | "shadow", parts, debris, veil }
 let heroRemorseEnding = null; // { fish, t, burst }
-let orcaFeastEnding = null; // { fish, t } night: a fish ate the orca
+let orcaFeastEnding = null; // night coronation after eating the orca
 let swordfishSpearEnding = null; // { sf, t, approach, fade, liveAlpha } POV tip thrust finale
 let whaleRemorseDone = false; // one-shot: remorse finale already fired this session
 let apexDuel = null; // croc/alligator vs shark when the pond is emptied
@@ -10488,91 +10557,341 @@ function beginPovAttack(fish) {
 
 function beginOrcaFeastEnding(fish) {
     if (pondFinaleActive() || !fish || fish.dead) return;
-    orcaFeastEnding = { fish, t: 0, startSize: fish.size };
+    const ghostSize = CONFIG.orcaSize * 0.92;
+    orcaFeastEnding = {
+        fish,
+        t: 0,
+        startSize: fish.size,
+        moon: 0,
+        aurora: 0,
+        fade: 0,
+        ghost: {
+            x: fish.x + 120,
+            y: viewH + ghostSize * 0.6,
+            dir: -0.55,
+            alpha: 0,
+            size: ghostSize,
+        },
+        rings: [],
+        motes: [],
+        marked: 0,
+    };
     fish.petTimer = 0;
     fish.target = null;
     fish.prey = null;
     Audio.sharkStrike(0);
     Audio.goldChime(0);
+    Audio.whalePurr(0);
     water.disturb(fish.x, fish.y, fish.size * 0.8, 500);
     spawnSplash(fish.x, fish.y, 28, 0.9);
 }
 
+function pushOrcaFeastRing(e, x, y, maxR) {
+    e.rings.push({ x, y, r: 4, maxR: maxR || 80, life: 0, alpha: 0.7 });
+}
+
+function pushOrcaFeastMotes(e, x, y, n, outward) {
+    for (let i = 0; i < n; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const spd = outward ? (30 + Math.random() * 90) : (8 + Math.random() * 28);
+        e.motes.push({
+            x: x + (Math.random() - 0.5) * 20,
+            y: y + (Math.random() - 0.5) * 12,
+            vx: Math.cos(a) * spd,
+            vy: Math.sin(a) * spd - (outward ? 20 : 8),
+            life: 1.1 + Math.random() * 1.4,
+            age: 0,
+            r: 1.5 + Math.random() * 3.5,
+        });
+    }
+}
+
 function updateOrcaFeastEnding(dt) {
     if (!orcaFeastEnding) return;
-    orcaFeastEnding.t += dt;
-    const f = orcaFeastEnding.fish;
-    const t = orcaFeastEnding.t;
+    const e = orcaFeastEnding;
+    e.t += dt;
+    const t = e.t;
+    const f = e.fish;
+    const g = e.ghost;
+    const ease = (rate) => 1 - Math.exp(-rate * dt);
+    const cx = viewW * 0.5;
+    const surfaceY = viewH * 0.34;
+
+    // Moon and aurora ease in for the night coronation beat.
+    const moonWant = t < 4.5 ? Math.min(1, t / 1.6) : Math.max(0.2, 1 - (t - 4.5) * 0.5);
+    e.moon += (moonWant - e.moon) * ease(2.4);
+    const aurWant = t > 1.1 && t < 4.8 ? Math.min(1, (t - 1.1) / 1.2) : 0;
+    e.aurora += (aurWant - e.aurora) * ease(2.0);
+
     if (f && !f.dead) {
-        f.x += (viewW * 0.5 - f.x) * Math.min(1, dt * 1.6);
-        // Breach upward through the surface.
-        const leap = t < 1.8 ? t * 18 : 1.8 * 18 - (t - 1.8) * 10;
-        f.y += (viewH * 0.42 - leap - f.y) * Math.min(1, dt * 2.2);
-        const grow = orcaFeastEnding.startSize * (1 + Math.min(1.4, t * 0.55));
-        f.size = Math.min(Math.min(viewW, viewH) * 0.55, grow);
-        f.dir += dt * 1.4;
-        if (t > 0.4 && t < 2.2 && Math.random() < 0.35) {
-            water.disturb(f.x, f.y, f.size * 0.4, 80);
+        // Rise to the moonlit lane, then a shared breach with the orca spirit.
+        let tx = cx;
+        let ty = surfaceY;
+        let maxSpd = 70;
+        if (t < 1.5) {
+            tx = cx - 36;
+            ty = viewH * 0.5;
+            maxSpd = 64;
+        } else if (t < 2.8) {
+            tx = cx - 28;
+            ty = surfaceY + 18;
+            maxSpd = 52;
+        } else if (t < 4.0) {
+            const leapU = clamp01((t - 2.8) / 1.2);
+            tx = cx + Math.sin(leapU * Math.PI) * 40;
+            ty = surfaceY - 20 - leapU * 70 + Math.sin(leapU * Math.PI) * 18;
+            maxSpd = 95;
+        } else {
+            tx = cx;
+            ty = surfaceY + 40;
+            maxSpd = 40;
+        }
+        easeToward(f, tx, ty, dt, maxSpd, 1.1);
+        const growGoal = e.startSize * (1 + Math.min(0.85, t * 0.28));
+        f.size += (Math.min(Math.min(viewW, viewH) * 0.42, growGoal) - f.size) * ease(1.8);
+        f.dir += normAngle((-0.2) - f.dir) * Math.min(1, dt * 1.6);
+        f.tailPhase += dt * (4.5 + (t > 2.8 ? 3 : 0));
+        // Orca saddle mark slowly paints onto the victor.
+        const markWant = t < 1.8 ? 0 : Math.min(1, (t - 1.8) / 1.6);
+        e.marked += (markWant - e.marked) * ease(2.2);
+        if (t > 0.5 && t < 4.2 && Math.random() < 0.22) {
+            water.disturb(f.x, f.y, f.size * 0.35, 70);
         }
     }
-    if (t >= 3.5) resetPond();
+
+    // Orca spirit eases up beside the victor, breaches, then dissolves into motes.
+    if (g) {
+        let gtx = cx + 70;
+        let gty = viewH * 0.55;
+        let gSpd = 55;
+        let aWant = 0;
+        if (t < 1.2) {
+            gty = viewH + g.size * 0.4;
+            aWant = 0;
+        } else if (t < 2.8) {
+            gtx = cx + 64;
+            gty = surfaceY + 28;
+            aWant = 0.72;
+            gSpd = 48;
+        } else if (t < 4.0) {
+            const leapU = clamp01((t - 2.8) / 1.2);
+            gtx = cx + 50 - leapU * 30;
+            gty = surfaceY - 10 - leapU * 85;
+            aWant = 0.85;
+            gSpd = 90;
+        } else {
+            gtx = cx + 20;
+            gty = surfaceY + 10;
+            aWant = Math.max(0, 0.85 - (t - 4.0) * 1.1);
+            gSpd = 28;
+        }
+        easeToward(g, gtx, gty, dt, gSpd, 0.85);
+        g.alpha += (aWant - g.alpha) * ease(2.6);
+        g.dir += normAngle((-0.35 + Math.sin(t * 1.4) * 0.15) - g.dir) * Math.min(1, dt * 1.4);
+    }
+
+    // Breach rings and spirit motes.
+    if (t > 2.85 && t < 4.1 && Math.random() < 0.35) {
+        const sx = f ? f.x : cx;
+        const sy = f ? f.y : surfaceY;
+        pushOrcaFeastRing(e, sx, sy + 8, 50 + Math.random() * 70);
+        if (g && g.alpha > 0.2) pushOrcaFeastRing(e, g.x, g.y + 10, 60 + Math.random() * 80);
+    }
+    if (t > 4.0 && t < 5.2 && Math.random() < 0.55 && g) {
+        pushOrcaFeastMotes(e, g.x, g.y, 3, true);
+    }
+    if (t > 3.0 && t < 3.3 && e.rings.length < 2) {
+        pushOrcaFeastRing(e, cx, surfaceY, Math.min(viewW, viewH) * 0.35);
+        if (f) spawnSplash(f.x, f.y, 22, 0.85);
+        Audio.sharkStrike(0);
+    }
+
+    for (const r of e.rings) {
+        r.life += dt;
+        r.r += (r.maxR - r.r) * (1 - Math.exp(-2.4 * dt));
+        r.alpha = Math.max(0, 0.65 * (1 - r.life / 1.35));
+    }
+    e.rings = e.rings.filter((r) => r.alpha > 0.02);
+    for (const m of e.motes) {
+        m.age += dt;
+        m.x += m.vx * dt;
+        m.y += m.vy * dt;
+        m.vy += 18 * dt;
+        m.vx *= Math.exp(-0.6 * dt);
+    }
+    e.motes = e.motes.filter((m) => m.age < m.life);
+
+    const fadeWant = t > 5.0 ? Math.min(1, (t - 5.0) / 0.95) : 0;
+    e.fade += (fadeWant - e.fade) * ease(3.2);
+    if (t >= 6.1) resetPond();
+}
+
+function drawOrcaSpirit(ctx, g) {
+    if (!g || g.alpha < 0.02) return;
+    ctx.save();
+    ctx.translate(g.x, g.y);
+    ctx.rotate(g.dir);
+    ctx.globalAlpha = g.alpha;
+    const L = g.size;
+    const W = g.size * 0.34;
+    ctx.shadowColor = "rgba(180,210,255,0.55)";
+    ctx.shadowBlur = 22;
+    const body = ctx.createLinearGradient(0, -W, 0, W);
+    body.addColorStop(0, "#121820");
+    body.addColorStop(0.55, "#060a10");
+    body.addColorStop(1, "#eef2f6");
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, L * 0.52, W, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#f2f5f8";
+    ctx.beginPath();
+    ctx.ellipse(L * 0.12, W * 0.15, L * 0.22, W * 0.42, 0.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(-L * 0.05, -W * 0.55, L * 0.08, W * 0.55, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+    // Eye patch.
+    ctx.fillStyle = "#f6f8fb";
+    ctx.beginPath();
+    ctx.ellipse(L * 0.22, -W * 0.25, L * 0.1, W * 0.22, -0.25, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#0a0e14";
+    ctx.beginPath();
+    ctx.arc(L * 0.24, -W * 0.22, Math.max(2, L * 0.03), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
 }
 
 function drawOrcaFeastEnding(ctx) {
     if (!orcaFeastEnding) return;
-    const t = orcaFeastEnding.t;
-    const f = orcaFeastEnding.fish;
-    const fade = t > 2.6 ? Math.min(1, (t - 2.6) / 0.9) : 0;
+    const e = orcaFeastEnding;
+    const t = e.t;
+    const f = e.fish;
+    const cx = viewW * 0.5;
+    const moonY = viewH * 0.16;
 
-    // Cool night wash instead of the red POV choke.
     ctx.save();
-    ctx.fillStyle = `rgba(4, 10, 22, ${0.12 + Math.min(0.5, t * 0.18)})`;
+    // Deep night crown, not the red choke and not the soft hero white.
+    const depth = ctx.createLinearGradient(0, 0, 0, viewH);
+    depth.addColorStop(0, `rgba(2, 8, 22, ${0.2 + e.moon * 0.45})`);
+    depth.addColorStop(0.45, `rgba(4, 14, 32, ${0.14 + e.moon * 0.28})`);
+    depth.addColorStop(1, `rgba(1, 4, 12, ${0.22 + e.moon * 0.35})`);
+    ctx.fillStyle = depth;
     ctx.fillRect(0, 0, viewW, viewH);
 
-    if (f && !f.dead && t < 2.8) {
+    if (e.aurora > 0.02) {
+        for (let i = 0; i < 4; i++) {
+            const y = viewH * (0.12 + i * 0.08);
+            const band = ctx.createLinearGradient(0, y - 18, 0, y + 28);
+            const hue = 170 + i * 28;
+            band.addColorStop(0, `hsla(${hue},70%,60%,0)`);
+            band.addColorStop(0.5, `hsla(${hue},75%,62%,${0.08 * e.aurora})`);
+            band.addColorStop(1, `hsla(${hue},70%,55%,0)`);
+            ctx.fillStyle = band;
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            for (let x = 0; x <= viewW; x += 24) {
+                const wave = Math.sin(x * 0.01 + t * 1.3 + i) * 10;
+                ctx.lineTo(x, y + wave);
+            }
+            ctx.lineTo(viewW, y + 40);
+            ctx.lineTo(0, y + 40);
+            ctx.closePath();
+            ctx.fill();
+        }
+    }
+
+    if (e.moon > 0.02) {
+        const mr = Math.min(viewW, viewH) * (0.07 + e.moon * 0.02);
+        const mg = ctx.createRadialGradient(cx, moonY, mr * 0.2, cx, moonY, mr * 2.4);
+        mg.addColorStop(0, `rgba(230,240,255,${0.55 * e.moon})`);
+        mg.addColorStop(0.35, `rgba(160,190,230,${0.22 * e.moon})`);
+        mg.addColorStop(1, "rgba(80,120,180,0)");
+        ctx.fillStyle = mg;
+        ctx.beginPath();
+        ctx.arc(cx, moonY, mr * 2.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = `rgba(236,242,255,${0.85 * e.moon})`;
+        ctx.beginPath();
+        ctx.arc(cx, moonY, mr, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    for (const r of e.rings) {
+        ctx.strokeStyle = `rgba(190,220,255,${r.alpha})`;
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.ellipse(r.x, r.y, r.r, r.r * 0.28, 0, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+
+    drawOrcaSpirit(ctx, e.ghost);
+
+    if (f && !f.dead && t < 5.4) {
+        // Draw the victor above the night wash; saddle mark eases over their body.
         ctx.save();
         ctx.translate(f.x, f.y);
         ctx.rotate(f.dir);
         const L = f.size;
-        const W = f.size * 0.38;
-        // Brief orca-marking wash on the victor.
-        const g = ctx.createLinearGradient(0, -W, 0, W);
-        g.addColorStop(0, "#1a2230");
-        g.addColorStop(0.5, "#0a0e16");
-        g.addColorStop(1, "#f0f2f6");
-        ctx.globalAlpha = 0.9;
-        ctx.fillStyle = g;
+        const W = f.size * 0.36;
+        const bodyCol = (f.type && f.type.body) || "#6a8a9a";
+        const bellyCol = (f.type && f.type.belly) || "#d0dce6";
+        ctx.globalAlpha = 0.92;
+        const own = ctx.createLinearGradient(0, -W, 0, W);
+        own.addColorStop(0, bodyCol);
+        own.addColorStop(1, bellyCol);
+        ctx.fillStyle = own;
         ctx.beginPath();
-        ctx.ellipse(0, 0, L * 0.5, W, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, 0, L * 0.48, W, 0, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = "#f4f6fa";
-        ctx.beginPath();
-        ctx.ellipse(L * 0.18, -W * 0.2, L * 0.12, W * 0.24, -0.2, 0, Math.PI * 2);
-        ctx.fill();
+        if (e.marked > 0.02) {
+            ctx.globalAlpha = 0.25 + e.marked * 0.7;
+            const g = ctx.createLinearGradient(0, -W, 0, W);
+            g.addColorStop(0, "#1a2230");
+            g.addColorStop(0.5, "#0a0e16");
+            g.addColorStop(1, "#f0f2f6");
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, L * 0.48, W, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#f4f6fa";
+            ctx.beginPath();
+            ctx.ellipse(L * 0.16, -W * 0.18, L * 0.11, W * 0.22, -0.2, 0, Math.PI * 2);
+            ctx.fill();
+        }
         ctx.restore();
 
-        // Breach spray.
-        if (t > 0.8 && t < 2.4) {
-            const spray = (t - 0.8) / 1.6;
-            ctx.globalAlpha = 0.45 * (1 - spray);
-            ctx.fillStyle = "rgba(200,220,255,0.7)";
-            for (let i = 0; i < 10; i++) {
-                const a = i / 10 * Math.PI - Math.PI * 0.5;
-                const r = f.size * (0.6 + spray * 1.4);
+        if (t > 2.7 && t < 4.2) {
+            const spray = clamp01((t - 2.7) / 1.5);
+            ctx.globalAlpha = 0.5 * (1 - spray * 0.7);
+            ctx.fillStyle = "rgba(200,220,255,0.75)";
+            for (let i = 0; i < 14; i++) {
+                const a = -Math.PI * 0.15 + (i / 14) * Math.PI * 1.3;
+                const rr = f.size * (0.5 + spray * 1.5);
                 ctx.beginPath();
                 ctx.arc(
-                    f.x + Math.cos(a) * r * 0.7,
-                    f.y - spray * 40 + Math.sin(a) * r * 0.35,
-                    3 + spray * 5, 0, Math.PI * 2
+                    f.x + Math.cos(a) * rr * 0.75,
+                    f.y - spray * 55 + Math.sin(a) * rr * 0.28,
+                    2.5 + spray * 5, 0, Math.PI * 2
                 );
                 ctx.fill();
             }
+            ctx.globalAlpha = 1;
         }
     }
 
-    if (fade > 0) {
+    for (const m of e.motes) {
+        const a = 1 - m.age / m.life;
+        ctx.fillStyle = `rgba(190,220,255,${0.75 * a})`;
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, m.r * a, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    if (e.fade > 0.01) {
         ctx.globalAlpha = 1;
-        ctx.fillStyle = `rgba(2, 6, 14, ${fade})`;
+        ctx.fillStyle = `rgba(1, 4, 12, ${e.fade})`;
         ctx.fillRect(0, 0, viewW, viewH);
     }
     ctx.restore();
@@ -10686,46 +11005,69 @@ function drawSwordfishSpearEnding(ctx) {
     ctx.fillStyle = `rgba(6, 8, 14, ${e.fade})`;
     ctx.fillRect(0, 0, viewW, viewH);
 
-    // POV: bill tip aimed at the viewer, growing larger toward the camera.
+    // POV: one blue head mass wraps eyes + bill root; silver tip grows out of it.
     if (approach > 0.01) {
         ctx.save();
         ctx.translate(cx, cy);
         const alpha = Math.min(1, 0.2 + approach * 0.9);
         ctx.globalAlpha = alpha;
 
-        // Tip size first so eyes stay parked above the growing point.
         const tipSize = 5 + approach * base * 0.3 + pierce * base * 0.08;
+        const headRx = tipSize * 1.15;
+        const headRy = tipSize * 1.35;
+        // Head centered slightly behind the tip so blue fully surrounds eyes and bill base.
+        const headY = -tipSize * 0.18;
 
-        // Foreshortened shaft rings sit behind the tip.
-        for (let i = 4; i >= 1; i--) {
-            const u = i / 4;
-            const r = (4 + tipSize * 0.55) * (0.4 + u * 1.1);
-            const yOff = -tipSize * 0.12 * (1 - u);
-            const g = ctx.createRadialGradient(0, yOff, r * 0.12, 0, yOff, r);
-            g.addColorStop(0, `rgba(210,220,230,${0.5 - u * 0.18})`);
-            g.addColorStop(0.55, `rgba(90,110,128,${0.4 - u * 0.1})`);
-            g.addColorStop(1, `rgba(30,40,52,${0.3 - u * 0.08})`);
+        // Soft depth rings (same blue family) behind the head mass.
+        for (let i = 3; i >= 1; i--) {
+            const u = i / 3;
+            const rx = headRx * (1.05 + u * 0.55);
+            const ry = headRy * (1.05 + u * 0.45);
+            const yOff = headY - tipSize * 0.08 * (1 - u);
+            const g = ctx.createRadialGradient(0, yOff, tipSize * 0.15, 0, yOff, Math.max(rx, ry));
+            g.addColorStop(0, `rgba(70,95,115,${0.28 - u * 0.06})`);
+            g.addColorStop(0.55, `rgba(40,60,78,${0.32 - u * 0.08})`);
+            g.addColorStop(1, `rgba(18,28,38,${0.22 - u * 0.06})`);
             ctx.fillStyle = g;
             ctx.beginPath();
-            ctx.ellipse(0, yOff, r * 0.7, r * 0.5, 0, 0, Math.PI * 2);
+            ctx.ellipse(0, yOff, rx, ry, 0, 0, Math.PI * 2);
             ctx.fill();
         }
 
-        // Head + eyes above the tip, staring at the viewer.
-        const headR = 8 + tipSize * 0.42;
-        const headY = -(tipSize * 0.72 + headR * 0.55);
-        const headG = ctx.createRadialGradient(0, headY, headR * 0.2, 0, headY, headR);
-        headG.addColorStop(0, "#6a8296");
-        headG.addColorStop(0.55, "#3a5164");
-        headG.addColorStop(1, "#1a2834");
+        // Continuous blue head/snout: encompasses eyes and the root of the spear.
+        const headG = ctx.createRadialGradient(0, headY - tipSize * 0.15, tipSize * 0.12, 0, headY, Math.max(headRx, headRy));
+        headG.addColorStop(0, "#6e879c");
+        headG.addColorStop(0.4, "#3f586c");
+        headG.addColorStop(0.78, "#243746");
+        headG.addColorStop(1, "#121c26");
         ctx.fillStyle = headG;
         ctx.beginPath();
-        ctx.ellipse(0, headY, headR * 1.1, headR * 0.8, 0, 0, Math.PI * 2);
+        // Elongated snout blob: wide at eyes, tapering into the bill.
+        ctx.moveTo(-headRx * 0.95, headY - headRy * 0.55);
+        ctx.bezierCurveTo(
+            -headRx * 1.15, headY - headRy * 0.1,
+            -headRx * 0.85, headY + headRy * 0.35,
+            -tipSize * 0.42, tipSize * 0.2
+        );
+        ctx.lineTo(0, tipSize * 0.55);
+        ctx.lineTo(tipSize * 0.42, tipSize * 0.2);
+        ctx.bezierCurveTo(
+            headRx * 0.85, headY + headRy * 0.35,
+            headRx * 1.15, headY - headRy * 0.1,
+            headRx * 0.95, headY - headRy * 0.55
+        );
+        ctx.bezierCurveTo(
+            headRx * 0.55, headY - headRy * 1.05,
+            -headRx * 0.55, headY - headRy * 1.05,
+            -headRx * 0.95, headY - headRy * 0.55
+        );
+        ctx.closePath();
         ctx.fill();
 
-        const eyeSpread = headR * 0.42;
-        const eyeY = headY - headR * 0.08;
-        const eyeR = 2.8 + tipSize * 0.08;
+        // Eyes sit inside the blue mass, above the tip.
+        const eyeSpread = tipSize * 0.48;
+        const eyeY = headY - tipSize * 0.55;
+        const eyeR = 2.8 + tipSize * 0.1;
         ctx.fillStyle = "rgba(245,248,252,0.96)";
         ctx.shadowColor = "rgba(180,210,240,0.55)";
         ctx.shadowBlur = 6 + approach * 10;
@@ -10740,26 +11082,35 @@ function drawSwordfishSpearEnding(ctx) {
         ctx.ellipse(eyeSpread + eyeR * 0.12, eyeY, eyeR * 0.45, eyeR * 0.55, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        // Center tip: a point on screen that grows toward the camera.
-        const tipFill = ctx.createRadialGradient(0, 0, tipSize * 0.04, 0, 0, tipSize);
+        // Silver tip grows out of the blue snout (connected, not floating).
+        const tipFill = ctx.createRadialGradient(0, tipSize * 0.05, tipSize * 0.04, 0, 0, tipSize);
         tipFill.addColorStop(0, "#ffffff");
         tipFill.addColorStop(0.35, "#e8eef4");
-        tipFill.addColorStop(0.75, "#9aacbc");
-        tipFill.addColorStop(1, "#5a6c7c");
+        tipFill.addColorStop(0.72, "#9aacbc");
+        tipFill.addColorStop(1, "#4a6070");
         ctx.fillStyle = tipFill;
         ctx.beginPath();
-        ctx.moveTo(0, -tipSize * 0.55);
-        ctx.lineTo(tipSize * 0.4, 0);
-        ctx.lineTo(0, tipSize * 0.5);
-        ctx.lineTo(-tipSize * 0.4, 0);
+        ctx.moveTo(-tipSize * 0.28, tipSize * 0.08);
+        ctx.lineTo(0, -tipSize * 0.55);
+        ctx.lineTo(tipSize * 0.28, tipSize * 0.08);
+        ctx.lineTo(0, tipSize * 0.62);
         ctx.closePath();
+        ctx.fill();
+        // Soft blue collar at the tip root so silver reads as emerging from the head.
+        const collar = ctx.createRadialGradient(0, tipSize * 0.12, tipSize * 0.02, 0, tipSize * 0.12, tipSize * 0.38);
+        collar.addColorStop(0, "rgba(55,75,92,0)");
+        collar.addColorStop(0.45, "rgba(45,65,82,0.35)");
+        collar.addColorStop(1, "rgba(30,45,58,0.55)");
+        ctx.fillStyle = collar;
+        ctx.beginPath();
+        ctx.ellipse(0, tipSize * 0.14, tipSize * 0.36, tipSize * 0.22, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = `rgba(255,255,255,${0.4 + approach * 0.45})`;
         ctx.beginPath();
         ctx.moveTo(0, -tipSize * 0.12);
-        ctx.lineTo(tipSize * 0.14, 0);
-        ctx.lineTo(0, tipSize * 0.18);
-        ctx.lineTo(-tipSize * 0.14, 0);
+        ctx.lineTo(tipSize * 0.12, tipSize * 0.05);
+        ctx.lineTo(0, tipSize * 0.22);
+        ctx.lineTo(-tipSize * 0.12, tipSize * 0.05);
         ctx.closePath();
         ctx.fill();
 
@@ -10784,6 +11135,81 @@ function drawSwordfishSpearEnding(ctx) {
     ctx.restore();
 }
 
+function createGiantBodyParts(size) {
+    const s = Math.max(48, size);
+    const mk = (gx, gy, ga, spin) => ({
+        x: 0, y: 0, a: 0, alpha: 1,
+        gx, gy, ga, spin: spin || 0,
+    });
+    return {
+        head: mk(s * 0.78, -s * 0.06, 0.7, 1.35),
+        body: mk(-s * 0.04, s * 0.14, -0.28, -0.55),
+        dorsal: mk(s * 0.12, -s * 0.92, -1.05, -1.8),
+        pectoral: mk(s * 0.18, s * 0.82, 1.15, 1.9),
+        tail: mk(-s * 1.12, s * 0.24, -1.35, -1.25),
+    };
+}
+
+function spawnGiantDebris(ending, f, n) {
+    if (!ending.debris) ending.debris = [];
+    const body = (f.type && f.type.body) || "#6a8a9a";
+    const belly = (f.type && f.type.belly) || "#c8d8e0";
+    for (let i = 0; i < n; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 35 + Math.random() * 140;
+        ending.debris.push({
+            x: f.x + (Math.random() - 0.5) * f.size * 0.55,
+            y: f.y + (Math.random() - 0.5) * f.size * 0.3,
+            vx: Math.cos(ang) * spd,
+            vy: Math.sin(ang) * spd - 20,
+            r: 2 + Math.random() * Math.max(3, f.size * 0.045),
+            life: 1.1 + Math.random() * 1.8,
+            age: 0,
+            color: Math.random() < 0.4 ? belly : body,
+            rot: Math.random() * Math.PI * 2,
+            spin: (Math.random() - 0.5) * 7,
+        });
+    }
+}
+
+function updateGiantBodyParts(ending, dt, split) {
+    if (!ending.parts || split <= 0) return;
+    const ease = 1 - Math.exp(-(1.3 + split * 2.4) * dt);
+    const maxStep = (70 + split * 180) * dt;
+    for (const key of Object.keys(ending.parts)) {
+        const p = ending.parts[key];
+        const tx = p.gx * split;
+        const ty = p.gy * split;
+        let dx = (tx - p.x) * ease;
+        let dy = (ty - p.y) * ease;
+        const dist = Math.hypot(dx, dy) || 1;
+        if (dist > maxStep) {
+            dx *= maxStep / dist;
+            dy *= maxStep / dist;
+        }
+        p.x += dx;
+        p.y += dy;
+        p.a += (p.ga * split - p.a) * ease;
+        p.a += p.spin * split * dt * 0.85;
+        // Pieces stay solid while separating, then ease out near the end.
+        const fade = split > 0.72 ? 1 - (split - 0.72) / 0.28 : 1;
+        p.alpha = Math.max(0, fade);
+    }
+}
+
+function updateGiantDebris(ending, dt) {
+    if (!ending.debris || !ending.debris.length) return;
+    for (const d of ending.debris) {
+        d.age += dt;
+        d.x += d.vx * dt;
+        d.y += d.vy * dt;
+        d.vy += 55 * dt;
+        d.vx *= Math.exp(-0.7 * dt);
+        d.rot += d.spin * dt;
+    }
+    ending.debris = ending.debris.filter((d) => d.age < d.life);
+}
+
 function beginGiantEnding(fish) {
     if (pondFinaleActive() || !fish || fish.dead || fish.giantEnded) return;
     fish.giantEnded = true;
@@ -10792,31 +11218,39 @@ function beginGiantEnding(fish) {
     fish.petTimer = 0;
     const peaceful = (fish.isHero || fish.redeemed) && !fish.isMonster && !fish.isPredator;
     const kind = peaceful ? "peace" : "shadow";
-    giantEnding = { fish, t: 0, kind };
+    giantEnding = {
+        fish,
+        t: 0,
+        kind,
+        parts: createGiantBodyParts(fish.size),
+        debris: [],
+        veil: 0,
+        cracked: false,
+    };
     const pan = Math.max(-1, Math.min(1, (fish.x / viewW) * 2 - 1));
     water.disturb(fish.x, fish.y, fish.size * 0.9, 360);
     spawnSplash(fish.x, fish.y, fish.size * 0.4, 0.55);
     if (kind === "peace") {
-        fish.petTimer = 4;
+        fish.petTimer = 2.2;
         Audio.goldChime(pan);
         Audio.fishNote({
-            freq: (fish.type.petFreq || 320) * 1.05,
-            wave: "sine",
-            pan,
-            dur: 0.7,
-            level: 0.11,
-            partialAmt: 0.3,
-            partialRatio: 2.4,
-            bright: 1.25,
-        });
-        Audio.fishNote({
-            freq: (fish.type.petFreq || 320) * 1.55,
+            freq: (fish.type.petFreq || 320) * 0.82,
             wave: "triangle",
             pan,
-            dur: 0.55,
-            level: 0.08,
-            partialAmt: 0.22,
-            bright: 1.35,
+            dur: 0.85,
+            level: 0.12,
+            partialAmt: 0.28,
+            partialRatio: 1.8,
+            bright: 0.95,
+        });
+        Audio.fishNote({
+            freq: (fish.type.petFreq || 320) * 1.2,
+            wave: "sine",
+            pan,
+            dur: 0.6,
+            level: 0.07,
+            partialAmt: 0.18,
+            bright: 1.05,
         });
     } else {
         Audio.predatorEat(pan);
@@ -11154,148 +11588,179 @@ function drawHeroRemorseEnding(ctx) {
 
 function updateGiantEnding(dt) {
     if (!giantEnding) return;
-    giantEnding.t += dt;
-    const f = giantEnding.fish;
-    const t = giantEnding.t;
+    const e = giantEnding;
+    e.t += dt;
+    const f = e.fish;
+    const t = e.t;
     const ease = (rate) => 1 - Math.exp(-rate * dt);
+    const cx = viewW * 0.5;
+    const cy = viewH * 0.5;
+
     if (f && !f.dead) {
-        const cx = viewW * 0.5;
-        const cy = viewH * 0.5;
-        if (giantEnding.kind === "peace") {
-            // Stay near center: ease, never teleport or fly off-screen.
-            easeToward(f, cx, cy - 8, dt, 46, 0.85);
-            f.dir += dt * 0.35;
-            f.tailPhase += dt * (3.2 + Math.min(4, t * 0.8));
-            f.petTimer = Math.max(f.petTimer, 1.2);
+        if (e.kind === "peace") {
+            // Gather, then physically come apart (no soft light dissolve, no white wash).
+            easeToward(f, cx, cy - 6, dt, 42, 0.8);
+            // Mild thrash while the body stresses, then slow as pieces leave.
+            const split = clamp01((t - 1.15) / 2.6);
+            f.dir += dt * (0.25 + (split > 0 && split < 0.55 ? Math.sin(t * 14) * 0.35 : 0));
+            f.tailPhase += dt * (3.4 + split * 5);
+            if (t < 1.4) f.petTimer = Math.max(f.petTimer, 0.8);
 
-            // Parts drift apart after a short gather beat.
-            const dissolve = clamp01((t - 1.35) / 2.8);
-            if (giantEnding.parts && dissolve > 0) {
-                const k = ease(1.1 + dissolve * 1.4);
-                for (const key of Object.keys(giantEnding.parts)) {
-                    const p = giantEnding.parts[key];
-                    p.x += (p.gx * dissolve - p.x) * k;
-                    p.y += (p.gy * dissolve - p.y) * k;
-                    p.a += (p.ga * dissolve - p.a) * k;
-                }
+            if (split > 0.08 && !e.cracked) {
+                e.cracked = true;
+                spawnGiantDebris(e, f, 18);
+                Audio.predatorEat(Math.max(-1, Math.min(1, (f.x / viewW) * 2 - 1)) * 0.4);
+                water.disturb(f.x, f.y, f.size * 0.7, 220);
             }
-            // Soft fade of the assembled body as light takes over.
-            f._giantFlyAlpha = 1 - dissolve * dissolve * 0.85;
-            if (Math.random() < 0.08 + dissolve * 0.1) {
-                water.disturb(f.x, f.y, f.size * (0.25 + dissolve * 0.2), 36);
+            if (split > 0.1 && Math.random() < 0.2 + split * 0.25) {
+                spawnGiantDebris(e, f, 1 + (Math.random() < 0.35 ? 1 : 0));
+            }
+            updateGiantBodyParts(e, dt, split);
+            // Keep the host drawable while parts are still on-screen; do not ghost into light.
+            f._giantFlyAlpha = split < 0.85 ? 1 : Math.max(0, 1 - (split - 0.85) / 0.15);
+            if (Math.random() < 0.1 + split * 0.15) {
+                water.disturb(f.x, f.y, f.size * (0.22 + split * 0.25), 40);
             }
 
-            // Brighten toward full white, then restock under the peak.
-            const whiteGoal = t < 1.2 ? t / 1.2 * 0.12
-                : t < 4.0 ? 0.12 + clamp01((t - 1.2) / 2.8) * 0.88
-                : 1;
-            giantEnding.white += (whiteGoal - (giantEnding.white || 0)) * ease(2.2);
+            // Amber dusk veil (not the hero white flash).
+            const veilWant = t < 1.0 ? t / 1.0 * 0.18
+                : t < 3.8 ? 0.18 + clamp01((t - 1.0) / 2.8) * 0.55
+                : 0.73;
+            e.veil += (veilWant - (e.veil || 0)) * ease(2.0);
 
-            if (t >= 4.05 && !giantEnding.restocked) {
-                giantEnding.restocked = true;
+            if (t >= 4.35 && !e.restocked) {
+                e.restocked = true;
                 f.dead = true;
                 f._giantFlyAlpha = 0;
                 const hx = f.x;
                 const hy = f.y;
                 resetPond({ keepGiantEnding: true, skipRepop: true });
-                // resetPond clears giantEnding unless keep is set; restore fade state.
                 if (!giantEnding) {
                     giantEnding = {
                         fish: f, t, kind: "peace",
-                        white: 1, restocked: true, parts: null,
+                        veil: 0.75, restocked: true, parts: null, debris: [],
                     };
                 } else {
-                    giantEnding.white = Math.max(giantEnding.white || 0, 0.98);
+                    giantEnding.veil = Math.max(giantEnding.veil || 0, 0.72);
                     giantEnding.parts = null;
                 }
                 spawnFriendlyHeroSchool(hx, hy);
             }
         } else {
-            f.x += (cx - f.x) * Math.min(1, dt * 1.6);
-            f.y += (cy - f.y) * Math.min(1, dt * 1.6);
-            f.dir += dt * 1.4;
-            f.tailPhase += dt * 8;
-            if (Math.random() < 0.18) {
-                water.disturb(f.x, f.y, f.size * 0.5, 90);
+            // Shadow giant: violent physical tear, then blackout.
+            easeToward(f, cx, cy, dt, 58, 1.2);
+            const split = clamp01((t - 0.7) / 1.9);
+            f.dir += dt * (1.1 + split * 2.2);
+            f.tailPhase += dt * (7 + split * 6);
+            if (split > 0.06 && !e.cracked) {
+                e.cracked = true;
+                spawnGiantDebris(e, f, 22);
+                Audio.sharkStrike(0);
+                water.disturb(f.x, f.y, f.size * 0.85, 280);
             }
+            if (split > 0.1 && Math.random() < 0.28) spawnGiantDebris(e, f, 2);
+            updateGiantBodyParts(e, dt, split);
+            f._giantFlyAlpha = split < 0.8 ? 1 : Math.max(0, 1 - (split - 0.8) / 0.2);
+            if (Math.random() < 0.2) water.disturb(f.x, f.y, f.size * 0.45, 90);
         }
-    } else if (giantEnding.kind === "peace" && giantEnding.restocked) {
-        // Fade white back into the restocked pond.
-        giantEnding.white = Math.max(0, (giantEnding.white || 0) - dt * 0.42);
-        if ((giantEnding.white || 0) <= 0.02 && t >= 5.6) {
+    } else if (e.kind === "peace" && e.restocked) {
+        e.veil = Math.max(0, (e.veil || 0) - dt * 0.38);
+        updateGiantDebris(e, dt);
+        if ((e.veil || 0) <= 0.02 && t >= 6.0) {
             giantEnding = null;
             return;
         }
     }
-    if (giantEnding.kind !== "peace" && t >= 3.5) {
+
+    updateGiantDebris(e, dt);
+
+    if (e.kind !== "peace" && t >= 3.9) {
         resetPond();
+    }
+}
+
+function drawGiantDebris(ctx, ending) {
+    if (!ending.debris || !ending.debris.length) return;
+    for (const d of ending.debris) {
+        const a = 1 - d.age / d.life;
+        ctx.save();
+        ctx.translate(d.x, d.y);
+        ctx.rotate(d.rot);
+        ctx.globalAlpha = Math.max(0, a * 0.9);
+        ctx.fillStyle = d.color;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, d.r, d.r * 0.55, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
     }
 }
 
 function drawGiantEnding(ctx) {
     if (!giantEnding) return;
-    const t = giantEnding.t;
-    const f = giantEnding.fish;
-    const kind = giantEnding.kind;
+    const e = giantEnding;
+    const t = e.t;
+    const f = e.fish;
+    const kind = e.kind;
 
     ctx.save();
     if (kind === "peace") {
-        const glow = Math.min(1, t / 1.4);
-        const white = Math.max(0, Math.min(1, giantEnding.white || 0));
-        if (!giantEnding.restocked) {
+        const glow = Math.min(1, t / 1.3);
+        const veil = Math.max(0, Math.min(1, e.veil || 0));
+        if (!e.restocked) {
+            // Warm ember dusk: deliberately unlike the cool blue hero remorse wash.
             const wash = ctx.createRadialGradient(
-                viewW * 0.5, viewH * 0.42, Math.min(viewW, viewH) * 0.06,
-                viewW * 0.5, viewH * 0.5, Math.max(viewW, viewH) * 0.78
+                viewW * 0.5, viewH * 0.45, Math.min(viewW, viewH) * 0.05,
+                viewW * 0.5, viewH * 0.5, Math.max(viewW, viewH) * 0.8
             );
-            wash.addColorStop(0, `rgba(220, 238, 255, ${0.1 + glow * 0.22})`);
-            wash.addColorStop(0.4, `rgba(180, 215, 240, ${0.06 + glow * 0.14})`);
-            wash.addColorStop(1, `rgba(40, 70, 100, ${0.04 + glow * 0.1})`);
+            wash.addColorStop(0, `rgba(255, 190, 110, ${0.08 + glow * 0.2})`);
+            wash.addColorStop(0.4, `rgba(120, 70, 40, ${0.1 + glow * 0.18})`);
+            wash.addColorStop(1, `rgba(18, 28, 36, ${0.16 + glow * 0.28})`);
             ctx.fillStyle = wash;
             ctx.fillRect(0, 0, viewW, viewH);
             if (f && !f.dead) {
-                const flyA = f._giantFlyAlpha != null ? f._giantFlyAlpha : 1;
                 ctx.save();
-                ctx.globalAlpha = (0.28 + glow * 0.4) * flyA;
-                ctx.shadowColor = "rgba(180, 230, 255, 0.9)";
-                ctx.shadowBlur = 28 + glow * 50;
+                ctx.globalAlpha = 0.22 + glow * 0.25;
+                ctx.shadowColor = "rgba(255,160,60,0.75)";
+                ctx.shadowBlur = 18 + glow * 28;
                 const trail = ctx.createRadialGradient(
-                    f.x, f.y, f.size * 0.08,
-                    f.x, f.y, f.size * (1.1 + white * 0.6)
+                    f.x, f.y, f.size * 0.1,
+                    f.x, f.y, f.size * 1.15
                 );
-                trail.addColorStop(0, "rgba(230, 245, 255, 0.55)");
-                trail.addColorStop(0.45, "rgba(170, 215, 245, 0.2)");
-                trail.addColorStop(1, "rgba(120, 180, 220, 0)");
+                trail.addColorStop(0, "rgba(255,200,120,0.4)");
+                trail.addColorStop(0.5, "rgba(160,90,40,0.16)");
+                trail.addColorStop(1, "rgba(40,30,20,0)");
                 ctx.fillStyle = trail;
                 ctx.beginPath();
-                ctx.ellipse(f.x, f.y, f.size * 0.95, f.size * 0.5, f.dir, 0, Math.PI * 2);
+                ctx.ellipse(f.x, f.y, f.size * 0.9, f.size * 0.48, f.dir, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.restore();
             }
         }
-        if (white > 0.01) {
-            ctx.fillStyle = `rgba(255, 255, 255, ${white})`;
+        drawGiantDebris(ctx, e);
+        if (veil > 0.01) {
+            // Deep amber pond veil instead of a white screen wipe.
+            ctx.fillStyle = `rgba(28, 18, 10, ${veil * 0.72})`;
+            ctx.fillRect(0, 0, viewW, viewH);
+            ctx.fillStyle = `rgba(255, 170, 80, ${veil * 0.18})`;
             ctx.fillRect(0, 0, viewW, viewH);
         }
     } else {
-        const zoom = Math.min(1, t / 2);
-        const choke = t > 2.4 ? Math.min(1, (t - 2.4) / 0.9) : 0;
-        ctx.fillStyle = `rgba(8, 4, 6, ${0.2 + zoom * 0.5})`;
+        const zoom = Math.min(1, t / 1.8);
+        const choke = t > 2.7 ? Math.min(1, (t - 2.7) / 1.0) : 0;
+        ctx.fillStyle = `rgba(10, 2, 4, ${0.22 + zoom * 0.5})`;
         ctx.fillRect(0, 0, viewW, viewH);
         if (f && !f.dead) {
-            const scale = 1 + zoom * 1.35;
             ctx.save();
-            ctx.translate(f.x, f.y);
-            ctx.scale(scale, scale);
-            ctx.translate(-f.x, -f.y);
-            ctx.globalAlpha = 0.55 + zoom * 0.35;
-            ctx.shadowColor = "rgba(120, 10, 30, 0.9)";
-            ctx.shadowBlur = 30 + zoom * 40;
-            ctx.fillStyle = "rgba(60, 8, 18, 0.55)";
+            ctx.globalAlpha = 0.4 + zoom * 0.35;
+            ctx.shadowColor = "rgba(140, 10, 30, 0.9)";
+            ctx.shadowBlur = 24 + zoom * 36;
+            ctx.fillStyle = "rgba(70, 8, 18, 0.5)";
             ctx.beginPath();
-            ctx.ellipse(f.x, f.y, f.size * 0.85, f.size * 0.45, f.dir, 0, Math.PI * 2);
+            ctx.ellipse(f.x, f.y, f.size * 0.8, f.size * 0.42, f.dir, 0, Math.PI * 2);
             ctx.fill();
             ctx.restore();
         }
+        drawGiantDebris(ctx, e);
         if (choke > 0) {
             ctx.fillStyle = `rgba(0, 0, 0, ${choke})`;
             ctx.fillRect(0, 0, viewW, viewH);
