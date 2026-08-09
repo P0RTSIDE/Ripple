@@ -119,14 +119,14 @@ Hats unlock separately in Looks for 5 gold and put little hats on fish.
 ## Endings and finales
 
 - **POV**: A monster eats the day shark. First-person choke attack, then pond reset.
-- **Giant**: A fish reaches about half the shorter screen side. Peaceful hero flyaway or shadow giant, then reset.
+- **Giant**: A fish reaches about half the shorter screen side. Peaceful heroes ease to center, gently come apart into light, wash to white, then fade back into a friendly hero school for the current day or night pond. Shadow giants keep the darker close, then reset.
 - **Orca feast**: A fish (monster, rainbow, large hero, or large enough platinum) eats the night orca. Cool breach celebration, then reset.
 - **Swordfish screen spear**: A grown wild swordfish spears the orca. Bill fills the view, then reset.
-- **Octopus-whale**: Wild octopus alone in an empty countable pond summons a whale fight spectacle.
+- **Octopus-whale**: Wild octopus alone in an empty countable pond summons a whale fight spectacle. The whale thrashes while wrapped, then a dark ship-pull beat plays before a soft fade back into a restocked pond.
 - **Remorse**: A large hero eats a whale that already swallowed someone. One-shot per session: surge, close eyes, burst into one of every fish type, with a friendly whale afterward.
 - **Rainbow exit**: A rainbow that finishes the day shark (not orca) writes a trail and leaves.
 - **Frog finale**: Giant hero frog bursts into tadpoles.
-- **Apex duel**: Special croc-versus-shark clash when conditions line up.
+- **Apex duel**: Day-only croc-versus-shark clash when wild reptiles clear the pond. Night never starts this fight; moonlight uses swordfish, octopus, and orca stories instead.
 
 ## What ignores what (quick rules)
 

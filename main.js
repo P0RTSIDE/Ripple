@@ -7413,11 +7413,14 @@ let reptileCheckTimer = 0;
 let exoticCheckTimer = 0;
 
 function pondFinaleActive() {
-    // Soft white-return after a peaceful giant ending is not a hard lockout:
-    // the restocked hero school should already be swimming under the fade.
-    if (giantEnding && giantEnding.kind === "peace" && giantEnding.restocked) {
+    // Soft return fades are not hard lockouts: life can swim under the curtain.
+    const giantReturn = giantEnding && giantEnding.kind === "peace" && giantEnding.restocked;
+    const octopusReturn = octopusWhaleFight && octopusWhaleFight.restocked;
+    if (giantReturn || octopusReturn) {
         return !!(povAttack || heroRemorseEnding || frogFinale
-            || octopusWhaleFight || orcaFeastEnding || swordfishSpearEnding);
+            || orcaFeastEnding || swordfishSpearEnding
+            || (giantEnding && !giantReturn)
+            || (octopusWhaleFight && !octopusReturn));
     }
     return !!(povAttack || giantEnding || heroRemorseEnding || frogFinale
         || octopusWhaleFight || orcaFeastEnding || swordfishSpearEnding);
@@ -9826,14 +9829,16 @@ function beginOctopusWhaleFight() {
     octopusWhaleFight = {
         t: 0,
         phase: "approach",
-        shipY: -180,
+        shipY: -220,
         shipAlpha: 0,
-        overlay: 0,
+        overlay: 0.1,
         fade: 0,
         octStartSize: octopus.size,
         whaleStartSize: whale.size,
         ateSound: false,
         shipSound: false,
+        restocked: false,
+        whaleStruggle: 0,
     };
     Audio.predatorEat(0);
     water.disturb(octopus.x, octopus.y, octopus.size * 0.6, 180);
@@ -9907,11 +9912,31 @@ function updateOctopusWhaleFight(dt) {
             }
         }
         if (whale && !whale.dead) {
-            easeToward(whale, cx + 8, cy - 2, dt, 16, 0.35);
-            whale.dir += dt * (0.35 + Math.min(0.4, fight.t * 0.08));
-            whale.tailPhase = (whale.tailPhase || 0) + dt * 1.8;
-            if (Math.random() < 0.12) {
-                water.disturb(whale.x, whale.y, whale.size * 0.25, 40);
+            // Struggle against the wrap: thrash, resist the center pull, splash hard.
+            fight.whaleStruggle = (fight.whaleStruggle || 0) + dt;
+            const s = fight.whaleStruggle;
+            const thrash = Math.sin(s * 7.2) * 22 + Math.sin(s * 3.1) * 10;
+            const resist = 0.55 + 0.45 * Math.abs(Math.sin(s * 2.4));
+            const pullX = cx + 8 + Math.cos(s * 2.8) * thrash * 0.55;
+            const pullY = cy - 2 + Math.sin(s * 3.6) * thrash * 0.4;
+            easeToward(whale, pullX, pullY, dt, 8 + resist * 20, 0.2);
+            // Occasional surge against the tentacles before being reeled back.
+            if (Math.sin(s * 1.7) > 0.92) {
+                whale.x += Math.cos(whale.dir) * 28 * dt;
+                whale.y += Math.sin(whale.dir) * 18 * dt;
+            }
+            whale.dir += dt * (0.9 + Math.sin(s * 5.5) * 1.6);
+            whale.tailPhase = (whale.tailPhase || 0) + dt * (5.5 + Math.abs(Math.sin(s * 6)) * 7);
+            if (Math.random() < 0.22) {
+                water.disturb(whale.x, whale.y, whale.size * 0.38, 70 + resist * 40);
+            }
+            if (Math.random() < 0.1) {
+                spawnSplash(
+                    whale.x + (Math.random() - 0.5) * whale.size * 0.4,
+                    whale.y + (Math.random() - 0.5) * whale.size * 0.25,
+                    10 + resist * 8,
+                    0.55 + resist * 0.25
+                );
             }
         }
         if (fight.t >= 4.2) {
@@ -9947,11 +9972,23 @@ function updateOctopusWhaleFight(dt) {
             }
         }
         if (whale && !whale.dead) {
-            easeToward(whale, cx + 4, cy, dt, 10, 0.25);
-            whale.dir += dt * 0.5;
+            fight.whaleStruggle = (fight.whaleStruggle || 0) + dt;
+            const s = fight.whaleStruggle;
+            const thrash = Math.sin(s * 8.5) * (16 * Math.max(0.15, 1 - fight.t * 0.2));
+            easeToward(
+                whale,
+                cx + 4 + Math.cos(s * 4) * thrash,
+                cy + Math.sin(s * 5) * thrash * 0.6,
+                dt, 6 + Math.abs(thrash) * 0.4, 0.18
+            );
+            whale.dir += dt * (1.1 + Math.sin(s * 6) * 1.4);
+            whale.tailPhase = (whale.tailPhase || 0) + dt * (6 + Math.abs(Math.sin(s * 7)) * 5);
             // Shrink smoothly toward vanishing.
             const shrink = Math.max(0.08, 1 - fight.t * 0.22);
             whale.size = fight.whaleStartSize * shrink;
+            if (Math.random() < 0.16) {
+                water.disturb(whale.x, whale.y, Math.max(12, whale.size * 0.3), 55);
+            }
             if (whale.size < fight.whaleStartSize * 0.12 || fight.t > 3.4) {
                 whale.dead = true;
                 whale = null;
@@ -9967,25 +10004,25 @@ function updateOctopusWhaleFight(dt) {
             }
         }
     } else if (fight.phase === "ship") {
-        // Ship drifts down; arms reach up without snapping.
+        // Ship drifts down; arms reach up without snapping. Keep the scene dark.
         fight.shipAlpha = Math.min(1, fight.shipAlpha + dt * 0.35);
-        const shipTargetY = cy - 48;
+        const shipTargetY = cy - 64;
         fight.shipY += (shipTargetY - fight.shipY) * ease(0.85);
         if (octopus && !octopus.dead) {
-            easeToward(octopus, cx, cy + 24, dt, 20, 0.5);
+            easeToward(octopus, cx, cy + 28, dt, 20, 0.5);
             for (let i = 0; i < octopus.legs.length; i++) {
                 const leg = octopus.legs[i];
                 leg.phase += dt * 1.3;
-                const ang = -Math.PI * 0.5 + (i / 7 - 0.5) * 1.0;
-                const stretch = 0.55 + Math.min(0.45, fight.t * 0.15);
-                const gx = cx + Math.cos(ang) * (36 + i * 5) * stretch
-                    + Math.sin(leg.phase * 0.7 + i) * 6;
-                const gy = fight.shipY + 34 + Math.sin(leg.phase + i) * 4;
+                const ang = -Math.PI * 0.5 + (i / 7 - 0.5) * 1.15;
+                const stretch = 0.6 + Math.min(0.5, fight.t * 0.15);
+                const gx = cx + Math.cos(ang) * (48 + i * 6) * stretch
+                    + Math.sin(leg.phase * 0.7 + i) * 7;
+                const gy = fight.shipY + 48 + Math.sin(leg.phase + i) * 5;
                 easeTipToward(leg, gx, gy, dt, 1.8);
             }
         }
         if (fight.t > 1.5 && Math.random() < 0.15) {
-            water.disturb(cx + (Math.random() - 0.5) * 70, fight.shipY + 36, 16, 50);
+            water.disturb(cx + (Math.random() - 0.5) * 90, fight.shipY + 48, 18, 55);
         }
         if (fight.t >= 5.0) {
             fight.phase = "fade";
@@ -9995,69 +10032,161 @@ function updateOctopusWhaleFight(dt) {
             if (Audio.rainbowChime) Audio.rainbowChime(0);
         }
     } else if (fight.phase === "fade") {
-        fight.fade = Math.min(1, fight.fade + dt * 0.45);
-        if (octopus && !octopus.dead) {
-            easeToward(octopus, cx, cy + 10, dt, 12, 0.3);
-            for (const leg of octopus.legs) {
-                easeTipToward(leg, cx + (leg.tipX - cx) * 0.98, cy + 20, dt, 1.2);
+        // Soft curtain in, restock under cover, then ease back into the pond.
+        if (!fight.restocked) {
+            fight.fade = Math.min(1, fight.fade + dt * 0.38);
+            if (octopus && !octopus.dead) {
+                easeToward(octopus, cx, cy + 10, dt, 12, 0.3);
+                for (const leg of octopus.legs) {
+                    easeTipToward(leg, cx + (leg.tipX - cx) * 0.98, cy + 20, dt, 1.2);
+                }
+            }
+            if (fight.fade >= 0.92 && fight.t >= 1.6) {
+                fight.restocked = true;
+                if (octopus) octopus.dead = true;
+                octopus = null;
+                swordfish = null;
+                resetPond({ keepOctopusFight: true });
+                if (!octopusWhaleFight) {
+                    octopusWhaleFight = fight;
+                }
+                fight.fade = Math.max(fight.fade, 0.95);
+            }
+        } else {
+            fight.fade = Math.max(0, fight.fade - dt * 0.4);
+            if (fight.fade <= 0.02 && fight.t >= 3.4) {
+                octopusWhaleFight = null;
             }
         }
-        if (fight.fade >= 1 && fight.t >= 2.2) {
-            octopusWhaleFight = null;
-            if (octopus) octopus.dead = true;
-            octopus = null;
-            swordfish = null;
-            resetPond();
-        }
     }
+}
+
+function drawPirateShipSilhouette(ctx, cx, y, alpha) {
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, alpha);
+    const s = 1.55; // larger readable silhouette
+    // Hull
+    ctx.fillStyle = "#2e211a";
+    ctx.beginPath();
+    ctx.moveTo(cx - 108 * s, y + 36 * s);
+    ctx.lineTo(cx - 88 * s, y + 4 * s);
+    ctx.lineTo(cx + 86 * s, y + 4 * s);
+    ctx.lineTo(cx + 112 * s, y + 36 * s);
+    ctx.lineTo(cx + 72 * s, y + 58 * s);
+    ctx.lineTo(cx - 72 * s, y + 58 * s);
+    ctx.closePath();
+    ctx.fill();
+    // Plank lines
+    ctx.strokeStyle = "rgba(18,12,10,0.55)";
+    ctx.lineWidth = Math.max(1, 1.2 * s);
+    for (let i = 0; i < 5; i++) {
+        const py = y + (14 + i * 8) * s;
+        ctx.beginPath();
+        ctx.moveTo(cx - (90 - i * 3) * s, py);
+        ctx.lineTo(cx + (92 - i * 3) * s, py);
+        ctx.stroke();
+    }
+    // Railing
+    ctx.strokeStyle = "rgba(70,52,40,0.9)";
+    ctx.lineWidth = Math.max(1.4, 2 * s);
+    ctx.beginPath();
+    ctx.moveTo(cx - 82 * s, y + 6 * s);
+    ctx.lineTo(cx + 80 * s, y + 6 * s);
+    ctx.stroke();
+    for (let i = -4; i <= 4; i++) {
+        const px = cx + i * 18 * s;
+        ctx.beginPath();
+        ctx.moveTo(px, y + 6 * s);
+        ctx.lineTo(px, y - 4 * s);
+        ctx.stroke();
+    }
+    // Cabin / windows
+    ctx.fillStyle = "#3a2c22";
+    ctx.fillRect(cx - 28 * s, y - 10 * s, 56 * s, 16 * s);
+    ctx.fillStyle = "rgba(40,70,90,0.75)";
+    for (let i = -1; i <= 1; i++) {
+        ctx.fillRect(cx + i * 14 * s - 5 * s, y - 5 * s, 9 * s, 7 * s);
+    }
+    // Main mast + crow's nest
+    ctx.fillStyle = "#4a3628";
+    ctx.fillRect(cx - 5 * s, y - 118 * s, 10 * s, 122 * s);
+    ctx.fillStyle = "#3a2a20";
+    ctx.beginPath();
+    ctx.ellipse(cx, y - 78 * s, 16 * s, 7 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(90,70,50,0.85)";
+    ctx.lineWidth = Math.max(1, 1.3 * s);
+    ctx.strokeRect(cx - 12 * s, y - 92 * s, 24 * s, 14 * s);
+    // Second mast
+    ctx.fillStyle = "#4a3628";
+    ctx.fillRect(cx + 38 * s, y - 78 * s, 7 * s, 82 * s);
+    // Sails
+    ctx.fillStyle = "rgba(34,34,40,0.92)";
+    ctx.beginPath();
+    ctx.moveTo(cx + 5 * s, y - 108 * s);
+    ctx.lineTo(cx + 70 * s, y - 72 * s);
+    ctx.lineTo(cx + 5 * s, y - 42 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(cx + 45 * s, y - 72 * s);
+    ctx.lineTo(cx + 88 * s, y - 48 * s);
+    ctx.lineTo(cx + 45 * s, y - 28 * s);
+    ctx.closePath();
+    ctx.fill();
+    // Rigging hints
+    ctx.strokeStyle = "rgba(200,190,170,0.28)";
+    ctx.lineWidth = Math.max(0.8, s);
+    ctx.beginPath();
+    ctx.moveTo(cx, y - 110 * s);
+    ctx.lineTo(cx - 70 * s, y + 8 * s);
+    ctx.moveTo(cx, y - 110 * s);
+    ctx.lineTo(cx + 78 * s, y + 8 * s);
+    ctx.moveTo(cx + 42 * s, y - 74 * s);
+    ctx.lineTo(cx + 100 * s, y + 10 * s);
+    ctx.stroke();
+    // Skull mark on the hull
+    ctx.fillStyle = "rgba(230,220,200,0.82)";
+    ctx.beginPath();
+    ctx.arc(cx - 8 * s, y + 28 * s, 11 * s, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(20,14,12,0.9)";
+    ctx.beginPath();
+    ctx.arc(cx - 12.5 * s, y + 26 * s, 2.4 * s, 0, Math.PI * 2);
+    ctx.arc(cx - 3.5 * s, y + 26 * s, 2.4 * s, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(20,14,12,0.85)";
+    ctx.lineWidth = Math.max(1.1, 1.4 * s);
+    ctx.beginPath();
+    ctx.arc(cx - 8 * s, y + 32 * s, 4.2 * s, 0.15, Math.PI - 0.15);
+    ctx.stroke();
+    // Crossbones hint under skull
+    ctx.beginPath();
+    ctx.moveTo(cx - 20 * s, y + 40 * s);
+    ctx.lineTo(cx + 4 * s, y + 48 * s);
+    ctx.moveTo(cx + 4 * s, y + 40 * s);
+    ctx.lineTo(cx - 20 * s, y + 48 * s);
+    ctx.stroke();
+    ctx.restore();
 }
 
 function drawOctopusWhaleFight(ctx) {
     if (!octopusWhaleFight) return;
     const fight = octopusWhaleFight;
     ctx.save();
-    const dark = Math.max(0, Math.min(0.75, fight.overlay || 0));
+    // Keep the spectacle dark, especially during ship pull.
+    const dark = Math.max(0, Math.min(0.82, fight.overlay || 0));
     if (dark > 0.01) {
-        ctx.fillStyle = `rgba(18, 8, 16, ${dark})`;
+        ctx.fillStyle = `rgba(10, 6, 14, ${dark})`;
         ctx.fillRect(0, 0, viewW, viewH);
     }
     if ((fight.phase === "ship" || fight.phase === "fade" || fight.phase === "eat")
-        && fight.shipAlpha > 0.02) {
-        const cx = viewW * 0.5;
-        const y = fight.shipY;
-        ctx.globalAlpha = Math.min(1, fight.shipAlpha);
-        ctx.fillStyle = "#3a2a22";
-        ctx.beginPath();
-        ctx.moveTo(cx - 70, y + 28);
-        ctx.lineTo(cx - 55, y);
-        ctx.lineTo(cx + 55, y);
-        ctx.lineTo(cx + 70, y + 28);
-        ctx.lineTo(cx + 40, y + 42);
-        ctx.lineTo(cx - 40, y + 42);
-        ctx.closePath();
-        ctx.fill();
-        ctx.fillStyle = "#5a4030";
-        ctx.fillRect(cx - 4, y - 55, 8, 55);
-        ctx.beginPath();
-        ctx.moveTo(cx + 4, y - 50);
-        ctx.lineTo(cx + 48, y - 28);
-        ctx.lineTo(cx + 4, y - 10);
-        ctx.closePath();
-        ctx.fillStyle = "rgba(40,40,48,0.9)";
-        ctx.fill();
-        ctx.fillStyle = "rgba(220,210,190,0.75)";
-        ctx.beginPath();
-        ctx.arc(cx, y + 16, 7, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "rgba(20,15,12,0.85)";
-        ctx.beginPath();
-        ctx.arc(cx - 2.5, y + 15, 1.4, 0, Math.PI * 2);
-        ctx.arc(cx + 2.5, y + 15, 1.4, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalAlpha = 1;
+        && fight.shipAlpha > 0.02 && !fight.restocked) {
+        drawPirateShipSilhouette(ctx, viewW * 0.5, fight.shipY, fight.shipAlpha);
     }
     if (fight.fade > 0) {
-        ctx.fillStyle = `rgba(4, 4, 8, ${fight.fade})`;
+        // Soft night curtain, not a hard cut to black.
+        ctx.fillStyle = `rgba(6, 8, 14, ${fight.fade * 0.92})`;
         ctx.fillRect(0, 0, viewW, viewH);
     }
     ctx.restore();
@@ -11630,7 +11759,8 @@ function manageEcosystem(dt) {
     }
     if (octopusWhaleFight) {
         updateOctopusWhaleFight(dt);
-        return;
+        // After soft restock, fall through so the pond can refill under the fade.
+        if (!(octopusWhaleFight && octopusWhaleFight.restocked)) return;
     }
 
     // Golden fish rest on the lakebed until refresh; they are not active swimmers.
