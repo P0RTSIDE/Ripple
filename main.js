@@ -427,7 +427,8 @@ let hatsOn = false;
 let liftState = null; // { fish|reptile, originY, originX, holdTime, holding, isReptile }
 
 // Market: spend gold / stashed food on quiet pond upgrades.
-const MARKET_KEY = "ripple-market";
+const MARKET_KEY = "ripple-market"; // legacy auto-save (no longer loaded on boot)
+const PROGRESS_KEY = "ripple-progress-v1"; // opt-in Save / Load only (free, local)
 let marketUnlocked = false;
 let marketOpen = false;
 let magnetOwned = false;
@@ -12978,42 +12979,27 @@ const STASH_SWATCH = {
 function loadFoodStash() {
     foodStash.length = 0;
     normalFoodBank = 0;
-    try {
-        const raw = localStorage.getItem(FOOD_STASH_KEY);
-        if (!raw) return;
-        const parsed = JSON.parse(raw);
-        let items = parsed;
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-            items = parsed.items;
-            if (typeof parsed.normalBank === "number" && parsed.normalBank >= 0) {
-                normalFoodBank = Math.floor(parsed.normalBank);
-            }
-        }
-        if (!Array.isArray(items)) return;
-        for (const item of items) {
-            if (typeof item === "string" && STASH_SWATCH[item]) foodStash.push(item);
-            else if (item && typeof item.variant === "string" && STASH_SWATCH[item.variant]) {
-                foodStash.push(item.variant);
-            }
-            if (foodStash.length >= CONFIG.foodStashMax) break;
-        }
-        // Older saves: infer bank from visible normal pellets if unset.
-        if (!parsed || Array.isArray(parsed) || typeof parsed.normalBank !== "number") {
-            normalFoodBank = countStashVariant("normal");
-        }
-    } catch (err) {
-        // Ignore corrupt stash data.
-    }
+    // Stash is restored only via Load progress (no silent boot restore).
 }
 
 function saveFoodStash() {
-    try {
-        localStorage.setItem(FOOD_STASH_KEY, JSON.stringify({
-            items: foodStash.slice(0, CONFIG.foodStashMax),
-            normalBank: normalFoodBank,
-        }));
-    } catch (err) {
-        // Private mode / quota: stash still works for this session.
+    // Mid-session stash changes stay in memory until Save progress.
+}
+
+function applyFoodStashData(data) {
+    foodStash.length = 0;
+    normalFoodBank = 0;
+    if (!data || typeof data !== "object") return;
+    if (typeof data.normalBank === "number" && data.normalBank >= 0) {
+        normalFoodBank = Math.floor(data.normalBank);
+    }
+    const items = Array.isArray(data.items) ? data.items : [];
+    for (const item of items) {
+        if (typeof item === "string" && STASH_SWATCH[item]) foodStash.push(item);
+        if (foodStash.length >= CONFIG.foodStashMax) break;
+    }
+    if (typeof data.normalBank !== "number") {
+        normalFoodBank = countStashVariant("normal");
     }
 }
 
@@ -13956,34 +13942,213 @@ updateHatsButtonUI();
 
 // ---------------------------------------------------------------------------
 // Market (unlock with gold; quiet buy rows for pond tools)
+// Progress persistence is opt-in via Save (browser localStorage or a download file).
 // ---------------------------------------------------------------------------
-function loadMarketState() {
-    try {
-        const raw = localStorage.getItem(MARKET_KEY);
-        if (!raw) return;
-        const data = JSON.parse(raw);
-        if (!data || typeof data !== "object") return;
-        marketUnlocked = !!data.unlocked;
-        magnetOwned = !!data.magnet;
-        catcherOwned = !!data.catcher;
-        doublePetterOwned = !!data.doublePetter;
-        pickerOwned = !!data.picker;
-        catcherLevel = Math.max(0, Math.min(CATCHER_LEVEL_MAX, Math.floor(data.catcherLevel || 0)));
-        rainbowCaughtCount = Math.max(0, Math.floor(data.rainbowCaught || 0));
-        platinumUnlocked = !!data.platinum || rainbowCaughtCount >= RAINBOWS_FOR_PLATINUM;
-        // Moon pond unlocks only after a real platinum fish exists (not rainbow catch alone).
-        nightUnlocked = !!data.moonPond;
-        // Always boot into sun pond; moon is an opt-in after unlock.
-        nightMode = false;
-        saveMarketState();
-    } catch (err) {
-        // Ignore corrupt market data.
+function resetMarketUnlocks() {
+    marketUnlocked = false;
+    magnetOwned = false;
+    catcherOwned = false;
+    doublePetterOwned = false;
+    pickerOwned = false;
+    catcherLevel = 0;
+    rainbowCaughtCount = 0;
+    platinumUnlocked = false;
+    nightUnlocked = false;
+    nightMode = false;
+    catcherMode = false;
+    pickerMode = false;
+    catcherDrag = null;
+}
+
+function applyMarketData(data) {
+    if (!data || typeof data !== "object") {
+        resetMarketUnlocks();
+        return;
     }
+    marketUnlocked = !!data.unlocked;
+    magnetOwned = !!data.magnet;
+    catcherOwned = !!data.catcher;
+    doublePetterOwned = !!data.doublePetter;
+    pickerOwned = !!data.picker;
+    catcherLevel = Math.max(0, Math.min(CATCHER_LEVEL_MAX, Math.floor(data.catcherLevel || 0)));
+    rainbowCaughtCount = Math.max(0, Math.floor(data.rainbowCaught || 0));
+    platinumUnlocked = !!data.platinum || rainbowCaughtCount >= RAINBOWS_FOR_PLATINUM;
+    nightUnlocked = !!data.moonPond;
+    nightMode = false;
+    if (!catcherOwned) catcherLevel = 0;
+}
+
+function loadMarketState() {
+    // Intentionally empty: upgrades are not restored until Load progress.
+    resetMarketUnlocks();
 }
 
 function saveMarketState() {
-    try {
-        localStorage.setItem(MARKET_KEY, JSON.stringify({
+    // Mid-session market changes stay in memory until Save progress.
+}
+
+function serializeFishType(type) {
+    if (!type) return null;
+    return {
+        name: type.name || "fry",
+        shape: type.shape || "oval",
+        body: type.body || "#8899aa",
+        belly: type.belly || "#dde5ee",
+        pattern: type.pattern || null,
+        patternColor: type.patternColor || null,
+        size: Array.isArray(type.size) ? type.size.slice(0, 2) : [12, 18],
+        speed: Array.isArray(type.speed) ? type.speed.slice(0, 2) : [20, 32],
+        wave: type.wave || "sine",
+        register: type.register || 1,
+        bite: type.bite || 4,
+        dur: type.dur || 0.4,
+        turn: type.turn || 2.5,
+        wiggle: type.wiggle || 1,
+        slim: type.slim,
+        scale: type.scale === MINOR_PENT ? "minor" : "pent",
+        petWave: type.petWave || type.wave || "sine",
+        petFreq: type.petFreq || 300,
+        petDur: type.petDur || 0.35,
+        bitePartial: type.bitePartial != null ? type.bitePartial : 0.2,
+        biteBright: type.biteBright != null ? type.biteBright : 1,
+        whiskers: !!type.whiskers,
+        koi: !!type.koi,
+        exotic: !!type.exotic,
+        night: !!type.night,
+        odd: type.odd || null,
+        dart: !!type.dart,
+        ghost: type.ghost,
+    };
+}
+
+function reviveFishType(data) {
+    if (!data || typeof data !== "object") return FISH_TYPES[0];
+    const named = findFishTypeByName(data.name);
+    if (named && data.name !== "fry") return named;
+    const type = {
+        name: data.name || "fry",
+        shape: data.shape || "oval",
+        body: data.body || "#8899aa",
+        belly: data.belly || "#dde5ee",
+        pattern: data.pattern || null,
+        patternColor: data.patternColor || null,
+        size: Array.isArray(data.size) ? data.size : [12, 18],
+        speed: Array.isArray(data.speed) ? data.speed : [20, 32],
+        wave: data.wave || "sine",
+        register: data.register || 1,
+        bite: data.bite || 4,
+        dur: data.dur || 0.4,
+        turn: data.turn || 2.5,
+        wiggle: data.wiggle || 1,
+        scale: data.scale === "minor" ? MINOR_PENT : PENTATONIC,
+        petWave: data.petWave || "sine",
+        petFreq: data.petFreq || 300,
+        petDur: data.petDur || 0.35,
+        bitePartial: data.bitePartial != null ? data.bitePartial : 0.2,
+        biteBright: data.biteBright != null ? data.biteBright : 1,
+    };
+    if (data.slim != null) type.slim = data.slim;
+    if (data.whiskers) type.whiskers = true;
+    if (data.koi) type.koi = true;
+    if (data.exotic) type.exotic = true;
+    if (data.night) type.night = true;
+    if (data.odd) type.odd = data.odd;
+    if (data.dart) type.dart = true;
+    if (data.ghost != null) type.ghost = data.ghost;
+    return type;
+}
+
+function serializeFish(f) {
+    if (!f || f.dead) return null;
+    const typeName = f.type && f.type.name;
+    const known = typeName && findFishTypeByName(typeName);
+    return {
+        typeName: typeName || "fry",
+        customType: (!known || typeName === "fry") ? serializeFishType(f.type) : null,
+        size: f.size,
+        baseSpeed: f.baseSpeed,
+        x: f.x,
+        y: f.y,
+        dir: f.dir,
+        isHero: !!f.isHero,
+        isPredator: !!f.isPredator,
+        isRainbow: !!f.isRainbow,
+        isMonster: !!f.isMonster,
+        isPlatinum: !!f.isPlatinum,
+        isPink: !!f.isPink,
+        golden: !!f.golden,
+        hasSword: !!f.hasSword,
+        hasTentacles: !!f.hasTentacles,
+        redeemed: !!f.redeemed,
+        sinkDepth: f.sinkDepth || 0,
+        sinkTimer: f.sinkTimer || 0,
+        hatSeed: f.hatSeed || 0,
+        blobPetCount: f.blobPetCount || 0,
+        blobVomited: !!f.blobVomited,
+    };
+}
+
+function restoreFishFromSave(data) {
+    if (!data || typeof data !== "object") return null;
+    const type = data.customType
+        ? reviveFishType(data.customType)
+        : (findFishTypeByName(data.typeName) || FISH_TYPES[0]);
+    const f = new Fish(type);
+    f.size = Math.max(6, Number(data.size) || f.size);
+    f.baseSpeed = Math.max(8, Number(data.baseSpeed) || f.baseSpeed);
+    f.x = Math.max(8, Math.min(viewW - 8, Number(data.x) || viewW * 0.5));
+    f.y = Math.max(8, Math.min(viewH - 8, Number(data.y) || viewH * 0.5));
+    f.dir = Number(data.dir) || 0;
+    f.isHero = !!data.isHero;
+    f.isPredator = !!data.isPredator;
+    f.isRainbow = !!data.isRainbow;
+    f.isMonster = !!data.isMonster;
+    f.isPlatinum = !!data.isPlatinum;
+    f.isPink = !!data.isPink;
+    f.golden = !!data.golden;
+    f.hasSword = !!data.hasSword;
+    f.hasTentacles = !!data.hasTentacles;
+    f.redeemed = !!data.redeemed;
+    f.sinkDepth = Math.max(0, Math.min(1, Number(data.sinkDepth) || 0));
+    f.sinkTimer = Math.max(0, Number(data.sinkTimer) || 0);
+    f.hatSeed = Number(data.hatSeed) || Math.random();
+    f.blobPetCount = Math.max(0, Math.floor(data.blobPetCount || 0));
+    f.blobVomited = !!data.blobVomited;
+    f.stuckPrey = [];
+    f.tentacleGrab = null;
+    f.rainbowLeaving = false;
+    f.target = null;
+    f.prey = null;
+    if (f.isRainbow) {
+        f.isHero = false;
+        f.isPredator = true;
+    }
+    if (f.isPlatinum) {
+        f.isPredator = false;
+        f.isHero = false;
+        f.isMonster = false;
+    }
+    if (f.golden) {
+        f.isPredator = false;
+        f.sinkDepth = Math.max(f.sinkDepth, 1);
+    }
+    return f;
+}
+
+function buildProgressSnapshot() {
+    const living = [];
+    for (const f of fishes) {
+        const row = serializeFish(f);
+        if (row) living.push(row);
+        if (living.length >= 90) break;
+    }
+    return {
+        version: 1,
+        savedAt: Date.now(),
+        goldCollected,
+        hatsUnlocked,
+        hatsOn,
+        market: {
             unlocked: marketUnlocked,
             magnet: magnetOwned,
             catcher: catcherOwned,
@@ -13993,13 +14158,216 @@ function saveMarketState() {
             rainbowCaught: rainbowCaughtCount,
             platinum: platinumUnlocked,
             moonPond: nightUnlocked,
-            night: nightUnlocked,
-            nightMode: false,
-        }));
+        },
+        food: {
+            items: foodStash.slice(0, CONFIG.foodStashMax),
+            normalBank: normalFoodBank,
+        },
+        fish: living,
+        nightMode: false,
+    };
+}
+
+function clearPondEntitiesForLoad() {
+    fishes.length = 0;
+    foods.length = 0;
+    reptiles.length = 0;
+    if (shark) { shark.dead = true; shark = null; }
+    if (whale) { whale.dead = true; whale = null; }
+    if (swordfish) { swordfish.dead = true; swordfish = null; }
+    if (octopus) {
+        if (typeof octopus.clearApexWrap === "function") octopus.clearApexWrap();
+        octopus.dead = true;
+        octopus = null;
+    }
+    povAttack = null;
+    giantEnding = null;
+    heroRemorseEnding = null;
+    orcaFeastEnding = null;
+    swordfishSpearEnding = null;
+    octopusWhaleFight = null;
+    apexDuel = null;
+    frogFinale = null;
+}
+
+function applyProgressSnapshot(data) {
+    if (!data || typeof data !== "object") return false;
+    clearPondEntitiesForLoad();
+    goldCollected = Math.max(0, Math.floor(data.goldCollected || 0));
+    hatsUnlocked = !!data.hatsUnlocked;
+    hatsOn = !!data.hatsOn && hatsUnlocked;
+    applyMarketData(data.market);
+    applyFoodStashData(data.food);
+    armedStashIndex = null;
+    const rows = Array.isArray(data.fish) ? data.fish : [];
+    for (const row of rows) {
+        const f = restoreFishFromSave(row);
+        if (f) fishes.push(f);
+    }
+    if (!fishes.length) initFish();
+    nightMode = false;
+    setMarketOpen(false);
+    setProgressOpen(false);
+    updateHatsButtonUI();
+    updateGoldCountUI();
+    updateNightButtonUI();
+    updateCatcherButtonUI();
+    updatePickerButtonUI();
+    updateMarketButtonUI();
+    updateMarketUI();
+    renderFoodStashUI();
+    updateProgressUI();
+    return true;
+}
+
+function hasLocalProgressSave() {
+    try {
+        return !!localStorage.getItem(PROGRESS_KEY);
     } catch (err) {
-        // Private mode / quota: market still works for this session.
+        return false;
     }
 }
+
+function saveProgressToBrowser() {
+    const snap = buildProgressSnapshot();
+    try {
+        localStorage.setItem(PROGRESS_KEY, JSON.stringify(snap));
+        // Drop legacy silent auto-save keys so a refresh cannot re-max tools.
+        localStorage.removeItem(MARKET_KEY);
+        localStorage.removeItem(FOOD_STASH_KEY);
+        setProgressStatus("Saved in this browser");
+        updateProgressUI();
+        if (Audio.goldChime) Audio.goldChime(0);
+        return true;
+    } catch (err) {
+        setProgressStatus("Could not save in this browser");
+        return false;
+    }
+}
+
+function loadProgressFromBrowser() {
+    try {
+        const raw = localStorage.getItem(PROGRESS_KEY);
+        if (!raw) {
+            setProgressStatus("No saved progress yet");
+            return false;
+        }
+        const data = JSON.parse(raw);
+        if (!applyProgressSnapshot(data)) {
+            setProgressStatus("Save file looked broken");
+            return false;
+        }
+        setProgressStatus("Loaded from this browser");
+        if (Audio.goldChime) Audio.goldChime(0);
+        return true;
+    } catch (err) {
+        setProgressStatus("Could not load save");
+        return false;
+    }
+}
+
+function downloadProgressFile() {
+    const snap = buildProgressSnapshot();
+    const blob = new Blob([JSON.stringify(snap, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const stamp = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = "ripple-save-" + stamp + ".json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+    setProgressStatus("Download started");
+}
+
+function uploadProgressFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+        try {
+            const data = JSON.parse(String(reader.result || ""));
+            if (!applyProgressSnapshot(data)) {
+                setProgressStatus("That file could not be used");
+                return;
+            }
+            try {
+                localStorage.setItem(PROGRESS_KEY, JSON.stringify(data));
+                localStorage.removeItem(MARKET_KEY);
+                localStorage.removeItem(FOOD_STASH_KEY);
+            } catch (err) { /* keep loaded session even if storage is blocked */ }
+            setProgressStatus("Loaded from file");
+            if (Audio.goldChime) Audio.goldChime(0);
+        } catch (err) {
+            setProgressStatus("That file could not be read");
+        }
+    };
+    reader.onerror = () => setProgressStatus("That file could not be read");
+    reader.readAsText(file);
+}
+
+function startNewPond() {
+    clearPondEntitiesForLoad();
+    goldCollected = 0;
+    hatsUnlocked = false;
+    hatsOn = false;
+    resetMarketUnlocks();
+    foodStash.length = 0;
+    normalFoodBank = 0;
+    armedStashIndex = null;
+    nightMode = false;
+    initFish();
+    setMarketOpen(false);
+    setProgressOpen(false);
+    updateHatsButtonUI();
+    updateGoldCountUI();
+    updateNightButtonUI();
+    updateCatcherButtonUI();
+    updatePickerButtonUI();
+    updateMarketButtonUI();
+    updateMarketUI();
+    renderFoodStashUI();
+    setProgressStatus("Fresh pond");
+    updateProgressUI();
+}
+
+let progressOpen = false;
+let progressStatusText = "Not saved this visit";
+
+function setProgressStatus(text) {
+    progressStatusText = text || "";
+    const el = document.getElementById("progress-status");
+    if (el) el.textContent = progressStatusText;
+}
+
+function updateProgressUI() {
+    const loadBtn = document.getElementById("progress-load");
+    if (loadBtn) loadBtn.disabled = !hasLocalProgressSave();
+    const btn = document.getElementById("progress-btn");
+    if (btn) {
+        btn.classList.toggle("on", progressOpen);
+        btn.setAttribute("aria-pressed", progressOpen ? "true" : "false");
+        btn.title = progressOpen ? "Close save menu" : "Save progress";
+    }
+    setProgressStatus(progressStatusText);
+}
+
+function setProgressOpen(open) {
+    progressOpen = !!open;
+    if (progressOpen) setMarketOpen(false);
+    const panel = document.getElementById("progress-panel");
+    if (panel) {
+        panel.classList.toggle("open", progressOpen);
+        panel.setAttribute("aria-hidden", progressOpen ? "false" : "true");
+    }
+    updateProgressUI();
+}
+
+// Clear legacy silent restores so catcher / stash cannot appear maxed on a fresh visit.
+try {
+    localStorage.removeItem(MARKET_KEY);
+    localStorage.removeItem(FOOD_STASH_KEY);
+} catch (err) { /* ignore */ }
 
 // ---------------------------------------------------------------------------
 // Fish picker: lift small/medium fish out of water, or drag heavier ones.
@@ -14386,6 +14754,15 @@ function updateMarketButtonUI() {
 
 function setMarketOpen(open) {
     marketOpen = !!open && marketUnlocked;
+    if (marketOpen && progressOpen) {
+        progressOpen = false;
+        const p = document.getElementById("progress-panel");
+        if (p) {
+            p.classList.remove("open");
+            p.setAttribute("aria-hidden", "true");
+        }
+        updateProgressUI();
+    }
     const panel = document.getElementById("market-panel");
     if (panel) {
         panel.classList.toggle("open", marketOpen);
@@ -14691,6 +15068,9 @@ function drawCatcherOverlay(ctx) {
 }
 
 loadMarketState();
+updateCatcherButtonUI();
+updatePickerButtonUI();
+updateProgressUI();
 
 const marketBtn = document.getElementById("market-btn");
 if (marketBtn) {
@@ -14709,6 +15089,51 @@ if (marketBtn) {
             return;
         }
         setMarketOpen(!marketOpen);
+    });
+}
+
+const progressBtn = document.getElementById("progress-btn");
+if (progressBtn) {
+    progressBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        Audio.ensure();
+        setProgressOpen(!progressOpen);
+    });
+}
+
+const progressPanel = document.getElementById("progress-panel");
+if (progressPanel) {
+    progressPanel.addEventListener("click", (e) => e.stopPropagation());
+    const saveBtn = document.getElementById("progress-save");
+    const loadBtn = document.getElementById("progress-load");
+    const dlBtn = document.getElementById("progress-download");
+    const upBtn = document.getElementById("progress-upload");
+    const newBtn = document.getElementById("progress-new");
+    const fileInput = document.getElementById("progress-file");
+    if (saveBtn) saveBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        saveProgressToBrowser();
+    });
+    if (loadBtn) loadBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        loadProgressFromBrowser();
+    });
+    if (dlBtn) dlBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        downloadProgressFile();
+    });
+    if (upBtn) upBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (fileInput) fileInput.click();
+    });
+    if (fileInput) fileInput.addEventListener("change", () => {
+        const file = fileInput.files && fileInput.files[0];
+        uploadProgressFile(file);
+        fileInput.value = "";
+    });
+    if (newBtn) newBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        startNewPond();
     });
 }
 
