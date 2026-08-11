@@ -130,6 +130,7 @@ body.ui-hidden #mode-toggle,
 body.ui-hidden #gold-counter,
 body.ui-hidden #pond-controls,
 body.ui-hidden #market-panel,
+body.ui-hidden #progress-panel,
 body.ui-hidden #food-stash,
 body.ui-hidden #hint {
     opacity: 0 !important;
@@ -289,6 +290,7 @@ body.pond #pond-controls {
 #looks-btn,
 #hats-btn,
 #market-btn,
+#progress-btn,
 #catcher-btn,
 #picker-btn,
 #net-btn {
@@ -313,6 +315,7 @@ body.pond #pond-controls {
 #looks-btn:hover,
 #hats-btn:hover,
 #market-btn:hover,
+#progress-btn:hover,
 #catcher-btn:hover,
 #picker-btn:hover,
 #net-btn:hover,
@@ -321,6 +324,7 @@ body.pond #pond-controls {
 #looks-btn:focus-visible,
 #hats-btn:focus-visible,
 #market-btn:focus-visible,
+#progress-btn:focus-visible,
 #catcher-btn:focus-visible,
 #picker-btn:focus-visible,
 #net-btn:focus-visible {
@@ -333,6 +337,7 @@ body.pond #pond-controls {
 #looks-btn.on,
 #hats-btn.on,
 #market-btn.on,
+#progress-btn.on,
 #catcher-btn.on,
 #picker-btn.on,
 #net-btn.on {
@@ -596,6 +601,37 @@ body.pond #pond-controls {
     box-shadow: 0 3px 0 0 currentColor;
 }
 
+.ico-save {
+    width: 11px;
+    height: 12px;
+    border: 1.35px solid currentColor;
+    border-radius: 2px;
+    background: transparent;
+}
+
+.ico-save::before {
+    content: "";
+    position: absolute;
+    left: 2px;
+    right: 2px;
+    top: 2px;
+    height: 3px;
+    border: 1.2px solid currentColor;
+    border-bottom: none;
+    border-radius: 1px 1px 0 0;
+}
+
+.ico-save::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    right: 3px;
+    bottom: 2px;
+    height: 3px;
+    background: currentColor;
+    opacity: 0.85;
+}
+
 .ico-catcher {
     width: 12px;
     height: 12px;
@@ -718,6 +754,36 @@ body.pond #market-panel.open {
 
 body.pond #market-panel.open:hover,
 body.pond #market-panel.open:focus-within {
+    opacity: 0.95;
+}
+
+/* Progress panel: same quiet chrome as market, free local saves only. */
+#progress-panel {
+    position: fixed;
+    left: 58px;
+    bottom: 16px;
+    z-index: 11;
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 176px;
+    padding: 8px 8px 7px;
+    background: rgba(12, 22, 20, 0.42);
+    border: 1px solid rgba(180, 210, 200, 0.18);
+    border-radius: 10px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.35s ease;
+}
+
+body.pond #progress-panel.open {
+    display: flex;
+    opacity: 0.78;
+    pointer-events: auto;
+}
+
+body.pond #progress-panel.open:hover,
+body.pond #progress-panel.open:focus-within {
     opacity: 0.95;
 }
 

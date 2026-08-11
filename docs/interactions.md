@@ -7,6 +7,9 @@ A personal reference for how fish, food, predators, market tools, and endings fi
 ### Common fish
 Everyday pond fish (koi, goldfish, minnows, and the rest). They eat food, grow, and can turn into special forms. Some spawn as heroes.
 
+## Progress saves
+Save progress is free and stays on your device. Use the save button beside the market: save or load in this browser, download a save file, upload a save file, or start a new pond. Fresh visits do not restore market tools, food stash, or catcher upgrades until you load a save. Nothing is stored on a paid server.
+
 ### Exotic fish
 Rarer visitors with odd swim habits (discus, arowana, glass fish, and similar). They behave like common fish unless they become predators, heroes, or monsters. Large arowana are heavy for the fish picker.
 

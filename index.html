@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Ripple</title>
-    <link rel="stylesheet" href="style.css?v=20260811d" />
+    <link rel="stylesheet" href="style.css?v=20260811e" />
 </head>
 <body>
     <!-- The whole experience is a single full-viewport canvas surface. -->
@@ -80,6 +80,9 @@
             <span class="ico ico-market"></span>
             <span id="market-cost">7</span>
         </button>
+        <button type="button" id="progress-btn" class="scenery-btn" title="Save progress" aria-pressed="false">
+            <span class="ico ico-save"></span>
+        </button>
         <button type="button" id="catcher-btn" class="scenery-btn" title="Rainbow catcher" aria-pressed="false" hidden>
             <span class="ico ico-catcher"></span>
         </button>
@@ -108,6 +111,19 @@
         <button type="button" id="market-buy-platinum" class="market-row" disabled hidden>Platinum food · 5 rainbow food</button>
     </div>
 
+    <!-- Free local progress: stays in this browser, or download a file. No account. -->
+    <div id="progress-panel" aria-label="Progress" aria-hidden="true">
+        <div class="market-meta">
+            <span id="progress-status">Not saved this visit</span>
+        </div>
+        <button type="button" id="progress-save" class="market-row">Save progress</button>
+        <button type="button" id="progress-load" class="market-row" disabled>Load progress</button>
+        <button type="button" id="progress-download" class="market-row">Download save file</button>
+        <button type="button" id="progress-upload" class="market-row">Upload save file</button>
+        <button type="button" id="progress-new" class="market-row">New pond</button>
+        <input type="file" id="progress-file" accept="application/json,.json" hidden />
+    </div>
+
     <!-- Food saved from the net: click a pellet, then click the pond to drop it. -->
     <div id="food-stash" aria-label="Saved food" aria-hidden="true"></div>
 
@@ -117,6 +133,6 @@
     <!-- On-load hint that fades out after the first interaction and never returns. -->
     <div id="hint">click anywhere</div>
 
-    <script src="main.js?v=20260811d"></script>
+    <script src="main.js?v=20260811e"></script>
 </body>
 </html>
