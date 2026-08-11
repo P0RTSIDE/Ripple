@@ -73,6 +73,7 @@ const CONFIG = {
     petsToRedeem: 5,        // discrete pets that help soothe an evil fish
     evilSootheTime: 2.6,    // seconds of continuous petting to fully redeem an evil fish
     petsToTame: 30,         // discrete pets to tame a crocodile/alligator
+    petsToTameMonster: 30,  // discrete pets to tame a monster fish into a white hero
     petsToTameNight: 40,    // discrete pets to tame swordfish / octopus
     reptileSootheTime: 12,  // seconds of continuous petting that also helps tame
     nightPredatorSootheTime: 14, // continuous stroke time that also tames night predators
@@ -87,7 +88,7 @@ const CONFIG = {
     exoticEdgeChance: 0.14, // chance a repopulating fish is an exotic
     // Blobfish: same cadence as whale apex checks, smaller roll chance, night only.
     blobfishChance: 0.018,
-    heroChance: 0.12,       // chance a new fish is a hero (hunts smaller predators)
+    heroChance: 0.18,       // chance a new fish is a hero (hunts smaller predators)
     heroChaseMult: 2.1,     // hero chase: a bit faster than evil fish so they can catch them    // After a whale eats a fish, a large hero may hunt it below full whale size.
     whaleHeroHuntFrac: 0.55,    // hero.size > whale.size * this
     whaleHeroHuntScreen: 0.28,  // or hero.size >= min(viewW, viewH) * this
@@ -3047,18 +3048,21 @@ function obstacleAt(x, y) {
 }
 
 // Large enough swimmers can shoulder aside smaller debris instead of steering around it.
+// Tentacle fish clear a wider path (arms reach past the body).
 function canShoveObstacle(ent, o) {
     if (!ent || ent.size == null) return false;
     if (o === grabbedObstacle) return false;
-    return ent.size >= obstacleRadius(o) * 1.05;
+    const need = obstacleRadius(o) * (ent.hasTentacles ? 0.68 : 1.05);
+    return ent.size >= need;
 }
 
 // Bias heading away from nearby solids (skip debris the swimmer can shove).
-function obstacleAvoidDir(x, y, bodyR, fishSize) {
+function obstacleAvoidDir(x, y, bodyR, fishSize, ent) {
     if (!scenery.debris || !obstacles.length) return null;
     let ax = 0, ay = 0, hits = 0;
     for (const o of obstacles) {
-        if (fishSize != null && fishSize >= obstacleRadius(o) * 1.05) continue;
+        if (ent && canShoveObstacle(ent, o)) continue;
+        if (!ent && fishSize != null && fishSize >= obstacleRadius(o) * 1.05) continue;
         const rr = obstacleRadius(o) + bodyR;
         const dx = x - o.x, dy = y - o.y;
         const d = Math.hypot(dx, dy) || 0.001;
@@ -3079,7 +3083,8 @@ function resolveObstacleOverlap(ent, bodyR) {
     const pad = 24;
     for (const o of obstacles) {
         const shove = canShoveObstacle(ent, o);
-        const shoveForce = shove ? Math.min(90, (ent.baseSpeed || ent.speed || 50) * 0.55) : 0;
+        const base = (ent.baseSpeed || ent.speed || 50) * (ent.hasTentacles ? 0.85 : 0.55);
+        const shoveForce = shove ? Math.min(ent.hasTentacles ? 130 : 90, base) : 0;
         if (isLongObstacle(o)) {
             const ca = Math.cos(o.rot), sa = Math.sin(o.rot);
             const lx = (ent.x - o.x) * ca + (ent.y - o.y) * sa;
@@ -6163,6 +6168,7 @@ class Fish {
         this.isPredator = false;
         this.isRainbow = false; // rainbow apex predator form
         this.isMonster = false; // ate a croc/alligator and became apex
+        this.tamedMonster = false; // former monster, white hero with blue eyes
         this.isPlatinum = false; // invulnerable glowing fish from platinum food
         this.insideShark = false; // briefly swallowed by shark, then pooped out unharmed
         // Heroes hunt smaller evil fish and exotic hunters; rainbow never becomes one.
@@ -6226,7 +6232,12 @@ class Fish {
         water.disturb(this.x, this.y, this.size * 0.4, 40);
 
         // Affection soothes evil fish (discrete pets plus continuous stroke time).
-        if (this.isPredator && !this.isMonster && !this.isRainbow && !this.redeemed) {
+        if (this.isMonster && !this.tamedMonster && !this.isRainbow && !this.redeemed) {
+            this.evilPetCount++;
+            if (this.evilPetCount >= CONFIG.petsToTameMonster) {
+                this.tameMonster();
+            }
+        } else if (this.isPredator && !this.isMonster && !this.isRainbow && !this.redeemed) {
             this.evilPetCount++;
             this.evilPetProgress += 0.55;
             if (this.evilPetCount >= CONFIG.petsToRedeem
@@ -6260,6 +6271,7 @@ class Fish {
         this.redeemed = true;
         this.isPredator = false;
         this.isHero = true; // redeemed fish join the heroes
+        this.isPink = false; // hero identity overpowers breeding blush
         this.prey = null;
         this.evilPetCount = 0;
         this.evilPetProgress = 0;
@@ -6289,6 +6301,45 @@ class Fish {
         spawnSplash(this.x, this.y, this.size * 0.35, 0.35);
     }
 
+    // Soften a monster apex: join the heroes as a white fish with blue eyes.
+    tameMonster() {
+        if (!this.isMonster || this.tamedMonster || this.dead || this.isRainbow || this.golden) return;
+        this.tamedMonster = true;
+        this.isMonster = false;
+        this.isPredator = false;
+        this.isHero = true;
+        this.redeemed = true;
+        this.isPink = false;
+        this.prey = null;
+        this.target = null;
+        this.evilPetCount = 0;
+        this.evilPetProgress = 0;
+        this.petTimer = Math.max(this.petTimer, 2.1);
+        this.baseSpeed = Math.max(this.type.speed[0], this.baseSpeed * 0.88);
+        const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+        Audio.fishNote({
+            freq: (this.type.petFreq || 320) * 1.05,
+            wave: "sine",
+            pan,
+            dur: 0.6,
+            level: 0.11,
+            partialAmt: 0.38,
+            partialRatio: 2.5,
+            bright: 1.35,
+        });
+        Audio.fishNote({
+            freq: (this.type.petFreq || 320) * 1.55,
+            wave: "triangle",
+            pan,
+            dur: 0.45,
+            level: 0.08,
+            partialAmt: 0.28,
+            bright: 1.45,
+        });
+        water.disturb(this.x, this.y, this.size * 0.85, 160);
+        spawnSplash(this.x, this.y, this.size * 0.4, 0.45);
+    }
+
     // Green food: the fish flies up with a soft fade, then becomes a rare pond ornament.
     turnToPlant() {
         beginPlantMorph(this, 1.25);
@@ -6306,6 +6357,7 @@ class Fish {
         if (!this.isPredator && this.size >= CONFIG.predatorSize) {
             this.isPredator = true;
             this.isHero = false;
+            this.isPink = false; // hunter identity wins over breeding blush
             // Evil fish is slightly faster than a normal fish of its size class.
             // Species habits (dart, turn, wiggle) stay with the type.
             this.baseSpeed *= 1.12;
@@ -6326,13 +6378,17 @@ class Fish {
     // Ate a crocodile/alligator while larger than it: become a monster fish.
     becomeMonster() {
         this.isMonster = true;
+        this.tamedMonster = false;
         this.isPredator = true;
         this.isHero = false;
+        this.redeemed = false;
         this.isRainbow = false;
         this.golden = false;
         this.isPink = false;
         this.target = null;
         this.prey = null;
+        this.evilPetCount = 0;
+        this.evilPetProgress = 0;
         this.size = Math.min(fishGrowCap(this, { huge: true }), this.size + 28);
         this.baseSpeed = Math.max(this.baseSpeed, 48) * 1.35;
         const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
@@ -6351,6 +6407,8 @@ class Fish {
         this.isRainbow = false;
         this.isPlatinum = false;
         this.isPink = false;
+        this.tamedMonster = false;
+        this.isMonster = false;
         this.target = null;
         this.prey = null;
         this.sinkTimer = 0;
@@ -6369,6 +6427,8 @@ class Fish {
         this.isPlatinum = false;
         this.golden = false;
         this.isPink = false;
+        this.tamedMonster = false;
+        this.isMonster = false;
         this.target = null;
         this.prey = null;
         this.rainbowLeaving = false;
@@ -6391,6 +6451,7 @@ class Fish {
         this.isPredator = false;
         this.isHero = false;
         this.isMonster = false;
+        this.tamedMonster = false;
         this.isPink = false;
         this.golden = false;
         this.target = null;
@@ -6414,8 +6475,10 @@ class Fish {
     }
 
     // Eating pink breeding food: soft blush; stays pink after breeding.
+    // Heroes / redeemed keep hero identity over the breeding blush.
     turnPink() {
         if (this.dead || this.golden || this.isRainbow || this.rainbowLeaving) return;
+        if (this.isHero || this.redeemed || this.isMonster) return;
         this.isPink = true;
         const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
         Audio.fishNote({
@@ -6535,6 +6598,69 @@ class Fish {
 
     gainTentacles() {
         grantTentacleTrait(this);
+    }
+
+    // Sweep inherited tentacles through nearby debris and ease it aside.
+    shoveObstaclesWithTentacles(dt) {
+        if (!this.hasTentacles || this.dead || this.golden || this.plantMorph) return;
+        if (!scenery.debris || !obstacles.length) return;
+        const L = this.size;
+        const W = this.size * 0.28;
+        const ca = Math.cos(this.dir);
+        const sa = Math.sin(this.dir);
+        const tips = [];
+        for (let i = 0; i < 4; i++) {
+            const side = i < 2 ? -1 : 1;
+            const sway = Math.sin(this.age * 3.2 + i * 1.3) * W * 0.9;
+            const lx = -L * (0.85 + (i % 2) * 0.1);
+            const ly = side * (W * 0.6) + sway * 0.6;
+            tips.push({
+                x: this.x + ca * lx - sa * ly,
+                y: this.y + sa * lx + ca * ly,
+            });
+            // Mid-arm sample so thicker debris still gets caught.
+            const mx = -L * 0.5;
+            const my = side * W * 0.25 + sway * 0.35;
+            tips.push({
+                x: this.x + ca * mx - sa * my,
+                y: this.y + sa * mx + ca * my,
+            });
+        }
+        const pad = 24;
+        for (const tip of tips) {
+            for (const o of obstacles) {
+                if (o === grabbedObstacle) continue;
+                if (!canShoveObstacle(this, o) && this.size < obstacleRadius(o) * 0.85) continue;
+                const reach = obstacleRadius(o) + Math.max(12, this.size * 0.22);
+                const d = Math.hypot(tip.x - o.x, tip.y - o.y);
+                if (d >= reach || d < 0.001) continue;
+                const fromBody = Math.hypot(o.x - this.x, o.y - this.y) || 1;
+                let nx = (o.x - this.x) / fromBody;
+                let ny = (o.y - this.y) / fromBody;
+                // Prefer clearing forward and to the sides so the swim path opens.
+                const ahead = nx * ca + ny * sa;
+                if (ahead < 0.05) {
+                    nx = nx * 0.55 + ca * 0.45;
+                    ny = ny * 0.55 + sa * 0.45;
+                    const nlen = Math.hypot(nx, ny) || 1;
+                    nx /= nlen;
+                    ny /= nlen;
+                }
+                const strength = (52 + this.size * 0.75) * dt * (1.05 + Math.max(0, ahead) * 0.35);
+                o.vx = (o.vx || 0) + nx * strength * 20;
+                o.vy = (o.vy || 0) + ny * strength * 20;
+                o.spin = (o.spin || 0) + (Math.random() - 0.5) * 0.9 * dt;
+                // Ease the solid out of the tip so arms keep sweeping (no teleport snap).
+                const push = Math.min(28 * dt, (reach - d) * 0.45);
+                o.x += nx * push;
+                o.y += ny * push;
+                o.x = Math.max(pad, Math.min(viewW - pad, o.x));
+                o.y = Math.max(pad, Math.min(viewH - pad, o.y));
+                if (Math.random() < 0.04) {
+                    water.disturb(o.x, o.y, Math.min(14, obstacleRadius(o) * 0.45), 35);
+                }
+            }
+        }
     }
 
     // Sword tip in world space (inherited bill).
@@ -6851,6 +6977,8 @@ class Fish {
         let best = null, bd = CONFIG.huntRange * (this.isRainbow || this.isMonster ? 1.4 : 1);
         for (const p of fishes) {
             if (p === this || p.dead || p.golden || p.isRainbow || p.isPlatinum || p.isMonster) continue;
+            // Pink hunters leave other pink breeders alone so size-mismatched pairs can mate.
+            if (this.isPink && p.isPink && canBreedFish(this) && canBreedFish(p)) continue;
             if (this.isRainbow || this.isMonster) {
                 // Apex forms eat everyone else.
             } else if (p.size > this.size * 1.2) {
@@ -7060,9 +7188,9 @@ class Fish {
             // Flinch away from hauled lake debris.
             desired = Math.atan2(this.y - this.debrisFlee.y, this.x - this.debrisFlee.x);
             speed = this.baseSpeed * (1.6 + (this.debrisFlee.force || 0.5));
-        } else if (this.petTimer > 0 && !this.isRainbow && !this.isMonster) {
+        } else if (this.petTimer > 0 && !this.isRainbow) {
             desired = this.wander(dt);
-            speed = this.baseSpeed * 0.25;
+            speed = this.baseSpeed * (this.isMonster ? 0.35 : 0.25);
         } else {
             const threat = this.findThreat();
             // Even evil fish flee from something bigger (or a rainbow / shark).
@@ -7071,11 +7199,23 @@ class Fish {
                 speed = this.baseSpeed * CONFIG.fleeSpeedMult;
             } else {
             // Pink fish lock onto the nearest eligible mate (full speed; no chaseToward softlock).
-            const mate = this.findPinkMate();
+            // Heroes keep hunting priority over breeding blush.
+            const mate = (this.isHero || this.redeemed) ? null : this.findPinkMate();
             if (mate) {
-                hardChase = true;
+                const dist = Math.hypot(mate.x - this.x, mate.y - this.y);
+                const touch = pinkBreedRange(this, mate);
                 desired = Math.atan2(mate.y - this.y, mate.x - this.x);
-                speed = this.baseSpeed * CONFIG.predatorChaseMult;
+                if (dist <= touch) {
+                    // Ease together instead of orbiting past a tight center hitbox.
+                    hardChase = false;
+                    speed = this.baseSpeed * 0.28;
+                    spawnBreedOffspring(this, mate);
+                } else {
+                    hardChase = true;
+                    // Close the last gap gently so large bodies can still meet small partners.
+                    const close = Math.max(0.35, Math.min(1, (dist - touch) / Math.max(40, touch)));
+                    speed = this.baseSpeed * (0.55 + 0.85 * close) * CONFIG.predatorChaseMult;
+                }
             } else if (this.isPlatinum) {
                 // Platinum: no apex flee/hunt, except eating a large enough orca for the feast.
                 hardChase = true;
@@ -7417,7 +7557,7 @@ class Fish {
 
         // Softly steer around debris too large to shove aside.
         if (!freeRoam) {
-            const avoid = obstacleAvoidDir(this.x, this.y, this.size * 0.4, this.size);
+            const avoid = obstacleAvoidDir(this.x, this.y, this.size * 0.4, this.size, this);
             if (avoid != null) desired = avoid;
         }
 
@@ -7428,12 +7568,18 @@ class Fish {
         const diff = normAngle(desired - this.dir);
         this.dir += Math.max(-turn, Math.min(turn, diff));
 
+        // Tentacles help propulsion: extra glide while the arms trail and sweep.
+        if (this.hasTentacles && !this.golden && !this.rainbowLeaving) {
+            speed *= 1.2;
+        }
+
         this.x += Math.cos(this.dir) * speed * dt;
         this.y += Math.sin(this.dir) * speed * dt;
         if (!freeRoam) {
             this.x = Math.max(6, Math.min(viewW - 6, this.x));
             this.y = Math.max(6, Math.min(viewH - 6, this.y));
             resolveObstacleOverlap(this, this.size * 0.38);
+            this.shoveObstaclesWithTentacles(dt);
         }
 
         this.tailPhase += dt * (4 + speed * 0.12) * (this.type.wiggle || 1);
@@ -7619,6 +7765,12 @@ class Fish {
         prey.dead = true;
         // Relatively large legal prey (high preyRatio) grants a bigger size boost than tiny fish.
         this.grow(prey.size * 0.5 * preySizeGainMult(this.size, prey.size));
+        // Apex / evil fish that eat peaceful fish drop breeding blush; hunter identity wins.
+        // Heroes already skip pink via turnPink / redeem, but clear any leftover flag here too.
+        if ((this.isPredator || this.isMonster || this.isHero)
+            && !prey.isPredator && !prey.isMonster) {
+            this.isPink = false;
+        }
         const pan = Math.max(-1, Math.min(1, (prey.x / viewW) * 2 - 1));
         Audio.predatorEat(pan);
         water.disturb(prey.x, prey.y, prey.size, 320);
@@ -7825,10 +7977,13 @@ class Fish {
             const b = Math.round(230 + 25 * cool);
             body = `rgb(${r},${g},${b})`;
             belly = "#ffffff";
+        } else if (this.tamedMonster) {
+            body = "#f4f7fb";
+            belly = "#ffffff";
         } else if (this.isMonster) {
             body = "#2a1020";
             belly = "#6a2038";
-        } else if (this.isPink) {
+        } else if (this.isPink && !this.isHero && !this.redeemed) {
             // Soft pink wash over species colors; patterns still draw underneath.
             body = washHexTowardPink(this.type.body, 0.58);
             belly = washHexTowardPink(this.type.belly, 0.48);
@@ -7889,15 +8044,12 @@ class Fish {
         } else if (this.isRainbow) {
             ctx.shadowColor = "rgba(255,100,255,0.85)";
             ctx.shadowBlur = gfxQuality <= 0 ? 0 : 18;
+        } else if (this.tamedMonster) {
+            ctx.shadowColor = "rgba(180,220,255,0.85)";
+            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 16;
         } else if (this.isMonster) {
             ctx.shadowColor = "rgba(80,0,20,0.85)";
             ctx.shadowBlur = gfxQuality <= 0 ? 0 : 20;
-        } else if (this.isPink) {
-            ctx.shadowColor = "rgba(255,130,190,0.7)";
-            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 12;
-        } else if (this.isPredator) {
-            ctx.shadowColor = "rgba(160,20,30,0.75)";
-            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
         } else if (this.isHero) {
             const giantGlow = giantEnding && giantEnding.fish === this && giantEnding.kind === "peace";
             const remorseGlow = heroRemorseEnding && heroRemorseEnding.fish === this;
@@ -7912,6 +8064,12 @@ class Fish {
                 ctx.shadowColor = "rgba(70,160,220,0.8)";
                 ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
             }
+        } else if (this.isPink) {
+            ctx.shadowColor = "rgba(255,130,190,0.7)";
+            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 12;
+        } else if (this.isPredator) {
+            ctx.shadowColor = "rgba(160,20,30,0.75)";
+            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
         } else if (gfxQuality >= 2 && isKoi) {
             ctx.shadowColor = "rgba(40,70,90,0.45)";
             ctx.shadowBlur = 10;
@@ -8155,7 +8313,7 @@ class Fish {
         });
 
         // Scale shimmer: koi always (when quality allows), most other fish when large enough.
-        if (!this.golden && !this.isRainbow && !this.isMonster && gfxQuality >= 1) {
+        if (!this.golden && !this.isRainbow && !this.isMonster && !this.tamedMonster && gfxQuality >= 1) {
             if (isKoi) {
                 drawFishScaleField(ctx, L, W, 0.3);
             } else if (gfxQuality >= 2 && (this.type.exotic || shape === "round" || L > 22)) {
@@ -8163,7 +8321,7 @@ class Fish {
             }
         }
 
-        if (!this.golden && !this.isRainbow && !this.isMonster && !this.isPlatinum) {
+        if (!this.golden && !this.isRainbow && !this.isMonster && !this.isPlatinum && !this.tamedMonster) {
             this.drawPattern(ctx, L, W);
         }
 
@@ -8196,7 +8354,10 @@ class Fish {
             }
             ctx.fill();
         } else if (this.isMonster) {
-            ctx.fillStyle = "rgba(120,0,30,0.28)";
+            // Red menace fades as the monster is stroked toward taming.
+            const soothe = Math.min(1, (this.evilPetCount || 0) / CONFIG.petsToTameMonster);
+            const menace = 0.28 * (1 - soothe * 0.9);
+            ctx.fillStyle = `rgba(120,0,30,${menace})`;
             pathFishFusiform(ctx, L, W, shape);
             ctx.fill();
         } else if (this.isPredator && !this.isRainbow && !this.golden) {
@@ -8206,13 +8367,19 @@ class Fish {
             ctx.fillStyle = `rgba(120,10,20,${menace})`;
             pathFishFusiform(ctx, L, W, shape);
             ctx.fill();
+        } else if (this.tamedMonster && !this.golden) {
+            // Soft cool wash on the white tamed-monster body.
+            ctx.fillStyle = "rgba(150,200,255,0.14)";
+            pathFishFusiform(ctx, L, W, shape);
+            ctx.fill();
         } else if (this.isHero && !this.golden) {
             // Soft blue wash so heroes read against red evil fish.
             ctx.fillStyle = "rgba(40,120,190,0.16)";
             pathFishFusiform(ctx, L, W, shape);
             ctx.fill();
         }
-        if (this.isPink && !this.golden && !this.isRainbow && !this.isMonster) {
+        if (this.isPink && !this.golden && !this.isRainbow && !this.isMonster
+            && !this.isHero && !this.redeemed) {
             // Extra blush so pink reads clearly while shape and pattern stay visible.
             ctx.fillStyle = "rgba(255,120,180,0.2)";
             pathFishFusiform(ctx, L, W, shape);
@@ -8224,8 +8391,10 @@ class Fish {
             const eyeX = L * (shape === "diamond" ? 0.22 : 0.3);
             const eyeY = -W * (shape === "round" ? 0.12 : 0.22);
             const eyeR = Math.max(1.1, L * 0.055);
-            if (this.petTimer > 0 && !this.golden && !this.isRainbow && !this.isMonster) {
-                ctx.strokeStyle = this.isPredator
+            if (this.petTimer > 0 && !this.golden && !this.isRainbow) {
+                ctx.strokeStyle = this.isMonster
+                    ? "rgba(80,20,20,0.9)"
+                    : this.isPredator
                     ? "rgba(80,20,20,0.9)"
                     : "rgba(20,25,30,0.9)";
                 ctx.lineWidth = Math.max(1.2, L * 0.05);
@@ -8249,6 +8418,7 @@ class Fish {
                     ? "rgba(160,110,30,0.55)"
                     : this.isRainbow ? "rgba(80,70,100,0.5)"
                     : this.isPlatinum ? "rgba(120,160,200,0.45)"
+                    : this.tamedMonster ? "rgba(70,150,235,0.55)"
                     : this.isMonster ? "rgba(180,40,40,0.5)"
                     : this.isPredator ? "rgba(160,50,40,0.45)"
                     : this.isHero ? "rgba(50,110,170,0.4)"
@@ -8261,6 +8431,7 @@ class Fish {
                     ? "rgba(120,80,20,0.95)"
                     : this.isRainbow ? "rgba(40,40,50,0.95)"
                     : this.isPlatinum ? "rgba(70,110,150,0.95)"
+                    : this.tamedMonster ? "rgba(35,115,220,0.98)"
                     : this.isMonster ? "rgba(255,40,40,0.95)"
                     : this.isPredator ? "rgba(180,30,25,0.95)"
                     : this.isHero ? "rgba(30,90,160,0.95)" : "rgba(12,16,22,0.95)";
@@ -8285,6 +8456,11 @@ class Fish {
                     ctx.fillStyle = "rgba(230,245,255,0.95)";
                     ctx.beginPath();
                     ctx.arc(eyeX + eyeR * 0.12, eyeY - eyeR * 0.1, eyeR * 0.26, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (this.tamedMonster) {
+                    ctx.fillStyle = "rgba(160,210,255,0.9)";
+                    ctx.beginPath();
+                    ctx.arc(eyeX + eyeR * 0.1, eyeY - eyeR * 0.08, eyeR * 0.22, 0, Math.PI * 2);
                     ctx.fill();
                 }
                 // Soft orbital crease.
@@ -8614,10 +8790,19 @@ function mixFishTypes(ta, tb) {
 
 function canBreedFish(f) {
     return !!(f && f.isPink && !f.dead && !f.golden && !f.isRainbow
-        && !f.rainbowLeaving && !f.isMonster && f.breedCooldown <= 0);
+        && !f.rainbowLeaving && !f.isMonster && !f.isHero && !f.redeemed
+        && f.breedCooldown <= 0);
+}
+
+// Size-aware meet range so a large pink body can still touch a small partner.
+function pinkBreedRange(a, b) {
+    const big = Math.max(a.size, b.size);
+    const small = Math.min(a.size, b.size);
+    return big * 0.62 + small * 0.75 + 20;
 }
 
 function spawnBreedOffspring(a, b) {
+    if (!canBreedFish(a) || !canBreedFish(b)) return null;
     const living = fishes.filter((f) => !f.dead).length;
     if (living >= CONFIG.maxBreedPop) return null;
     const type = mixFishTypes(a.type, b.type);
@@ -8660,8 +8845,7 @@ function updateBreeding() {
         for (let j = i + 1; j < pinks.length; j++) {
             const a = pinks[i];
             const b = pinks[j];
-            const touch = (a.size + b.size) * 0.52;
-            if (Math.hypot(a.x - b.x, a.y - b.y) <= touch) {
+            if (Math.hypot(a.x - b.x, a.y - b.y) <= pinkBreedRange(a, b)) {
                 spawnBreedOffspring(a, b);
                 return;
             }
@@ -9715,6 +9899,12 @@ function grantSwordTrait(ent) {
 function grantTentacleTrait(ent) {
     if (!ent || ent.dead) return;
     ent.hasTentacles = true;
+    if (ent.baseSpeed != null) {
+        ent.baseSpeed = Math.min(
+            CONFIG.predatorSpeedCap * 0.98,
+            ent.baseSpeed * 1.14
+        );
+    }
     const pan = Math.max(-1, Math.min(1, (ent.x / viewW) * 2 - 1));
     Audio.predatorEat(pan);
     water.disturb(ent.x, ent.y, ent.size * 0.9, 320);
@@ -14214,7 +14404,7 @@ const NET_RADIUS = 44;
 const FOOD_STASH_KEY = "ripple-food-stash";
 const foodStash = [];
 let normalFoodBank = 0;
-let armedStashIndex = null;
+let armedStashVariant = null;
 
 const STASH_SWATCH = {
     normal: { from: "#c4a06a", mid: "#8a6531", to: "#5c4321", label: "Fish food" },
@@ -14275,6 +14465,28 @@ function countStashVariant(variant) {
     return n;
 }
 
+function stashStacks() {
+    const counts = new Map();
+    for (const item of foodStash) {
+        counts.set(item, (counts.get(item) || 0) + 1);
+    }
+    const stacks = [];
+    for (const key of Object.keys(STASH_SWATCH)) {
+        const n = counts.get(key);
+        if (n) stacks.push({ variant: key, count: n });
+    }
+    for (const [key, n] of counts) {
+        if (!STASH_SWATCH[key]) stacks.push({ variant: key, count: n });
+    }
+    return stacks;
+}
+
+function clearArmedStashIfGone() {
+    if (armedStashVariant != null && countStashVariant(armedStashVariant) <= 0) {
+        armedStashVariant = null;
+    }
+}
+
 function availableNormalFood() {
     return Math.max(normalFoodBank, countStashVariant("normal"));
 }
@@ -14316,13 +14528,14 @@ function placeStashedFood(x, y, variant) {
     markFirstInteraction();
 }
 
-function armStashSlot(index) {
-    if (index < 0 || index >= foodStash.length) {
-        armedStashIndex = null;
+function armStashVariant(variant) {
+    const key = normalizeFoodVariant(variant);
+    if (!key || countStashVariant(key) <= 0) {
+        armedStashVariant = null;
         renderFoodStashUI();
         return;
     }
-    armedStashIndex = (armedStashIndex === index) ? null : index;
+    armedStashVariant = (armedStashVariant === key) ? null : key;
     renderFoodStashUI();
 }
 
@@ -14333,14 +14546,19 @@ function placeArmedStashAt(x, y) {
         placeStashedFood(x, y, forced);
         return true;
     }
-    if (armedStashIndex == null || armedStashIndex < 0 || armedStashIndex >= foodStash.length) {
-        armedStashIndex = null;
+    if (armedStashVariant == null || countStashVariant(armedStashVariant) <= 0) {
+        armedStashVariant = null;
         return false;
     }
-    const variant = foodStash[armedStashIndex];
-    foodStash.splice(armedStashIndex, 1);
-    armedStashIndex = null;
+    const variant = armedStashVariant;
+    const idx = foodStash.lastIndexOf(variant);
+    if (idx < 0) {
+        armedStashVariant = null;
+        return false;
+    }
+    foodStash.splice(idx, 1);
     if (variant === "normal") normalFoodBank = Math.max(0, normalFoodBank - 1);
+    if (countStashVariant(variant) <= 0) armedStashVariant = null;
     saveFoodStash();
     placeStashedFood(x, y, variant);
     renderFoodStashUI();
@@ -14352,35 +14570,47 @@ function renderFoodStashUI() {
     const el = document.getElementById("food-stash");
     if (!el) return;
     el.innerHTML = "";
-    if (!foodStash.length) {
+    clearArmedStashIfGone();
+    const stacks = stashStacks();
+    if (!stacks.length) {
         el.classList.remove("has-items", "armed");
         el.setAttribute("aria-hidden", "true");
         return;
     }
     el.classList.add("has-items");
     el.setAttribute("aria-hidden", "false");
-    el.classList.toggle("armed", armedStashIndex != null);
-    foodStash.forEach((variant, i) => {
+    el.classList.toggle("armed", armedStashVariant != null);
+    for (const stack of stacks) {
+        const variant = stack.variant;
+        const count = stack.count;
         const sw = STASH_SWATCH[variant] || STASH_SWATCH.normal;
+        const armed = armedStashVariant === variant;
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "stash-slot"
             + (variant === "normal" ? " stash-normal" : "")
-            + (armedStashIndex === i ? " armed" : "");
-        btn.title = armedStashIndex === i
-            ? "Click the pond to drop this food"
-            : (sw.label + ": click, then click the pond to drop");
+            + (armed ? " armed" : "");
+        const label = sw.label + " x" + count;
+        btn.title = armed
+            ? "Click the pond to drop " + label.toLowerCase()
+            : (label + ": click, then click the pond to drop");
         btn.setAttribute("aria-label", btn.title);
-        btn.setAttribute("aria-pressed", armedStashIndex === i ? "true" : "false");
+        btn.setAttribute("aria-pressed", armed ? "true" : "false");
         btn.style.setProperty("--stash-from", sw.from);
         btn.style.setProperty("--stash-mid", sw.mid);
         btn.style.setProperty("--stash-to", sw.to);
+        if (count > 1) {
+            const badge = document.createElement("span");
+            badge.className = "stash-count";
+            badge.textContent = String(count);
+            btn.appendChild(badge);
+        }
         btn.addEventListener("click", (e) => {
             e.stopPropagation();
-            armStashSlot(i);
+            armStashVariant(variant);
         });
         el.appendChild(btn);
-    });
+    }
 }
 
 loadFoodStash();
@@ -14617,7 +14847,7 @@ function onPointerDown(ev) {
         }
     }
     // Armed stash: left-click places the saved pellet in the pond.
-    if (ev.button === 0 && mode === "pond" && armedStashIndex != null) {
+    if (ev.button === 0 && mode === "pond" && armedStashVariant != null) {
         pointerNow = { x: ev.clientX, y: ev.clientY };
         placeArmedStashAt(ev.clientX, ev.clientY);
         pointerDownAt = null;
@@ -14635,8 +14865,8 @@ function onPointerDown(ev) {
         ev.preventDefault();
         if (mode !== "pond") return;
         pointerNow = { x: ev.clientX, y: ev.clientY };
-        if (armedStashIndex != null) {
-            armedStashIndex = null;
+        if (armedStashVariant != null) {
+            armedStashVariant = null;
             renderFoodStashUI();
         }
         if (netMode) {
@@ -15044,8 +15274,8 @@ const toggle = document.getElementById("mode-toggle");
 toggle.addEventListener("click", () => {
     mode = mode === "window" ? "pond" : "window";
     document.body.classList.toggle("pond", mode === "pond");
-    if (mode !== "pond" && armedStashIndex != null) {
-        armedStashIndex = null;
+    if (mode !== "pond" && armedStashVariant != null) {
+        armedStashVariant = null;
         renderFoodStashUI();
     }
     Audio.onModeChange();
@@ -15325,6 +15555,7 @@ function serializeFish(f) {
         isPredator: !!f.isPredator,
         isRainbow: !!f.isRainbow,
         isMonster: !!f.isMonster,
+        tamedMonster: !!f.tamedMonster,
         isPlatinum: !!f.isPlatinum,
         isPink: !!f.isPink,
         golden: !!f.golden,
@@ -15354,6 +15585,7 @@ function restoreFishFromSave(data) {
     f.isPredator = !!data.isPredator;
     f.isRainbow = !!data.isRainbow;
     f.isMonster = !!data.isMonster;
+    f.tamedMonster = !!data.tamedMonster;
     f.isPlatinum = !!data.isPlatinum;
     f.isPink = !!data.isPink;
     f.golden = !!data.golden;
@@ -15370,9 +15602,16 @@ function restoreFishFromSave(data) {
     f.rainbowLeaving = false;
     f.target = null;
     f.prey = null;
+    if (f.tamedMonster) {
+        f.isMonster = false;
+        f.isPredator = false;
+        f.isHero = true;
+        f.redeemed = true;
+    }
     if (f.isRainbow) {
         f.isHero = false;
         f.isPredator = true;
+        f.tamedMonster = false;
     }
     if (f.isPlatinum) {
         f.isPredator = false;
@@ -15449,7 +15688,7 @@ function applyProgressSnapshot(data) {
     hatsOn = !!data.hatsOn && hatsUnlocked;
     applyMarketData(data.market);
     applyFoodStashData(data.food);
-    armedStashIndex = null;
+    armedStashVariant = null;
     const rows = Array.isArray(data.fish) ? data.fish : [];
     for (const row of rows) {
         const f = restoreFishFromSave(row);
@@ -15565,7 +15804,7 @@ function startNewPond() {
     resetMarketUnlocks();
     foodStash.length = 0;
     normalFoodBank = 0;
-    armedStashIndex = null;
+    armedStashVariant = null;
     nightMode = false;
     initFish();
     setMarketOpen(false);
@@ -15844,9 +16083,7 @@ function spendRainbowFood(amount) {
         foodStash.splice(i, 1);
         left--;
     }
-    if (armedStashIndex != null && armedStashIndex >= foodStash.length) {
-        armedStashIndex = null;
-    }
+    clearArmedStashIfGone();
     saveFoodStash();
     renderFoodStashUI();
     return left <= 0;
@@ -15926,8 +16163,8 @@ function setCatcherMode(on) {
             netBtn.setAttribute("aria-pressed", "false");
             netBtn.title = "Net: scoop food with right click";
         }
-        if (armedStashIndex != null) {
-            armedStashIndex = null;
+        if (armedStashVariant != null) {
+            armedStashVariant = null;
             renderFoodStashUI();
         }
     }
@@ -15948,8 +16185,8 @@ function setPickerMode(on) {
             netBtn.title = "Net: scoop food with right click";
         }
         updateCatcherButtonUI();
-        if (armedStashIndex != null) {
-            armedStashIndex = null;
+        if (armedStashVariant != null) {
+            armedStashVariant = null;
             renderFoodStashUI();
         }
     }
@@ -16194,9 +16431,7 @@ function marketBuyGoldFood() {
         foodStash.splice(i, 1);
         left--;
     }
-    if (armedStashIndex != null && armedStashIndex >= foodStash.length) {
-        armedStashIndex = null;
-    }
+    clearArmedStashIfGone();
     saveFoodStash();
     renderFoodStashUI();
     stashFood("golden");
@@ -16597,11 +16832,9 @@ function devEnsurePond() {
 
 function devSpawnPoint() {
     const pad = 40;
-    const x = pointerNow ? pointerNow.x : viewW * 0.5;
-    const y = pointerNow ? pointerNow.y : viewH * 0.5;
     return {
-        x: Math.max(pad, Math.min(viewW - pad, x)),
-        y: Math.max(pad, Math.min(viewH - pad, y)),
+        x: Math.max(pad, Math.min(viewW - pad, viewW * 0.5)),
+        y: Math.max(pad, Math.min(viewH - pad, viewH * 0.5)),
     };
 }
 
@@ -16623,6 +16856,7 @@ function devSpawnTypedFish(type, opts) {
     f.isPredator = false;
     f.isRainbow = false;
     f.isMonster = false;
+    f.tamedMonster = false;
     f.isPlatinum = false;
     f.isPink = false;
     f.golden = false;
@@ -17081,6 +17315,16 @@ function buildDevMenu() {
     btn(transform, "Monster", () => {
         const f = devNearestFish();
         if (f) f.becomeMonster();
+    });
+    btn(transform, "Tame monster", () => {
+        const f = fishes.find((x) => x && !x.dead && x.isMonster)
+            || fishes.find((x) => x && !x.dead && x.tamedMonster)
+            || devNearestFish();
+        if (f && f.isMonster) f.tameMonster();
+        else if (f && !f.tamedMonster) {
+            f.becomeMonster();
+            f.tameMonster();
+        }
     });
     btn(transform, "Redeem hero", () => {
         const f = devNearestFish();
