@@ -57,8 +57,12 @@
                 <button type="button" class="scenery-btn on" data-scenery="bed" title="Pond bed" aria-pressed="true">
                     <span class="ico ico-bed"></span>
                 </button>
-                <button type="button" class="scenery-btn on" data-scenery="sun" title="Harsh overhead sun" aria-pressed="true">
+                <button type="button" class="scenery-btn on" data-scenery="sun" title="Sun pond" aria-pressed="true">
                     <span class="ico ico-sun"></span>
+                </button>
+                <button type="button" id="night-btn" class="scenery-btn locked" title="Moon pond: unlock with platinum" aria-pressed="false" aria-disabled="true">
+                    <span class="ico ico-moon"></span>
+                    <span id="night-lock">Pt</span>
                 </button>
                 <button type="button" class="scenery-btn on" data-scenery="frogs" title="Swimming frogs and tadpoles" aria-pressed="true">
                     <span class="ico ico-frog"></span>
@@ -69,9 +73,6 @@
                 </button>
             </div>
         </div>
-        <button type="button" id="night-btn" class="scenery-btn" title="Night pond" aria-pressed="false" hidden>
-            <span class="ico ico-moon"></span>
-        </button>
         <button type="button" id="net-btn" class="scenery-btn" title="Net: scoop food with right click" aria-pressed="false">
             <span class="ico ico-net"></span>
         </button>
