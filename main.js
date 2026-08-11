@@ -54,7 +54,8 @@ const CONFIG = {
     predatorChaseMult: 2.05,// predator chase: slightly faster than flee, so evil fish catch prey
     goldenChance: 0.03,     // chance a piece of food is the golden kind
     rainbowChance: 0.0035,  // even rarer: rainbow food (must stay below goldenChance)
-    greenChance: 0.005,     // rare green food: turns a fish into a lasting pond plant
+    greenChance: 0.002,     // rarer green food: grows uncommon pond ornaments
+    greenWoodenFishChance: 0.08, // rare: green morph becomes a carved wooden fish
     pinkChance: 0.028,      // breeding food: turns a fish pink; two pink fish can spawn young
     growerChance: 0.007,    // rare grower food: surges a fish past normal size
     growerBoost: 44,        // size gained from one grower pellet
@@ -1578,6 +1579,11 @@ function pondSurfaceAt(x, y) {
     }
     for (const p of pondPlants) {
         if (Math.hypot(x - p.x, y - p.y) < p.size * 0.7) {
+            if (p.kind === "woodenfish" || p.kind === "bamboo" || p.kind === "shipwheel"
+                || p.kind === "buoy" || p.kind === "lantern" || p.kind === "bottle") {
+                return "wood";
+            }
+            if (p.kind === "shell" || p.kind === "coral" || p.kind === "teapot") return "stone";
             if (p.kind === "lily" || p.kind === "lotus") return "lily";
             if (p.kind === "reed" || p.kind === "cattail") return "reed";
             if (p.kind === "moss") return "stone";
@@ -1869,7 +1875,17 @@ function softPropRadius(p) {
     if (p.soft === "lily" || p.kind === "lily" || p.kind === "lotus") {
         return (p.r != null ? p.r : p.size * 0.55) * 1.05;
     }
-    if (p.kind === "reed" || p.kind === "cattail") return Math.max(14, p.size * 0.35);
+    if (p.kind === "reed" || p.kind === "cattail" || p.kind === "bamboo") {
+        return Math.max(14, p.size * 0.35);
+    }
+    if (p.kind === "woodenfish") return Math.max(16, p.size * 0.55);
+    if (p.kind === "shipwheel" || p.kind === "buoy") return Math.max(16, p.size * 0.5);
+    if (p.kind === "lantern" || p.kind === "bottle" || p.kind === "teapot") {
+        return Math.max(14, p.size * 0.42);
+    }
+    if (p.kind === "shell" || p.kind === "coral" || p.kind === "mushroom") {
+        return Math.max(14, p.size * 0.48);
+    }
     if (p.kind === "weed") return Math.max(14, p.size * 0.45);
     return Math.max(14, (p.size || 20) * 0.5);
 }
@@ -4724,23 +4740,41 @@ function drawLilies(ctx, t, dt) {
 }
 
 // ===========================================================================
-// PLANTS FROM GREEN FOOD
-// A fish that eats green food becomes a random pond plant here. These stay
-// until the page is refreshed (separate from toggleable scenery).
+// ORNAMENTS FROM GREEN FOOD
+// Green food grows uncommon pond pieces (not the usual reeds / lilies / debris).
+// A rare roll yields a carved wooden fish. These stay until refresh.
 // ===========================================================================
 const pondPlants = [];
-const PLANT_KINDS = ["reed", "lily", "cattail", "weed", "lotus", "moss"];
+// Specials that never appear in normal scenery rebuilds.
+const GREEN_POND_SPECIALS = [
+    "lantern", "buoy", "bottle", "shell", "mushroom",
+    "bamboo", "shipwheel", "teapot", "coral",
+];
+// Dev menu + rare wooden fish share this list.
+const PLANT_KINDS = GREEN_POND_SPECIALS.concat(["woodenfish"]);
 
-function makePondPlant(x, y, size) {
-    const kind = PLANT_KINDS[Math.floor(Math.random() * PLANT_KINDS.length)];
-    // Larger fish leave larger lasting pond elements.
-    const mapped = Math.max(16, Math.min(120, size * 1.25));
+function greenOrnamentRadius(kind, mapped) {
+    if (kind === "woodenfish") return mapped * 0.55;
+    if (kind === "shipwheel" || kind === "buoy") return mapped * 0.5;
+    if (kind === "lantern" || kind === "bottle" || kind === "teapot") return mapped * 0.4;
+    if (kind === "shell" || kind === "coral" || kind === "mushroom") return mapped * 0.48;
+    if (kind === "bamboo") return mapped * 0.35;
+    return mapped * 0.45;
+}
+
+function makePondPlant(x, y, size, forceKind) {
+    const kind = forceKind
+        || (Math.random() < CONFIG.greenWoodenFishChance
+            ? "woodenfish"
+            : GREEN_POND_SPECIALS[Math.floor(Math.random() * GREEN_POND_SPECIALS.length)]);
+    // Larger fish leave larger lasting pond ornaments.
+    const mapped = Math.max(18, Math.min(120, size * 1.25));
     return {
         soft: "plant",
         kind,
         x, y,
         size: mapped,
-        r: kind === "lily" || kind === "lotus" ? mapped * (kind === "lotus" ? 0.7 : 0.55) : mapped * 0.4,
+        r: greenOrnamentRadius(kind, mapped),
         rot: Math.random() * Math.PI * 2,
         sway: Math.random() * Math.PI * 2,
         green: 0.45 + Math.random() * 0.4,
@@ -4748,10 +4782,11 @@ function makePondPlant(x, y, size) {
         vx: 0,
         vy: 0,
         spin: 0,
+        tone: 0.35 + Math.random() * 0.4,
     };
 }
 
-// Green-food morph: fish/reptile arcs up with a soft fade, then settles as a plant.
+// Green-food morph: fish/reptile arcs up with a soft fade, then settles as an ornament.
 function beginPlantMorph(ent, sizeScale) {
     if (!ent || ent.dead || ent.plantMorph) return;
     const plantSize = Math.max(16, ent.size * (sizeScale != null ? sizeScale : 1.2));
@@ -4827,6 +4862,55 @@ function drawPlantMorphAura(ctx, ent) {
     ctx.restore();
 }
 
+function drawWoodenFishOrnament(ctx, p, sway) {
+    const L = p.size * 0.7;
+    const W = p.size * 0.28;
+    const tone = p.tone != null ? p.tone : 0.5;
+    const mid = Math.floor(110 + tone * 50);
+    ctx.rotate(p.rot + sway * 0.25);
+    // Soft lakebed shadow.
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
+    ctx.beginPath();
+    ctx.ellipse(2, 4, L * 0.55, W * 0.7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    const wood = ctx.createLinearGradient(0, -W, 0, W);
+    wood.addColorStop(0, `rgb(${mid + 40},${mid + 18},${Math.floor(mid * 0.55)})`);
+    wood.addColorStop(0.45, `rgb(${mid},${Math.floor(mid * 0.72)},${Math.floor(mid * 0.42)})`);
+    wood.addColorStop(1, `rgb(${mid - 25},${Math.floor(mid * 0.5)},${Math.floor(mid * 0.28)})`);
+    ctx.fillStyle = wood;
+    ctx.beginPath();
+    ctx.moveTo(L * 0.55, 0);
+    ctx.bezierCurveTo(L * 0.2, -W * 1.05, -L * 0.15, -W * 0.95, -L * 0.42, -W * 0.35);
+    ctx.quadraticCurveTo(-L * 0.5, 0, -L * 0.42, W * 0.35);
+    ctx.bezierCurveTo(-L * 0.15, W * 0.95, L * 0.2, W * 1.05, L * 0.55, 0);
+    ctx.fill();
+    // Caudal fork.
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.38, 0);
+    ctx.lineTo(-L * 0.78, -W * 1.05);
+    ctx.quadraticCurveTo(-L * 0.55, 0, -L * 0.78, W * 1.05);
+    ctx.closePath();
+    ctx.fill();
+    // Grain lines.
+    ctx.strokeStyle = `rgba(${mid - 40},${Math.floor(mid * 0.4)},${Math.floor(mid * 0.2)},0.35)`;
+    ctx.lineWidth = Math.max(0.7, L * 0.02);
+    for (let i = -2; i <= 2; i++) {
+        ctx.beginPath();
+        ctx.moveTo(L * 0.35, i * W * 0.22);
+        ctx.quadraticCurveTo(0, i * W * 0.28, -L * 0.3, i * W * 0.18);
+        ctx.stroke();
+    }
+    // Carved eye socket.
+    ctx.fillStyle = "rgba(40,28,18,0.75)";
+    ctx.beginPath();
+    ctx.arc(L * 0.28, -W * 0.2, Math.max(1.4, L * 0.05), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = `rgba(${mid + 50},${mid + 30},${Math.floor(mid * 0.6)},0.55)`;
+    ctx.beginPath();
+    ctx.arc(L * 0.27, -W * 0.22, Math.max(0.6, L * 0.02), 0, Math.PI * 2);
+    ctx.fill();
+}
+
 function drawPondPlants(ctx, t, dt) {
     for (const p of pondPlants) {
         p.age += dt || 0.016;
@@ -4835,9 +4919,235 @@ function drawPondPlants(ctx, t, dt) {
         const sway = Math.sin(t * 1.05 + p.sway) * 0.14 + lift * 0.035;
         ctx.save();
         ctx.translate(p.x, p.y - lift * 0.85);
-        ctx.globalAlpha = 0.88;
+        ctx.globalAlpha = 0.9;
 
-        if (p.kind === "lily" || p.kind === "lotus") {
+        if (p.kind === "woodenfish") {
+            drawWoodenFishOrnament(ctx, p, sway);
+        } else if (p.kind === "lantern") {
+            ctx.rotate(p.rot + sway * 0.4);
+            const h = p.size * 0.85;
+            const w = p.size * 0.38;
+            ctx.fillStyle = "rgba(0,0,0,0.16)";
+            ctx.beginPath();
+            ctx.ellipse(1, h * 0.35, w * 0.7, w * 0.35, 0, 0, Math.PI * 2);
+            ctx.fill();
+            const paper = ctx.createLinearGradient(0, -h * 0.5, 0, h * 0.45);
+            paper.addColorStop(0, "#f2d8a8");
+            paper.addColorStop(0.5, "#e0a858");
+            paper.addColorStop(1, "#c47838");
+            ctx.fillStyle = paper;
+            ctx.beginPath();
+            ctx.moveTo(-w * 0.55, -h * 0.15);
+            ctx.quadraticCurveTo(0, -h * 0.55, w * 0.55, -h * 0.15);
+            ctx.lineTo(w * 0.48, h * 0.35);
+            ctx.quadraticCurveTo(0, h * 0.48, -w * 0.48, h * 0.35);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = "rgba(90,50,20,0.45)";
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.moveTo(0, -h * 0.5);
+            ctx.lineTo(0, h * 0.4);
+            ctx.moveTo(-w * 0.35, -h * 0.05);
+            ctx.lineTo(-w * 0.3, h * 0.28);
+            ctx.moveTo(w * 0.35, -h * 0.05);
+            ctx.lineTo(w * 0.3, h * 0.28);
+            ctx.stroke();
+            ctx.fillStyle = "rgba(255,210,120,0.35)";
+            ctx.beginPath();
+            ctx.ellipse(0, 0, w * 0.28, h * 0.22, 0, 0, Math.PI * 2);
+            ctx.fill();
+        } else if (p.kind === "buoy") {
+            ctx.rotate(p.rot + sway * 0.2);
+            const r = p.size * 0.42;
+            ctx.fillStyle = "rgba(0,0,0,0.16)";
+            ctx.beginPath();
+            ctx.ellipse(2, 3, r * 1.05, r * 0.55, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#c4583a";
+            ctx.beginPath();
+            ctx.ellipse(0, 0, r, r * 0.72, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#f2f0e8";
+            ctx.beginPath();
+            ctx.ellipse(0, 0, r * 0.55, r * 0.4, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = "rgba(40,30,25,0.55)";
+            ctx.lineWidth = Math.max(1.5, r * 0.12);
+            ctx.beginPath();
+            ctx.arc(0, 0, r * 0.85, 0, Math.PI * 2);
+            ctx.stroke();
+        } else if (p.kind === "bottle") {
+            ctx.rotate(p.rot + sway * 0.35);
+            const h = p.size * 0.9;
+            const w = p.size * 0.28;
+            ctx.fillStyle = "rgba(0,0,0,0.14)";
+            ctx.beginPath();
+            ctx.ellipse(2, h * 0.2, w * 0.9, w * 0.4, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "rgba(120,180,170,0.55)";
+            ctx.beginPath();
+            ctx.moveTo(-w * 0.55, h * 0.25);
+            ctx.quadraticCurveTo(-w * 0.65, -h * 0.15, -w * 0.25, -h * 0.35);
+            ctx.lineTo(-w * 0.18, -h * 0.55);
+            ctx.lineTo(w * 0.18, -h * 0.55);
+            ctx.lineTo(w * 0.25, -h * 0.35);
+            ctx.quadraticCurveTo(w * 0.65, -h * 0.15, w * 0.55, h * 0.25);
+            ctx.quadraticCurveTo(0, h * 0.4, -w * 0.55, h * 0.25);
+            ctx.closePath();
+            ctx.fill();
+            ctx.fillStyle = "rgba(255,255,255,0.35)";
+            ctx.beginPath();
+            ctx.ellipse(-w * 0.18, -h * 0.05, w * 0.12, h * 0.22, -0.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "rgba(70,50,30,0.7)";
+            ctx.fillRect(-w * 0.2, -h * 0.62, w * 0.4, h * 0.1);
+        } else if (p.kind === "shell") {
+            ctx.rotate(p.rot);
+            const r = p.size * 0.48;
+            ctx.fillStyle = "rgba(0,0,0,0.14)";
+            ctx.beginPath();
+            ctx.ellipse(2, 3, r * 1.05, r * 0.55, 0, 0, Math.PI * 2);
+            ctx.fill();
+            const shell = ctx.createRadialGradient(-r * 0.2, -r * 0.15, 2, 0, 0, r);
+            shell.addColorStop(0, "#f2e4d0");
+            shell.addColorStop(0.55, "#e0b898");
+            shell.addColorStop(1, "#c88868");
+            ctx.fillStyle = shell;
+            ctx.beginPath();
+            ctx.moveTo(0, r * 0.15);
+            for (let i = 0; i <= 8; i++) {
+                const a = -Math.PI * 0.15 + (i / 8) * Math.PI * 1.3;
+                const rr = r * (0.55 + (i % 2) * 0.2);
+                ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr * 0.75);
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = "rgba(140,90,70,0.4)";
+            ctx.lineWidth = 1;
+            for (let i = 0; i < 5; i++) {
+                const a = -0.2 + i * 0.28;
+                ctx.beginPath();
+                ctx.moveTo(0, r * 0.1);
+                ctx.quadraticCurveTo(Math.cos(a) * r * 0.4, Math.sin(a) * r * 0.35, Math.cos(a) * r * 0.75, Math.sin(a) * r * 0.55);
+                ctx.stroke();
+            }
+        } else if (p.kind === "mushroom") {
+            ctx.rotate(sway * 0.5);
+            const h = p.size * 0.7;
+            for (let i = 0; i < 3; i++) {
+                const ox = (i - 1) * p.size * 0.22;
+                const stemH = h * (0.45 + i * 0.08);
+                ctx.fillStyle = "rgba(210,200,170,0.85)";
+                ctx.fillRect(ox - 2.5, -stemH * 0.2, 5, stemH * 0.75);
+                const cap = ctx.createRadialGradient(ox, -stemH * 0.35, 1, ox, -stemH * 0.2, p.size * 0.22);
+                cap.addColorStop(0, i === 1 ? "#d86858" : "#c89050");
+                cap.addColorStop(1, i === 1 ? "#8a3028" : "#7a5030");
+                ctx.fillStyle = cap;
+                ctx.beginPath();
+                ctx.ellipse(ox, -stemH * 0.25, p.size * (0.16 + i * 0.02), p.size * 0.12, 0, Math.PI, Math.PI * 2);
+                ctx.fill();
+            }
+        } else if (p.kind === "bamboo") {
+            ctx.rotate(sway * 0.55);
+            const h = p.size * 1.45;
+            for (let i = -1; i <= 1; i++) {
+                const x0 = i * 5;
+                ctx.strokeStyle = `rgba(${50 + i * 8},${120 + i * 10},${55 + i * 6},0.85)`;
+                ctx.lineWidth = 3.2 - Math.abs(i) * 0.4;
+                ctx.lineCap = "round";
+                ctx.beginPath();
+                ctx.moveTo(x0, 0);
+                ctx.quadraticCurveTo(x0 + sway * 12, -h * 0.5, x0 + sway * 16, -h);
+                ctx.stroke();
+                ctx.strokeStyle = "rgba(40,70,40,0.45)";
+                ctx.lineWidth = 1;
+                for (let n = 1; n <= 3; n++) {
+                    const yy = -h * (n / 4);
+                    ctx.beginPath();
+                    ctx.moveTo(x0 - 2.5, yy);
+                    ctx.lineTo(x0 + 2.5, yy);
+                    ctx.stroke();
+                }
+            }
+        } else if (p.kind === "shipwheel") {
+            ctx.rotate(p.rot + sway * 0.15 + p.age * 0.15);
+            const r = p.size * 0.48;
+            ctx.fillStyle = "rgba(0,0,0,0.16)";
+            ctx.beginPath();
+            ctx.arc(2, 3, r * 0.95, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = "#8a5a32";
+            ctx.lineWidth = Math.max(2.5, r * 0.14);
+            ctx.beginPath();
+            ctx.arc(0, 0, r * 0.72, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.fillStyle = "#a07040";
+            for (let i = 0; i < 6; i++) {
+                const a = (i / 6) * Math.PI * 2;
+                ctx.save();
+                ctx.rotate(a);
+                ctx.fillRect(-2, -r * 0.95, 4, r * 0.95);
+                ctx.beginPath();
+                ctx.arc(0, -r * 0.95, r * 0.12, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+            ctx.fillStyle = "#6a4428";
+            ctx.beginPath();
+            ctx.arc(0, 0, r * 0.18, 0, Math.PI * 2);
+            ctx.fill();
+        } else if (p.kind === "teapot") {
+            ctx.rotate(p.rot + sway * 0.2);
+            const s = p.size * 0.55;
+            ctx.fillStyle = "rgba(0,0,0,0.15)";
+            ctx.beginPath();
+            ctx.ellipse(2, 4, s * 0.85, s * 0.4, 0, 0, Math.PI * 2);
+            ctx.fill();
+            const pot = ctx.createRadialGradient(-s * 0.15, -s * 0.2, 2, 0, 0, s);
+            pot.addColorStop(0, "#d8c8b0");
+            pot.addColorStop(1, "#8a7060");
+            ctx.fillStyle = pot;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, s * 0.7, s * 0.55, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(0, -s * 0.45, s * 0.28, s * 0.16, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = "#7a6050";
+            ctx.lineWidth = Math.max(2, s * 0.12);
+            ctx.beginPath();
+            ctx.arc(s * 0.55, -s * 0.05, s * 0.28, -1.2, 1.2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(-s * 0.55, -s * 0.05);
+            ctx.quadraticCurveTo(-s * 0.95, -s * 0.25, -s * 0.85, s * 0.15);
+            ctx.stroke();
+        } else if (p.kind === "coral") {
+            ctx.rotate(p.rot);
+            const s = p.size * 0.55;
+            ctx.fillStyle = "rgba(0,0,0,0.14)";
+            ctx.beginPath();
+            ctx.ellipse(2, 3, s * 0.9, s * 0.4, 0, 0, Math.PI * 2);
+            ctx.fill();
+            const cols = ["#d87898", "#c868a0", "#e898b0"];
+            for (let i = 0; i < 5; i++) {
+                const a = -0.9 + i * 0.45;
+                ctx.strokeStyle = cols[i % cols.length];
+                ctx.lineWidth = Math.max(2.2, s * 0.14);
+                ctx.lineCap = "round";
+                ctx.beginPath();
+                ctx.moveTo(0, s * 0.15);
+                ctx.quadraticCurveTo(
+                    Math.sin(a) * s * 0.35,
+                    -s * 0.15,
+                    Math.sin(a) * s * 0.75 + sway * 4,
+                    -s * (0.55 + (i % 2) * 0.2)
+                );
+                ctx.stroke();
+            }
+        } else if (p.kind === "lily" || p.kind === "lotus") {
+            // Legacy green-food plants if any remain mid-session.
             ctx.rotate(p.rot + (p.tipBob || 0));
             p.tipBob = (p.tipBob || 0) + ((wake * 0.04) - (p.tipBob || 0)) * Math.min(1, (dt || 0.016) * 2.5);
             const r = p.size * (p.kind === "lotus" ? 0.7 : 0.55);
@@ -4897,7 +5207,8 @@ function drawPondPlants(ctx, t, dt) {
                 );
                 ctx.stroke();
             }
-        } else { // moss rock
+        } else {
+            // moss / fallback pebble
             ctx.rotate(p.rot);
             const rx = p.size * 0.55, ry = p.size * 0.35;
             const stone = ctx.createRadialGradient(-rx * 0.2, -ry * 0.3, 1, 0, 0, rx);
@@ -4910,9 +5221,6 @@ function drawPondPlants(ctx, t, dt) {
             ctx.fillStyle = "rgba(70,130,60,0.55)";
             ctx.beginPath();
             ctx.ellipse(-rx * 0.15, -ry * 0.1, rx * 0.45, ry * 0.35, 0.3, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.ellipse(rx * 0.2, ry * 0.05, rx * 0.3, ry * 0.22, -0.4, 0, Math.PI * 2);
             ctx.fill();
         }
         ctx.restore();
@@ -5630,7 +5938,7 @@ class Fish {
         spawnSplash(this.x, this.y, this.size * 0.35, 0.35);
     }
 
-    // Green food: the fish flies up with a soft fade, then becomes a pond plant.
+    // Green food: the fish flies up with a soft fade, then becomes a rare pond ornament.
     turnToPlant() {
         beginPlantMorph(this, 1.25);
     }
@@ -16393,9 +16701,7 @@ function buildDevMenu() {
         btn(elements, kind, () => {
             devEnsurePond();
             const p = devSpawnPoint();
-            const plant = makePondPlant(p.x, p.y, 36 + Math.random() * 28);
-            plant.kind = kind;
-            pondPlants.push(plant);
+            pondPlants.push(makePondPlant(p.x, p.y, 36 + Math.random() * 28, kind));
         });
     }
     btn(elements, "Rebuild debris", () => {
