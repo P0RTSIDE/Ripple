@@ -64,6 +64,7 @@ const CONFIG = {
     giantCapFrac: 0.9,      // grower/carcass (and hero) size ceiling vs shorter screen side
     goldSinkTime: 2.4,      // seconds for a golden fish to settle on the lakebed
     rainbowSpeed: 2.35,     // rainbow chase speed (kept moderate so tracking stays stable)
+    rainbowExitMaxTime: 20, // single-fish rainbow victory lap hard cap (seconds)
     predatorFoodBoost: 1.045, // each food bite makes an evil fish a bit faster
     predatorSpeedCap: 110,  // max baseSpeed an evil fish can reach from food
     whaleChance: 0.004,     // rare whale visit chance (checked every whaleInterval)
@@ -6445,6 +6446,8 @@ class Fish {
         this._exitDir = undefined;
         this._writePathI = 0;
         this._logoDoneT = 0;
+        this._rainbowExitT = 0;
+        this._logoStallT = 0;
         if (this.eggPath.length > 1) {
             const n = this.eggPath[1];
             this.dir = Math.atan2(n.y - this.y, n.x - this.x);
@@ -6972,6 +6975,17 @@ class Fish {
             freeRoam = true;
             const cx = viewW * 0.5;
             const cy = viewH * 0.48;
+            this._rainbowExitT = (this._rainbowExitT || 0) + dt;
+            // Hard cap so a stuck logo pass cannot circle forever.
+            if (this._rainbowExitT >= CONFIG.rainbowExitMaxTime) {
+                burstRainbowIntoFood(this);
+                return;
+            }
+            // If the logo path stalls, skip ahead to the center burst.
+            if (this.rainbowPhase === "logo" && this._rainbowExitT >= CONFIG.rainbowExitMaxTime * 0.65) {
+                this.rainbowPhase = "center";
+                this._logoDoneT = 0;
+            }
             if (this.rainbowPhase === "logo" && this.eggPath && this.eggIndex < this.eggPath.length) {
                 this.trailDrop -= dt;
                 const look = Math.min(this.eggPath.length - 1, this.eggIndex + 3);
@@ -6984,10 +6998,21 @@ class Fish {
                 const writeSpeed = 160 + 70 * align;
                 this.x += Math.cos(this.dir) * writeSpeed * dt;
                 this.y += Math.sin(this.dir) * writeSpeed * dt;
+                const before = this.eggIndex;
                 while (this.eggIndex < this.eggPath.length) {
                     const p = this.eggPath[this.eggIndex];
                     if (Math.hypot(p.x - this.x, p.y - this.y) > 16) break;
                     this.eggIndex++;
+                }
+                if (this.eggIndex === before) {
+                    this._logoStallT = (this._logoStallT || 0) + dt;
+                    // Skip a stubborn waypoint so the path cannot soft-lock.
+                    if (this._logoStallT > 1.1) {
+                        this.eggIndex = Math.min(this.eggPath.length, this.eggIndex + 1);
+                        this._logoStallT = 0;
+                    }
+                } else {
+                    this._logoStallT = 0;
                 }
                 if (this.trailDrop <= 0) {
                     this.trailDrop = 0.04;
