@@ -7236,7 +7236,8 @@ class Fish {
 
         // Caudal fin: lobed peduncle fork with soft ray hints.
         withPeacePart("tail", () => {
-            ctx.fillStyle = body;
+            const tailFill = contrastTailFill(body, belly);
+            ctx.fillStyle = tailFill;
             ctx.beginPath();
             if (shape === "koi" || shape === "longfin") {
                 const spread = isKoi ? 1.18 : 1.05;
@@ -7265,6 +7266,10 @@ class Fish {
                 ctx.bezierCurveTo(-L * 0.72, W * (0.85 + wig * 0.35), -L * 0.55, W * 0.45, -L * 0.4, 0);
             }
             ctx.fill();
+            // Soft rim so the fork stays separated from the water wash.
+            ctx.strokeStyle = "rgba(12, 22, 28, 0.32)";
+            ctx.lineWidth = Math.max(0.7, L * 0.018);
+            ctx.stroke();
             // Fin ray strokes for depth without heavy fill cost.
             if (shape !== "blob" && L > 14) {
                 ctx.save();
@@ -7758,6 +7763,93 @@ function parseHexColor(hex) {
     const n = parseInt(h, 16);
     if (Number.isNaN(n)) return null;
     return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+function parseCssRgb(color) {
+    if (!color || typeof color !== "string") return null;
+    const hex = parseHexColor(color);
+    if (hex) return hex;
+    let m = color.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i);
+    if (m) return { r: +m[1], g: +m[2], b: +m[3] };
+    m = color.match(/^hsla?\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%/i);
+    if (m) {
+        const h = ((+m[1]) % 360 + 360) % 360;
+        const s = Math.max(0, Math.min(1, +m[2] / 100));
+        const l = Math.max(0, Math.min(1, +m[3] / 100));
+        return hslToRgb(h, s, l);
+    }
+    return null;
+}
+
+function rgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const l = (max + min) * 0.5;
+    if (max === min) return { h: 0, s: 0, l };
+    const d = max - min;
+    const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    let h;
+    if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    return { h: h * 60, s, l };
+}
+
+function hslToRgb(h, s, l) {
+    const C = (1 - Math.abs(2 * l - 1)) * s;
+    const X = C * (1 - Math.abs((h / 60) % 2 - 1));
+    const m = l - C * 0.5;
+    let rp = 0, gp = 0, bp = 0;
+    if (h < 60) { rp = C; gp = X; }
+    else if (h < 120) { rp = X; gp = C; }
+    else if (h < 180) { gp = C; bp = X; }
+    else if (h < 240) { gp = X; bp = C; }
+    else if (h < 300) { rp = X; bp = C; }
+    else { rp = C; bp = X; }
+    return {
+        r: Math.round((rp + m) * 255),
+        g: Math.round((gp + m) * 255),
+        b: Math.round((bp + m) * 255),
+    };
+}
+
+function hslToCss(h, s, l) {
+    return `hsl(${Math.round(((h % 360) + 360) % 360)}, ${Math.round(s * 100)}%, ${Math.round(l * 100)}%)`;
+}
+
+// Keep caudal fins readable against teal pond water (and near-teal neighbors).
+function contrastTailFill(body, belly) {
+    const rgb = parseCssRgb(body);
+    if (!rgb) return body;
+    const { h, s, l } = rgbToHsl(rgb.r, rgb.g, rgb.b);
+    // Pond water + nearby cool olive / cyan / slate-teal band.
+    const pondLike = (h >= 95 && h <= 215)
+        || (s < 0.3 && h >= 80 && h <= 235 && l > 0.18 && l < 0.72);
+    if (!pondLike) {
+        // Mild darken so even warm tails keep a crisp edge over the water.
+        return hslToCss(h, Math.min(1, s * 1.06 + 0.03), Math.max(0.18, l * 0.9));
+    }
+    const bellyRgb = parseCssRgb(belly);
+    if (bellyRgb) {
+        const bh = rgbToHsl(bellyRgb.r, bellyRgb.g, bellyRgb.b);
+        const bellyWarm = bh.h < 85 || bh.h > 310 || bh.l > 0.68;
+        if (bellyWarm) {
+            const th = (bh.h < 85 || bh.h > 310) ? (bh.h || 32) : 32;
+            return hslToCss(
+                th,
+                Math.max(0.42, Math.min(0.78, bh.s * 0.65 + 0.28)),
+                Math.max(0.3, Math.min(0.56, bh.l * 0.62 + 0.08))
+            );
+        }
+    }
+    // Remap cool pond-adjacent hues into amber or rose.
+    const warmH = h < 160 ? 28 + (h % 18) * 0.35 : 338 + (h % 14) * 0.4;
+    return hslToCss(
+        warmH,
+        Math.max(0.5, Math.min(0.8, s + 0.3)),
+        Math.max(0.32, Math.min(0.56, 0.4 + (l - 0.4) * 0.35))
+    );
 }
 
 function mixHexColors(a, b, t) {
