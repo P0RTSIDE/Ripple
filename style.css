@@ -272,7 +272,8 @@ body.pond #pond-controls {
 }
 
 #looks-panel .scenery-btn,
-#looks-panel #hats-btn {
+#looks-panel #hats-btn,
+#looks-panel #night-btn {
     flex: 0 0 34px;
 }
 
@@ -344,7 +345,8 @@ body.pond #pond-controls {
 }
 
 #hats-btn.locked,
-#market-btn.locked {
+#market-btn.locked,
+#night-btn.locked {
     opacity: 0.42;
     border-style: dashed;
     border-color: rgba(200, 170, 80, 0.35);
@@ -365,14 +367,16 @@ body.pond #pond-controls {
 }
 
 #hats-cost,
-#market-cost {
+#market-cost,
+#night-lock {
     font: 300 9px/1 "Segoe UI", Roboto, sans-serif;
     letter-spacing: 0.06em;
     color: rgba(235, 200, 90, 0.95);
 }
 
 #hats-btn:not(.locked) #hats-cost,
-#market-btn:not(.locked) #market-cost {
+#market-btn:not(.locked) #market-cost,
+#night-btn:not(.locked) #night-lock {
     display: none;
 }
 

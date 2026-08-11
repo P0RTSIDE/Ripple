@@ -13745,6 +13745,16 @@ document.querySelectorAll(".scenery-btn[data-scenery]").forEach((btn) => {
         e.stopPropagation();
         const key = btn.dataset.scenery;
         if (!key || !(key in scenery)) return;
+        // Sun pond: leaving moon returns to day; in day it toggles the sun wash.
+        if (key === "sun") {
+            if (nightMode) {
+                setNightMode(false);
+                return;
+            }
+            scenery.sun = !scenery.sun;
+            syncSunPondButtonUI();
+            return;
+        }
         scenery[key] = !scenery[key];
         btn.classList.toggle("on", scenery[key]);
         btn.setAttribute("aria-pressed", scenery[key] ? "true" : "false");
@@ -14154,17 +14164,41 @@ function maybeUnlockPlatinum() {
 function updateNightButtonUI() {
     const btn = document.getElementById("night-btn");
     if (!btn) return;
-    btn.hidden = !nightUnlocked;
-    btn.classList.toggle("on", nightMode);
-    btn.setAttribute("aria-pressed", nightMode ? "true" : "false");
-    btn.title = nightMode
-        ? "Night pond on: moonlight and night fish"
-        : "Night pond: moonlight and different fish";
+    // Always visible in Looks: locked until platinum, then a sun/moon pond toggle.
+    btn.hidden = false;
+    btn.classList.toggle("locked", !nightUnlocked);
+    btn.setAttribute("aria-disabled", nightUnlocked ? "false" : "true");
+    btn.classList.toggle("on", !!nightMode && nightUnlocked);
+    btn.setAttribute("aria-pressed", nightMode && nightUnlocked ? "true" : "false");
+    if (!nightUnlocked) {
+        btn.title = "Moon pond: unlock with platinum";
+    } else {
+        btn.title = nightMode
+            ? "Moon pond on: moonlight and night fish"
+            : "Moon pond: moonlight and different fish";
+    }
+    syncSunPondButtonUI();
+}
+
+function syncSunPondButtonUI() {
+    const sunBtn = document.querySelector('.scenery-btn[data-scenery="sun"]');
+    if (!sunBtn) return;
+    // Day is the default. While moon pond is on, sun reads as off.
+    const sunOn = !nightMode && !!scenery.sun;
+    sunBtn.classList.toggle("on", sunOn);
+    sunBtn.setAttribute("aria-pressed", sunOn ? "true" : "false");
+    sunBtn.title = nightMode
+        ? "Sun pond: return to daylight"
+        : (scenery.sun ? "Sun pond on" : "Sun pond: daylight and sun wash");
 }
 
 function setNightMode(on) {
     if (!nightUnlocked) return;
     nightMode = !!on;
+    if (nightMode) {
+        // Moon pond owns the sky; keep sun scenery ready for when day returns.
+        scenery.sun = true;
+    }
     saveMarketState();
     updateNightButtonUI();
     markFirstInteraction();
@@ -14635,6 +14669,7 @@ if (nightBtn) {
     });
 }
 
+updateNightButtonUI();
 updateMarketUI();
 
 // ===========================================================================

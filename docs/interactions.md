@@ -11,7 +11,7 @@ Everyday pond fish (koi, goldfish, minnows, and the rest). They eat food, grow, 
 Rarer visitors with odd swim habits (discus, arowana, glass fish, and similar). They behave like common fish unless they become predators, heroes, or monsters. Large arowana are heavy for the fish picker.
 
 ### Night fish
-Appear when night pond is on (unlocked with platinum). Moon-toned species replace the day school mix. Night also swaps day crocs for swordfish or octopus rolls, and the last-fish shark for an orca.
+Appear when moon pond is on. Moon pond sits locked in Looks until platinum unlocks (after catching enough rainbow fish). Sun pond is the default. Moon-toned species replace the day school mix. Night also swaps day crocs for swordfish or octopus rolls, and the last-fish shark for an orca.
 
 ## Special fish forms
 
@@ -31,7 +31,7 @@ Pink food blushes a fish. Two pink fish that are eligible can swim together and 
 Golden food freezes a fish into gold. It sinks to the lakebed. Hold right click on a settled gold fish to collect gold (magnet makes this much faster). Golden crocs and night predators award fixed gold when lifted.
 
 ### Rainbow
-Rainbow food turns a fish into a fast rainbow hunter. Rainbows chase food first, then the shark or orca, and can become monsters by eating crocs. The rainbow catcher is the tool that removes them. Catching enough rainbows unlocks platinum food and night pond.
+Rainbow food turns a fish into a fast rainbow hunter. Rainbows chase food first, then the shark or orca, and can become monsters by eating crocs. The rainbow catcher is the tool that removes them. Catching enough rainbows unlocks platinum food and moon pond.
 
 ### Platinum
 Platinum food makes an invulnerable glowing fish. Apex predators never hunt, spear, grab, or eat platinum. Platinum does not flee apex threats and does not hunt crocs, swordfish, octopus, or day sharks. The one exception: a platinum fish large enough to outsize the night orca can still eat that orca for the orca feast ending. Platinum fish do not count toward empty-pond / last-fish checks.
