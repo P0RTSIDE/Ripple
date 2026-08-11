@@ -55,7 +55,7 @@ const CONFIG = {
     goldenChance: 0.03,     // chance a piece of food is the golden kind
     rainbowChance: 0.0035,  // even rarer: rainbow food (must stay below goldenChance)
     greenChance: 0.005,     // rare green food: turns a fish into a lasting pond plant
-    pinkChance: 0.014,      // breeding food: turns a fish pink; two pink fish can spawn young
+    pinkChance: 0.028,      // breeding food: turns a fish pink; two pink fish can spawn young
     growerChance: 0.007,    // rare grower food: surges a fish past normal size
     growerBoost: 44,        // size gained from one grower pellet
     growerMaxSize: 280,     // floor cap for grower / carcass; heroes & huge meals scale higher
