@@ -5527,6 +5527,7 @@ class Fish {
         });
         water.disturb(this.x, this.y, this.size * 1.3, 300);
         spawnSplash(this.x, this.y, this.size * 0.55, 0.65);
+        unlockMoonPond();
     }
 
     // Eating pink breeding food: soft blush; stays pink after breeding.
@@ -13919,11 +13920,11 @@ function loadMarketState() {
         catcherLevel = Math.max(0, Math.min(CATCHER_LEVEL_MAX, Math.floor(data.catcherLevel || 0)));
         rainbowCaughtCount = Math.max(0, Math.floor(data.rainbowCaught || 0));
         platinumUnlocked = !!data.platinum || rainbowCaughtCount >= RAINBOWS_FOR_PLATINUM;
-        // Moon pond unlocks only with platinum (ignore stale night flags from older saves).
-        nightUnlocked = platinumUnlocked;
-        nightMode = !!data.nightMode && nightUnlocked;
-        // Rewrite storage so old night:true without platinum cannot re-open the gate.
-        if (data.night && !platinumUnlocked) saveMarketState();
+        // Moon pond unlocks only after a real platinum fish exists (not rainbow catch alone).
+        nightUnlocked = !!data.moonPond;
+        // Always boot into sun pond; moon is an opt-in after unlock.
+        nightMode = false;
+        saveMarketState();
     } catch (err) {
         // Ignore corrupt market data.
     }
@@ -13940,8 +13941,9 @@ function saveMarketState() {
             catcherLevel,
             rainbowCaught: rainbowCaughtCount,
             platinum: platinumUnlocked,
+            moonPond: nightUnlocked,
             night: nightUnlocked,
-            nightMode,
+            nightMode: false,
         }));
     } catch (err) {
         // Private mode / quota: market still works for this session.
@@ -14183,25 +14185,33 @@ function spendRainbowFood(amount) {
 function maybeUnlockPlatinum() {
     if (platinumUnlocked || rainbowCaughtCount < RAINBOWS_FOR_PLATINUM) return;
     platinumUnlocked = true;
-    nightUnlocked = true;
     saveMarketState();
     if (Audio.rainbowChime) Audio.rainbowChime(0);
     if (Audio.goldChime) Audio.goldChime(0);
+    updateMarketUI();
+}
+
+// First platinum fish unlocks moon pond in Looks (stays locked until then).
+function unlockMoonPond() {
+    if (nightUnlocked) return;
+    nightUnlocked = true;
+    saveMarketState();
     updateNightButtonUI();
     updateMarketUI();
+    if (Audio.goldChime) Audio.goldChime(0);
 }
 
 function updateNightButtonUI() {
     const btn = document.getElementById("night-btn");
     if (!btn) return;
-    // Always visible in Looks: locked until platinum, then a sun/moon pond toggle.
+    // Always visible in Looks: locked until a platinum fish, then sun/moon toggle.
     btn.hidden = false;
     btn.classList.toggle("locked", !nightUnlocked);
-    btn.setAttribute("aria-disabled", nightUnlocked ? "false" : "true");
     btn.classList.toggle("on", !!nightMode && nightUnlocked);
+    btn.setAttribute("aria-disabled", nightUnlocked ? "false" : "true");
     btn.setAttribute("aria-pressed", nightMode && nightUnlocked ? "true" : "false");
     if (!nightUnlocked) {
-        btn.title = "Moon pond: unlock with platinum";
+        btn.title = "Moon pond: unlock by making a platinum fish";
     } else {
         btn.title = nightMode
             ? "Moon pond on: moonlight and night fish"
