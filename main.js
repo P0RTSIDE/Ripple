@@ -37,7 +37,7 @@ const CONFIG = {
     harmonyRange: 260,      // px radius within which pitches quantize together
     harmonyLife: 2.6,       // seconds a tone stays "active" for harmony snapping
     maxRocks: 10,           // simultaneous rocks in flight
-    maxDroplets: 260,       // splash droplet particle cap
+    maxDroplets: 140,       // splash droplet particle cap (kept modest for laptop GPUs)
     holdGrowTime: 1.3,      // seconds of holding to grow food to full size
     minCharge: 0.12,        // smallest normalized size from a quick tap
     fishCount: 14,          // fish the pond settles at when populated
@@ -85,9 +85,8 @@ const CONFIG = {
     exoticEdgeChance: 0.14, // chance a repopulating fish is an exotic
     // Blobfish: same cadence as whale apex checks, smaller roll chance, night only.
     blobfishChance: 0.018,
-    heroChance: 0.18,       // chance a new fish is a hero (hunts smaller predators)
-    heroChaseMult: 2.1,     // hero chase: a bit faster than evil fish so they can catch them
-    // After a whale eats a fish, a large hero may hunt it below full whale size.
+    heroChance: 0.12,       // chance a new fish is a hero (hunts smaller predators)
+    heroChaseMult: 2.1,     // hero chase: a bit faster than evil fish so they can catch them    // After a whale eats a fish, a large hero may hunt it below full whale size.
     whaleHeroHuntFrac: 0.55,    // hero.size > whale.size * this
     whaleHeroHuntScreen: 0.28,  // or hero.size >= min(viewW, viewH) * this
     breedCooldown: 6.5,     // seconds before a pink pair can breed again
@@ -101,6 +100,61 @@ const CONFIG = {
     frogFinaleTadpoles: 12, // tadpoles released when a giant hero frog bursts
     tadpoleMetamorphSize: 11, // hungry tadpole size that becomes a frog
 };
+
+// Adaptive render quality: 0 = laptop-safe, 1 = balanced, 2 = full detail.
+// Starts from a hardware guess, then eases down if frame time stays heavy.
+let gfxQuality = 1;
+let gfxQualityCap = 1;
+let fpsEma = 55;
+let gfxAdaptCooldown = 0;
+
+function estimateGfxQualityCap() {
+    const cores = navigator.hardwareConcurrency || 4;
+    const mem = navigator.deviceMemory; // Chrome only; undefined elsewhere
+    const dpr = window.devicePixelRatio || 1;
+    const area = (window.innerWidth || 1280) * (window.innerHeight || 720);
+    const pixels = area * Math.min(dpr, 2);
+    if ((mem != null && mem <= 4) || cores <= 4 || pixels > 3.2e6 || dpr >= 2) return 0;
+    if (cores <= 8 || dpr > 1.5 || pixels > 2.2e6 || (mem != null && mem <= 8)) return 1;
+    return 2;
+}
+
+function waterCellScaleForQuality(q) {
+    return q <= 0 ? 9 : q === 1 ? 7 : 5;
+}
+
+function dprCapForQuality(q) {
+    return q <= 0 ? 1 : q === 1 ? 1.25 : 1.5;
+}
+
+function applyGfxQuality(q) {
+    gfxQuality = Math.max(0, Math.min(gfxQualityCap, q | 0));
+}
+
+function tickGfxQuality(dt) {
+    const inst = 1 / Math.max(0.008, dt);
+    fpsEma = fpsEma * 0.9 + inst * 0.1;
+    gfxAdaptCooldown = Math.max(0, gfxAdaptCooldown - dt);
+    if (gfxAdaptCooldown > 0) return;
+    if (fpsEma < 32 && gfxQuality > 0) {
+        applyGfxQuality(gfxQuality - 1);
+        gfxAdaptCooldown = 2.8;
+        // Rebind canvas DPR + water grid only; avoid full scenery rebuild hitch.
+        dpr = Math.min(window.devicePixelRatio || 1, dprCapForQuality(gfxQuality));
+        canvas.width = Math.floor(viewW * dpr);
+        canvas.height = Math.floor(viewH * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        if (water) water.resize();
+    } else if (fpsEma > 54 && gfxQuality < gfxQualityCap) {
+        applyGfxQuality(gfxQuality + 1);
+        gfxAdaptCooldown = 3.5;
+        dpr = Math.min(window.devicePixelRatio || 1, dprCapForQuality(gfxQuality));
+        canvas.width = Math.floor(viewW * dpr);
+        canvas.height = Math.floor(viewH * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        if (water) water.resize();
+    }
+}
 
 // Hidden streak: consecutive pets with no food thrown unlock a guaranteed rainbow pellet.
 let petStreak = 0;
@@ -570,7 +624,9 @@ let dpr = 1;
 let vignette = null;
 
 function resize() {
-    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    gfxQualityCap = estimateGfxQualityCap();
+    if (gfxQuality > gfxQualityCap) gfxQuality = gfxQualityCap;
+    dpr = Math.min(window.devicePixelRatio || 1, dprCapForQuality(gfxQuality));
     viewW = window.innerWidth;
     viewH = window.innerHeight;
     canvas.width = Math.floor(viewW * dpr);
@@ -1540,21 +1596,22 @@ function pondSurfaceAt(x, y) {
 // ===========================================================================
 class WaterSim {
     constructor() {
-        this.scale = 5; // CSS px per grid cell
+        this.scale = waterCellScaleForQuality(gfxQuality);
         this.resize();
         this.damping = 0.982;
     }
 
     resize() {
-        this.cols = Math.max(48, Math.ceil(viewW / this.scale));
-        this.rows = Math.max(48, Math.ceil(viewH / this.scale));
+        this.scale = waterCellScaleForQuality(gfxQuality);
+        this.cols = Math.max(40, Math.ceil(viewW / this.scale));
+        this.rows = Math.max(40, Math.ceil(viewH / this.scale));
         const n = this.cols * this.rows;
         this.cur = new Float32Array(n);
         this.prev = new Float32Array(n);
         this.off = document.createElement("canvas");
         this.off.width = this.cols;
         this.off.height = this.rows;
-        this.offctx = this.off.getContext("2d");
+        this.offctx = this.off.getContext("2d", { alpha: true });
         this.img = this.offctx.createImageData(this.cols, this.rows);
     }
 
@@ -1637,9 +1694,9 @@ class WaterSim {
                 let spec = 0;
                 const s = sx * 0.55 + sy;
                 if (s > 5.5) spec = Math.min(55, (s - 5.5) * (s - 5.5) * (0.22 + sunWarm * 0.06));
-                // Very subtle surface shimmer when the sun is on (no lattice).
+                // Per-pixel sun caustics are expensive; keep them on high quality only.
                 let caustic = 0;
-                if (sunOn) {
+                if (sunOn && gfxQuality >= 2) {
                     const cx = x * 0.11 + causticPhase + y * 0.03;
                     const cy = y * 0.09 - causticPhase * 0.55 + x * 0.02;
                     const n = Math.sin(cx) * Math.sin(cy * 1.1) + Math.sin(cx * 0.37 + cy * 0.6) * 0.45;
@@ -1898,7 +1955,8 @@ function rebuildPondBed() {
     b.fillRect(0, 0, w, h);
 
     // Broad organic silt / clay stains (irregular blobs, not a lattice).
-    for (let i = 0; i < 55; i++) {
+    const stainN = gfxQuality <= 0 ? 28 : 55;
+    for (let i = 0; i < stainN; i++) {
         const x = seeded(i + 900) * w;
         const y = seeded(i + 910) * h;
         const rx = 18 + seeded(i + 920) * 85;
@@ -1925,7 +1983,8 @@ function rebuildPondBed() {
     }
 
     // Fine silt dusting (soft noise, not a grid).
-    for (let i = 0; i < 2200; i++) {
+    const siltN = gfxQuality <= 0 ? 700 : gfxQuality === 1 ? 1200 : 2200;
+    for (let i = 0; i < siltN; i++) {
         const x = seeded(i + 980) * w;
         const y = seeded(i + 990) * h;
         const a = 0.05 + seeded(i + 1000) * 0.16;
@@ -2421,12 +2480,15 @@ function fillWhaleShadowPaths(ctx, L, W) {
 // Soft organic caustic shimmer on the pond bed (no lattice, no sun rays).
 function drawBedCaustics(ctx) {
     if (!scenery.sun || nightMode) return;
+    if (gfxQuality <= 0) return;
     ctx.save();
     ctx.globalCompositeOperation = "screen";
     const t = sunPhase;
+    const poolN = gfxQuality >= 2 ? 18 : 9;
+    const ribbonN = gfxQuality >= 2 ? 9 : 4;
 
     // Scattered warm light pools that drift slowly (organic, not a grid).
-    for (let n = 0; n < 18; n++) {
+    for (let n = 0; n < poolN; n++) {
         const x = ((n * 137.1 + Math.sin(t * 0.35 + n * 1.7) * 55 + Math.cos(t * 0.22 + n) * 30) % viewW + viewW) % viewW;
         const y = ((n * 89.4 + Math.cos(t * 0.28 + n * 1.1) * 48 + Math.sin(t * 0.18 + n * 0.6) * 25) % viewH + viewH) % viewH;
         const tw = 0.45 + 0.55 * Math.abs(Math.sin(t * 0.9 + n * 1.3));
@@ -2444,15 +2506,16 @@ function drawBedCaustics(ctx) {
     // A few short, irregular warm ribbons (never evenly spaced H/V lines).
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    for (let n = 0; n < 9; n++) {
+    for (let n = 0; n < ribbonN; n++) {
         const x0 = ((n * 211.7 + Math.sin(t * 0.4 + n) * 80) % viewW + viewW) % viewW;
         const y0 = ((n * 163.3 + Math.cos(t * 0.33 + n * 1.4) * 70) % viewH + viewH) % viewH;
         const len = 40 + (n % 4) * 28;
         const ang = n * 0.9 + Math.sin(t * 0.25 + n) * 0.5;
         const pulse = 0.5 + 0.5 * Math.sin(t * 0.75 + n * 1.1);
         ctx.beginPath();
-        for (let i = 0; i <= 10; i++) {
-            const u = i / 10;
+        const steps = gfxQuality >= 2 ? 10 : 6;
+        for (let i = 0; i <= steps; i++) {
+            const u = i / steps;
             const x = x0 + Math.cos(ang) * (u - 0.5) * len
                 + Math.sin(u * 5 + t * 0.8 + n) * 8;
             const y = y0 + Math.sin(ang) * (u - 0.5) * len * 0.65
@@ -4024,6 +4087,8 @@ function paintFishBodyVolume(ctx, L, W, shape, body, belly) {
     }
     ctx.fill();
 
+    if (gfxQuality <= 0) return;
+
     // Cool upper shade (reads as depth through water).
     ctx.save();
     ctx.globalAlpha *= 0.22;
@@ -4074,13 +4139,13 @@ function drawFishLateralLine(ctx, L, W) {
 }
 
 function drawFishScaleField(ctx, L, W, alpha) {
-    if (L < 16) return;
+    if (L < 16 || gfxQuality <= 0) return;
     ctx.save();
     ctx.globalAlpha *= alpha == null ? 0.22 : alpha;
     ctx.strokeStyle = "rgba(255,255,255,0.55)";
     ctx.lineWidth = Math.max(0.45, L * 0.014);
-    const rows = L > 28 ? 5 : 4;
-    const cols = L > 28 ? 7 : 5;
+    const rows = gfxQuality >= 2 && L > 28 ? 5 : 3;
+    const cols = gfxQuality >= 2 && L > 28 ? 7 : 4;
     for (let row = -Math.floor(rows / 2); row <= Math.floor(rows / 2); row++) {
         for (let colI = -Math.floor(cols / 2); colI <= Math.floor(cols / 2); colI++) {
             const ox = colI * L * 0.085 + (row % 2) * L * 0.042;
@@ -7127,46 +7192,46 @@ class Fish {
 
         if (this.golden) {
             ctx.shadowColor = `rgba(255,215,90,${0.55 * (1 - sink * 0.7)})`;
-            ctx.shadowBlur = 10 * (1 - sink * 0.5);
+            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 10 * (1 - sink * 0.5);
         } else if (this.isPlatinum) {
             const glow = 0.7 + 0.3 * Math.sin(this.age * 5.5);
             ctx.shadowColor = `rgba(220, 240, 255, ${0.85 + 0.15 * glow})`;
-            ctx.shadowBlur = 24 + 16 * glow;
+            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 24 + 16 * glow;
         } else if (this.isRainbow) {
             ctx.shadowColor = "rgba(255,100,255,0.85)";
-            ctx.shadowBlur = 18;
+            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 18;
         } else if (this.isMonster) {
             ctx.shadowColor = "rgba(80,0,20,0.85)";
-            ctx.shadowBlur = 20;
+            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 20;
         } else if (this.isPink) {
             ctx.shadowColor = "rgba(255,130,190,0.7)";
-            ctx.shadowBlur = 12;
+            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 12;
         } else if (this.isPredator) {
             ctx.shadowColor = "rgba(160,20,30,0.75)";
-            ctx.shadowBlur = 14;
+            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
         } else if (this.isHero) {
             const giantGlow = giantEnding && giantEnding.fish === this && giantEnding.kind === "peace";
             const remorseGlow = heroRemorseEnding && heroRemorseEnding.fish === this;
             if (giantGlow) {
                 // Warm ember glow for giant farewell (distinct from blue hero remorse).
                 ctx.shadowColor = "rgba(255,170,70,0.92)";
-                ctx.shadowBlur = 24;
+                ctx.shadowBlur = gfxQuality <= 0 ? 0 : 24;
             } else if (remorseGlow) {
                 ctx.shadowColor = "rgba(160,220,255,0.95)";
-                ctx.shadowBlur = 26;
+                ctx.shadowBlur = gfxQuality <= 0 ? 0 : 26;
             } else {
                 ctx.shadowColor = "rgba(70,160,220,0.8)";
-                ctx.shadowBlur = 14;
+                ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
             }
-        } else if (isKoi) {
+        } else if (gfxQuality >= 2 && isKoi) {
             ctx.shadowColor = "rgba(40,70,90,0.45)";
             ctx.shadowBlur = 10;
-        } else if (this.type.exotic) {
+        } else if (gfxQuality >= 2 && this.type.exotic) {
             ctx.shadowColor = "rgba(120,180,200,0.55)";
             ctx.shadowBlur = 12;
         } else {
-            ctx.shadowColor = "rgba(20,50,70,0.6)";
-            ctx.shadowBlur = 8;
+            // Common fish skip canvas shadowBlur (major cost on integrated GPUs).
+            ctx.shadowBlur = 0;
         }
 
         // Caudal fin: lobed peduncle fork with soft ray hints.
@@ -7395,11 +7460,11 @@ class Fish {
             }
         });
 
-        // Scale shimmer: koi always, most other fish when large enough.
-        if (!this.golden && !this.isRainbow && !this.isMonster) {
+        // Scale shimmer: koi always (when quality allows), most other fish when large enough.
+        if (!this.golden && !this.isRainbow && !this.isMonster && gfxQuality >= 1) {
             if (isKoi) {
                 drawFishScaleField(ctx, L, W, 0.3);
-            } else if (this.type.exotic || shape === "round" || L > 22) {
+            } else if (gfxQuality >= 2 && (this.type.exotic || shape === "round" || L > 22)) {
                 drawFishScaleField(ctx, L, W, this.type.exotic ? 0.26 : 0.16);
             }
         }
@@ -16470,18 +16535,19 @@ function frame(now) {
     const dt = Math.min(0.05, (now - lastFrame) / 1000);
     lastFrame = now;
     sceneryTime += dt;
+    tickGfxQuality(dt);
 
     if (mode === "pond") {
         sunPhase += dt;
-        // Advance the water twice per frame for smoother, faster wave travel.
+        // One water step is enough on weaker devices; second step only when smooth.
         water.step();
-        water.step();
+        if (gfxQuality >= 2 && dt < 0.028) water.step();
 
         // Floor first, caustics on the stones, then translucent water.
         drawPondBed(ctx);
         drawBedCaustics(ctx);
         water.render(ctx);
-        drawSunContactShadows(ctx);
+        if (gfxQuality >= 1) drawSunContactShadows(ctx);
 
         // Shore and bank scenery sit under the swimming life.
         drawShoreStones(ctx, dt);
@@ -16511,7 +16577,7 @@ function frame(now) {
         for (let i = fishes.length - 1; i >= 0; i--) {
             if (fishes[i].dead) fishes.splice(i, 1);
         }
-        drawSunCreatureShadows(ctx);
+        if (gfxQuality >= 1) drawSunCreatureShadows(ctx);
         // Draw resting gold first (lakebed), then swimmers above them.
         for (const fish of fishes) {
             if (fish.golden) fish.draw(ctx);
@@ -16582,6 +16648,8 @@ function frame(now) {
     requestAnimationFrame(frame);
 }
 
+gfxQualityCap = estimateGfxQualityCap();
+gfxQuality = gfxQualityCap;
 resize();
 rebuildScenery();
 initFish();
