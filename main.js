@@ -2112,20 +2112,35 @@ function drawPondBed(ctx) {
     ctx.restore();
 }
 
-function sunShadowDir() {
+function skyShadowDir() {
+    if (nightMode) {
+        // Moon sits upper-right; longer cool shadows fall left and a bit down.
+        return { x: -0.72, y: 0.48 };
+    }
     // Golden-hour light from above-right: longer shadows fall left and a bit down.
     return { x: -0.58, y: 0.52 };
 }
 
-// Transform to the sun-offset floor contact and slightly squash so the silhouette sits on the bed.
+function sunShadowDir() {
+    return skyShadowDir();
+}
+
+function lightCastsFloorShadows() {
+    return nightMode || !!scenery.sun;
+}
+
+// Transform to the sky-offset floor contact and slightly squash so the silhouette sits on the bed.
 function withFloorShadow(ctx, x, y, sizeHint, alpha, rot, drawFn) {
-    const d = sunShadowDir();
-    const len = 22 + Math.max(8, sizeHint) * 0.95;
+    const d = skyShadowDir();
+    const stretch = nightMode ? 1.18 : 0.95;
+    const len = (nightMode ? 30 : 22) + Math.max(8, sizeHint) * stretch;
     ctx.save();
     ctx.translate(x + d.x * len, y + d.y * len);
-    ctx.scale(1, 0.58);
+    ctx.scale(1, nightMode ? 0.52 : 0.58);
     if (rot != null) ctx.rotate(rot);
-    ctx.fillStyle = `rgba(12, 10, 8, ${Math.min(0.78, alpha * 1.15)})`;
+    ctx.fillStyle = nightMode
+        ? `rgba(6, 10, 22, ${Math.min(0.72, alpha * 1.08)})`
+        : `rgba(12, 10, 8, ${Math.min(0.78, alpha * 1.15)})`;
     drawFn(ctx);
     ctx.restore();
 }
@@ -2401,10 +2416,10 @@ function drawBedCaustics(ctx) {
 }
 
 function drawSunContactShadows(ctx) {
-    if (!scenery.sun || nightMode) return;
+    if (!lightCastsFloorShadows()) return;
     ctx.save();
     ctx.globalCompositeOperation = "multiply";
-    ctx.globalAlpha = 0.95;
+    ctx.globalAlpha = nightMode ? 0.88 : 0.95;
 
     if (scenery.debris) {
         for (const o of obstacles) {
@@ -2449,10 +2464,10 @@ function drawSunContactShadows(ctx) {
 }
 
 function drawSunCreatureShadows(ctx) {
-    if (!scenery.sun || nightMode) return;
+    if (!lightCastsFloorShadows()) return;
     ctx.save();
     ctx.globalCompositeOperation = "multiply";
-    ctx.globalAlpha = 0.95;
+    ctx.globalAlpha = nightMode ? 0.88 : 0.95;
     for (const f of fishes) {
         if (f.dead) continue;
         const { L, W, shape } = fishShadowDims(f);
@@ -2467,6 +2482,18 @@ function drawSunCreatureShadows(ctx) {
         if (r.dead) continue;
         withFloorShadow(ctx, r.x, r.y, r.size, 0.58, r.dir, (c) => {
             fillReptileShadowPaths(c, r);
+        });
+    }
+    if (swordfish && !swordfish.dead) {
+        withFloorShadow(ctx, swordfish.x, swordfish.y, swordfish.size, 0.58, swordfish.dir, (c) => {
+            fillFishShadowPaths(c, swordfish.size, swordfish.size * 0.32, "long");
+        });
+    }
+    if (octopus && !octopus.dead) {
+        withFloorShadow(ctx, octopus.x, octopus.y, octopus.size, 0.5, octopus.dir, (c) => {
+            c.beginPath();
+            c.ellipse(0, 0, octopus.size * 0.42, octopus.size * 0.34, 0, 0, Math.PI * 2);
+            c.fill();
         });
     }
     if (shark && !shark.dead) {
@@ -13892,8 +13919,11 @@ function loadMarketState() {
         catcherLevel = Math.max(0, Math.min(CATCHER_LEVEL_MAX, Math.floor(data.catcherLevel || 0)));
         rainbowCaughtCount = Math.max(0, Math.floor(data.rainbowCaught || 0));
         platinumUnlocked = !!data.platinum || rainbowCaughtCount >= RAINBOWS_FOR_PLATINUM;
-        nightUnlocked = !!data.night || platinumUnlocked;
+        // Moon pond unlocks only with platinum (ignore stale night flags from older saves).
+        nightUnlocked = platinumUnlocked;
         nightMode = !!data.nightMode && nightUnlocked;
+        // Rewrite storage so old night:true without platinum cannot re-open the gate.
+        if (data.night && !platinumUnlocked) saveMarketState();
     } catch (err) {
         // Ignore corrupt market data.
     }
