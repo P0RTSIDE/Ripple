@@ -5722,6 +5722,355 @@ function burstRainbowIntoFood(fish) {
     fish.rainbowPhase = null;
 }
 
+// ---------------------------------------------------------------------------
+// Rainbow ninja finale: when only rainbow fish remain (platinum ignored),
+// they clash in a short fight, then burst into meat and rainbow food.
+// ---------------------------------------------------------------------------
+function rainbowNinjaCandidates() {
+    return fishes.filter((f) => f && !f.dead && !f.golden && !f.insideShark
+        && !f.rainbowLeaving && !f.isPlatinum && f.isRainbow);
+}
+
+function countableIgnoringPlatinum() {
+    return fishes.filter((f) => f && !f.dead && !f.golden && !f.insideShark
+        && !f.rainbowLeaving && !f.isPlatinum);
+}
+
+function shouldBeginRainbowNinjaFight() {
+    if (rainbowNinjaEnding || pondFinaleActive()) return false;
+    if (apexDuel || whale || sharkBusyWithGlowHint()) return false;
+    const countable = countableIgnoringPlatinum();
+    const rainbows = countable.filter((f) => f.isRainbow);
+    return rainbows.length >= 2 && rainbows.length === countable.length;
+}
+
+function sharkBusyWithGlowHint() {
+    return !!(shark && shark.glowSwallow);
+}
+
+function easeNinjaFishToward(f, tx, ty, baseSpeed, dt) {
+    f.age += dt;
+    f.tailPhase += dt * 16;
+    const chase = chaseTowardPoint(f, tx, ty, baseSpeed);
+    const turn = 9.5;
+    const diff = normAngle(chase.desired - f.dir);
+    f.dir += Math.max(-turn * dt, Math.min(turn * dt, diff));
+    const step = chase.speed * dt;
+    f.x += Math.cos(f.dir) * step;
+    f.y += Math.sin(f.dir) * step;
+    f.x = Math.max(18, Math.min(viewW - 18, f.x));
+    f.y = Math.max(18, Math.min(viewH - 18, f.y));
+    return chase.dist;
+}
+
+function spawnNinjaSparks(x, y, n) {
+    if (!rainbowNinjaEnding) return;
+    if (!rainbowNinjaEnding.sparks) rainbowNinjaEnding.sparks = [];
+    for (let i = 0; i < n; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 60 + Math.random() * 180;
+        rainbowNinjaEnding.sparks.push({
+            x, y,
+            vx: Math.cos(ang) * spd,
+            vy: Math.sin(ang) * spd - 40,
+            life: 0.25 + Math.random() * 0.45,
+            age: 0,
+            hue: (performance.now() * 0.2 + i * 40) % 360,
+            r: 2 + Math.random() * 3.5,
+        });
+    }
+}
+
+function burstNinjaRainbowFish(fish) {
+    if (!fish || fish.dead) return;
+    const cx = fish.x;
+    const cy = fish.y;
+    const pan = Math.max(-1, Math.min(1, (cx / viewW) * 2 - 1));
+    if (Audio.rainbowChime) Audio.rainbowChime(pan);
+    if (Audio.predatorEat) Audio.predatorEat(pan);
+    water.disturb(cx, cy, Math.max(32, fish.size), 520);
+    spawnSplash(cx, cy, 28, 1);
+    const meatN = 2;
+    const rainN = 2;
+    for (let i = 0; i < meatN; i++) {
+        const ang = (i / meatN) * Math.PI * 2 + Math.random() * 0.4;
+        const dist = 12 + Math.random() * 22;
+        foods.push(new Food(
+            cx + Math.cos(ang) * dist,
+            cy + Math.sin(ang) * dist,
+            14 + fish.size * 0.08,
+            { carcass: true }
+        ));
+    }
+    for (let i = 0; i < rainN; i++) {
+        const ang = Math.PI + (i / rainN) * Math.PI * 2 + Math.random() * 0.5;
+        const dist = 10 + Math.random() * 20;
+        foods.push(new Food(
+            cx + Math.cos(ang) * dist,
+            cy + Math.sin(ang) * dist,
+            11 + Math.random() * 5,
+            { rainbow: true }
+        ));
+    }
+    fish.dead = true;
+    fish.ninjaFight = false;
+    fish.rainbowLeaving = false;
+}
+
+function beginRainbowNinjaFight() {
+    if (rainbowNinjaEnding) return;
+    const fighters = rainbowNinjaCandidates();
+    if (fighters.length < 2) return;
+    // Softly clear apex so the rainbow duel owns the pond.
+    if (shark && !shark.glowSwallow) {
+        shark.dead = true;
+        shark = null;
+    }
+    if (whale && !whale.dead && !whale.isHero) {
+        whale.dead = true;
+        whale = null;
+    }
+    if (swordfish && !swordfish.tamed && !swordfish.isHero && !swordfish.golden) {
+        swordfish.dead = true;
+        swordfish = null;
+    }
+    if (octopus && !octopus.tamed && !octopus.isHero && !octopus.golden) {
+        if (typeof octopus.clearApexWrap === "function") octopus.clearApexWrap();
+        octopus.dead = true;
+        octopus = null;
+    }
+    for (const r of reptiles) {
+        if (!r.dead && !r.tamed && !r.golden && !r.isHero) r.leaving = true;
+    }
+    rainbowNinjaEnding = {
+        t: 0,
+        phase: "gather",
+        fightT: 0,
+        burstT: 0,
+        pairCd: 0,
+        sparks: [],
+        flashes: [],
+        fighters,
+        burstIndex: 0,
+    };
+    for (const f of fighters) {
+        f.ninjaFight = true;
+        f.target = null;
+        f.prey = null;
+        f.foodTarget = null;
+        f.rainbowLeaving = false;
+        f.rainbowPhase = null;
+        f._ninjaPartner = null;
+        f._ninjaDashT = 0;
+    }
+    const pan = 0;
+    if (Audio.rainbowChime) Audio.rainbowChime(pan);
+    if (Audio.sharkStrike) Audio.sharkStrike(pan * 0.4);
+    water.disturb(viewW * 0.5, viewH * 0.5, 70, 280);
+}
+
+function updateRainbowNinjaEnding(dt) {
+    const e = rainbowNinjaEnding;
+    if (!e) return;
+    e.t += dt;
+    e.fighters = (e.fighters || []).filter((f) => f && !f.dead);
+    const fighters = e.fighters;
+
+    // Sparks / clash flashes.
+    for (let i = (e.sparks || []).length - 1; i >= 0; i--) {
+        const s = e.sparks[i];
+        s.age += dt;
+        s.x += s.vx * dt;
+        s.y += s.vy * dt;
+        s.vy += 220 * dt;
+        if (s.age >= s.life) e.sparks.splice(i, 1);
+    }
+    for (let i = (e.flashes || []).length - 1; i >= 0; i--) {
+        const fl = e.flashes[i];
+        fl.age += dt;
+        if (fl.age >= fl.life) e.flashes.splice(i, 1);
+    }
+
+    if (e.phase === "gather") {
+        const cx = viewW * 0.5;
+        const cy = viewH * 0.48;
+        for (let i = 0; i < fighters.length; i++) {
+            const f = fighters[i];
+            const ang = (i / Math.max(1, fighters.length)) * Math.PI * 2 + e.t * 1.4;
+            const rad = 70 + Math.min(90, fighters.length * 10);
+            easeNinjaFishToward(
+                f,
+                cx + Math.cos(ang) * rad,
+                cy + Math.sin(ang) * rad * 0.72,
+                150 + f.size * 0.8,
+                dt
+            );
+            if (Math.random() < 0.12) {
+                water.disturb(f.x, f.y, 6, 22);
+            }
+        }
+        if (e.t >= 1.35 || fighters.length < 2) {
+            e.phase = "fight";
+            e.fightT = 0;
+            e.pairCd = 0;
+        }
+        return;
+    }
+
+    if (e.phase === "fight") {
+        e.fightT += dt;
+        e.pairCd -= dt;
+        const cx = viewW * 0.5;
+        const cy = viewH * 0.48;
+
+        if (e.pairCd <= 0 && fighters.length >= 2) {
+            e.pairCd = 0.28 + Math.random() * 0.22;
+            // Fresh pairings: shuffle indices and link neighbors.
+            const order = fighters.slice();
+            for (let i = order.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                const tmp = order[i];
+                order[i] = order[j];
+                order[j] = tmp;
+            }
+            for (let i = 0; i < order.length; i += 2) {
+                const a = order[i];
+                const b = order[i + 1] || order[0];
+                a._ninjaPartner = b;
+                b._ninjaPartner = a;
+                a._ninjaDashT = 0.35 + Math.random() * 0.25;
+                b._ninjaDashT = a._ninjaDashT;
+            }
+        }
+
+        for (const f of fighters) {
+            f._ninjaDashT = Math.max(0, (f._ninjaDashT || 0) - dt);
+            const partner = f._ninjaPartner && !f._ninjaPartner.dead ? f._ninjaPartner : null;
+            let tx = cx + (Math.random() - 0.5) * 40;
+            let ty = cy + (Math.random() - 0.5) * 30;
+            let spd = 170 + f.size * 1.1;
+            if (partner) {
+                // Dash through / past the partner for a ninja pass.
+                const ang = Math.atan2(partner.y - f.y, partner.x - f.x);
+                const overshoot = 40 + f.size * 0.6;
+                tx = partner.x + Math.cos(ang) * overshoot;
+                ty = partner.y + Math.sin(ang) * overshoot;
+                spd = 210 + f.size * 1.4;
+            } else {
+                const orbit = e.fightT * 2.2 + (f.age || 0);
+                tx = cx + Math.cos(orbit) * 110;
+                ty = cy + Math.sin(orbit * 1.3) * 80;
+            }
+            const dist = easeNinjaFishToward(f, tx, ty, spd, dt);
+            if (partner && dist < f.size * 0.45 + partner.size * 0.45 + 10) {
+                const ang = Math.atan2(f.y - partner.y, f.x - partner.x) || 0;
+                // Soft bounce apart (no teleport).
+                const push = Math.min(90 * dt, 14);
+                f.x += Math.cos(ang) * push;
+                f.y += Math.sin(ang) * push;
+                partner.x -= Math.cos(ang) * push;
+                partner.y -= Math.sin(ang) * push;
+                const mx = (f.x + partner.x) * 0.5;
+                const my = (f.y + partner.y) * 0.5;
+                spawnNinjaSparks(mx, my, 5 + Math.floor(Math.random() * 4));
+                e.flashes.push({
+                    x: mx, y: my,
+                    age: 0, life: 0.18,
+                    r: 18 + Math.random() * 22,
+                    hue: (performance.now() * 0.3) % 360,
+                });
+                if (Math.random() < 0.35) {
+                    const pan = Math.max(-1, Math.min(1, (mx / viewW) * 2 - 1));
+                    if (Audio.sharkStrike) Audio.sharkStrike(pan);
+                }
+                water.disturb(mx, my, 16, 90);
+            }
+            if (Math.random() < 0.18) water.disturb(f.x, f.y, 5, 18);
+        }
+
+        if (e.fightT >= 4.4 || fighters.length < 2) {
+            e.phase = "burst";
+            e.burstT = 0;
+            e.burstQueue = fighters.slice();
+            e.burstIndex = 0;
+        }
+        return;
+    }
+
+    if (e.phase === "burst") {
+        e.burstT += dt;
+        const queue = e.burstQueue || [];
+        while (e.burstIndex < queue.length && e.burstT >= e.burstIndex * 0.16) {
+            burstNinjaRainbowFish(queue[e.burstIndex]);
+            e.burstIndex++;
+        }
+        if (e.burstIndex >= queue.length) {
+            for (const f of queue) {
+                if (f && !f.dead) burstNinjaRainbowFish(f);
+            }
+            e.phase = "done";
+            e.doneT = 0;
+        }
+        return;
+    }
+
+    if (e.phase === "done") {
+        e.doneT = (e.doneT || 0) + dt;
+        if (e.doneT > 0.55 && (e.sparks || []).length === 0) {
+            for (const f of fishes) {
+                if (f) f.ninjaFight = false;
+            }
+            rainbowNinjaEnding = null;
+            repopulating = true;
+            repopTimer = 0.55;
+        }
+    }
+}
+
+function drawRainbowNinjaEnding(ctx) {
+    const e = rainbowNinjaEnding;
+    if (!e) return;
+    ctx.save();
+    // Soft colorful tension wash during the fight.
+    const pulse = 0.5 + 0.5 * Math.sin(e.t * 6);
+    const wash = Math.min(0.22, e.t * 0.08) * (e.phase === "burst" ? 0.4 : 1);
+    if (wash > 0.02) {
+        ctx.globalCompositeOperation = "screen";
+        const g = ctx.createRadialGradient(
+            viewW * 0.5, viewH * 0.48, 20,
+            viewW * 0.5, viewH * 0.48, Math.max(viewW, viewH) * 0.55
+        );
+        g.addColorStop(0, `hsla(${(e.t * 80) % 360}, 90%, 60%, ${wash * pulse})`);
+        g.addColorStop(0.55, `hsla(${(e.t * 80 + 120) % 360}, 80%, 50%, ${wash * 0.35})`);
+        g.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, viewW, viewH);
+        ctx.globalCompositeOperation = "source-over";
+    }
+    for (const fl of e.flashes || []) {
+        const u = 1 - fl.age / fl.life;
+        if (u <= 0) continue;
+        ctx.globalCompositeOperation = "lighter";
+        const rg = ctx.createRadialGradient(fl.x, fl.y, 1, fl.x, fl.y, fl.r * (0.6 + u));
+        rg.addColorStop(0, `hsla(${fl.hue}, 100%, 85%, ${0.85 * u})`);
+        rg.addColorStop(0.4, `hsla(${(fl.hue + 40) % 360}, 100%, 60%, ${0.4 * u})`);
+        rg.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = rg;
+        ctx.beginPath();
+        ctx.arc(fl.x, fl.y, fl.r * (0.7 + u), 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.globalCompositeOperation = "lighter";
+    for (const s of e.sparks || []) {
+        const u = 1 - s.age / s.life;
+        ctx.fillStyle = `hsla(${s.hue}, 100%, 65%, ${0.9 * u})`;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r * u, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.restore();
+}
+
 const RAINBOW_TRAIL_CAP = 220;
 
 function pushRainbowTrail(x, y, life, pathIndex) {
@@ -5824,6 +6173,7 @@ class Fish {
         this.tentacleGrab = null; // { prey, t } while reeling with tentacles
         this.rainbowLeaving = false;
         this.rainbowPhase = null; // "write" | "exit" during victory lap
+        this.ninjaFight = false; // locked into rainbow ninja finale choreography
         this.eggPath = null;
         this.eggIndex = 0;
         this.trailDrop = 0;
@@ -6573,6 +6923,12 @@ class Fish {
 
         if (this.plantMorph) {
             updatePlantMorph(this, dt);
+            return;
+        }
+        // Rainbow ninja finale drives position and facing.
+        if (this.ninjaFight) {
+            this.age += dt;
+            this.tailPhase += dt * 16;
             return;
         }
         // Held by an octopus tentacle: body is reeled by the octopus update.
@@ -8310,6 +8666,7 @@ let giantEnding = null; // { fish, t, kind: "peace" | "shadow", parts, debris, v
 let heroRemorseEnding = null; // { fish, t, burst }
 let orcaFeastEnding = null; // night coronation after eating the orca
 let swordfishSpearEnding = null; // { sf, t, approach, fade, liveAlpha } POV tip thrust finale
+let rainbowNinjaEnding = null; // multi-rainbow ninja fight when only rainbows remain
 let whaleRemorseDone = false; // one-shot: remorse finale already fired this session
 let apexDuel = null; // croc/alligator vs shark when the pond is emptied
 let repopulating = false;
@@ -8324,12 +8681,12 @@ function pondFinaleActive() {
     const octopusReturn = octopusWhaleFight && octopusWhaleFight.restocked;
     if (giantReturn || octopusReturn) {
         return !!(povAttack || heroRemorseEnding || frogFinale
-            || orcaFeastEnding || swordfishSpearEnding
+            || orcaFeastEnding || swordfishSpearEnding || rainbowNinjaEnding
             || (giantEnding && !giantReturn)
             || (octopusWhaleFight && !octopusReturn));
     }
     return !!(povAttack || giantEnding || heroRemorseEnding || frogFinale
-        || octopusWhaleFight || orcaFeastEnding || swordfishSpearEnding);
+        || octopusWhaleFight || orcaFeastEnding || swordfishSpearEnding || rainbowNinjaEnding);
 }
 
 function giantSizeThreshold() {
@@ -13505,6 +13862,10 @@ function manageEcosystem(dt) {
         updateSwordfishSpearEnding(dt);
         return;
     }
+    if (rainbowNinjaEnding) {
+        updateRainbowNinjaEnding(dt);
+        return;
+    }
     if (giantEnding) {
         updateGiantEnding(dt);
         return;
@@ -13684,6 +14045,11 @@ function manageEcosystem(dt) {
                 repopTimer = 0.8;
             }
         }
+    }
+
+    // Only rainbow fish left (platinum ignored): multi-rainbow ninja fight.
+    if (!repopulating && !rainbowExiting && shouldBeginRainbowNinjaFight()) {
+        beginRainbowNinjaFight();
     } else if (!shark && !whale && !repopulating && !rainbowExiting && !pondFinaleActive() && !apexDuel
         && countable.length === 1) {
         // Last countable swimmer: day shark, night orca (much larger).
@@ -13696,7 +14062,7 @@ function manageEcosystem(dt) {
         repopTimer = 0.8;
     }
 
-    if (repopulating && !apexDuel) {
+    if (repopulating && !apexDuel && !rainbowNinjaEnding) {
         repopTimer -= dt;
         if (repopTimer <= 0 && fishes.length < CONFIG.fishCount) {
             fishes.push(edgeFish());
@@ -16325,6 +16691,7 @@ function devClearFinales() {
     heroRemorseEnding = null;
     orcaFeastEnding = null;
     swordfishSpearEnding = null;
+    rainbowNinjaEnding = null;
     frogFinale = null;
     octopusWhaleFight = null;
     pirateShipDrop = null;
@@ -16345,6 +16712,7 @@ function devClearFinales() {
         if (f) {
             f.giantEnded = false;
             f._giantFlyAlpha = null;
+            f.ninjaFight = false;
         }
     }
 }
@@ -16798,6 +17166,26 @@ function buildDevMenu() {
         f.turnToRainbow();
         f.beginRainbowExit();
     }, { warn: true });
+    btn(endings, "Rainbow ninja", () => {
+        devEnsurePond();
+        devClearFinales();
+        // Clear non-rainbow swimmers so the duel can start.
+        for (const f of fishes) {
+            if (f && !f.dead && !f.isPlatinum && !f.isRainbow) f.dead = true;
+        }
+        const need = 4;
+        let rainbows = rainbowNinjaCandidates();
+        while (rainbows.length < need) {
+            const f = new Fish(FISH_TYPES[Math.floor(Math.random() * FISH_TYPES.length)]);
+            const p = devSpawnPoint();
+            f.x = p.x + (Math.random() - 0.5) * 100;
+            f.y = p.y + (Math.random() - 0.5) * 80;
+            f.turnToRainbow();
+            fishes.push(f);
+            rainbows = rainbowNinjaCandidates();
+        }
+        beginRainbowNinjaFight();
+    }, { warn: true });
     btn(endings, "Rainbow croc", () => {
         devEnsurePond();
         devClearFinales();
@@ -17035,6 +17423,7 @@ function frame(now) {
         if (giantEnding) drawGiantEnding(ctx);
         if (heroRemorseEnding) drawHeroRemorseEnding(ctx);
         if (octopusWhaleFight) drawOctopusWhaleFight(ctx);
+        if (rainbowNinjaEnding) drawRainbowNinjaEnding(ctx);
     } else {
         ctx.globalCompositeOperation = "source-over";
         ctx.fillStyle = "rgba(7, 10, 15, 0.22)";
