@@ -837,7 +837,7 @@ body.pond #progress-panel.open:focus-within {
     justify-content: flex-end;
     align-items: flex-end;
     gap: 7px;
-    max-width: 176px;
+    max-width: 220px;
     opacity: 0.22;
     transition: opacity 0.4s ease;
     pointer-events: none;
@@ -855,8 +855,9 @@ body.pond #food-stash.has-items {
 }
 
 .stash-slot {
-    width: 22px;
-    height: 22px;
+    position: relative;
+    width: 26px;
+    height: 26px;
     padding: 0;
     border: 1px solid rgba(200, 210, 220, 0.28);
     border-radius: 50%;
@@ -895,6 +896,25 @@ body.pond #food-stash.has-items {
     box-shadow:
         0 0 0 2px rgba(180, 140, 70, 0.22),
         inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.stash-count {
+    position: absolute;
+    right: -5px;
+    bottom: -4px;
+    min-width: 15px;
+    height: 15px;
+    padding: 0 4px;
+    border-radius: 8px;
+    font-family: "Segoe UI", Tahoma, sans-serif;
+    font-size: 10px;
+    font-weight: 650;
+    line-height: 15px;
+    text-align: center;
+    color: #f2f6fa;
+    background: rgba(18, 26, 34, 0.88);
+    border: 1px solid rgba(220, 230, 240, 0.28);
+    pointer-events: none;
 }
 
 /* Load hint, centered and breathing softly. */
