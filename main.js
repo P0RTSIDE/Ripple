@@ -463,8 +463,8 @@ const PICKER_RAINBOW_FOOD_COST = 3; // stashed rainbow food for fish picker tool
 const BLOBFISH_PETS_FOR_RAINBOW = 50;
 // Fish smaller than predatorSize can be lifted out; at/above it they only drag.
 const PICKER_LIFT_SIZE = CONFIG.predatorSize;
-const GOLD_CROCODILE_AWARD = 20; // fixed gold for lifting a golden alligator/crocodile
-const GOLD_NIGHT_PREDATOR_AWARD = 30; // fixed gold for lifting a golden swordfish / octopus
+const GOLD_CROCODILE_AWARD = 40; // fixed gold for lifting a golden alligator/crocodile
+const GOLD_NIGHT_PREDATOR_AWARD = 55; // fixed gold for lifting a golden swordfish / octopus
 const CATCHER_NIGHT_RAINBOW_REWARD = 3; // rainbow fish spawned when catching a rainbow night predator
 const GOLD_HOLD_TIME = 2.8; // default hold to pick up settled gold
 const MAGNET_HOLD_MULT = 0.32; // magnet: lift gold much faster
@@ -8929,7 +8929,6 @@ class Reptile {
             this.tailPhase += dt * 4;
             return;
         }
-        this.tailPhase += dt * (this.leaving ? 5.5 : (this.tamed ? 2.4 : 3.2));
         this.eatPulse -= dt;
         if (this.friendlyBoost > 0) this.friendlyBoost = Math.max(0, this.friendlyBoost - dt);
         if (this.petTimer > 0) this.petTimer = Math.max(0, this.petTimer - dt);
@@ -8957,6 +8956,7 @@ class Reptile {
             }
         }
 
+        // Golden crocs freeze like gold fish: sink and rest, no tail motion.
         if (this.golden) {
             if (this.lifting) return;
             this.sinkTimer += dt;
@@ -8966,6 +8966,8 @@ class Reptile {
             }
             return;
         }
+
+        this.tailPhase += dt * (this.leaving ? 5.5 : (this.tamed ? 2.4 : 3.2));
 
         // Scared: bolt off-screen, same idea as shark.leaving.
         if (this.leaving && !this.duelMode) {
@@ -9102,7 +9104,7 @@ class Reptile {
     draw(ctx) {
         const L = this.size;
         const W = this.size * (this.kind === "alligator" ? 0.34 : 0.28);
-        const wig = Math.sin(this.tailPhase) * (this.tamed ? 0.18 : 0.3);
+        const wig = this.golden ? 0 : Math.sin(this.tailPhase) * (this.tamed ? 0.18 : 0.3);
         const snout = this.kind === "alligator" ? 0.22 : 0.32; // croc longer/narrower
         const sink = this.golden ? (this.sinkDepth || 0) : 0;
         if (this.plantMorph) drawPlantMorphAura(ctx, this);
@@ -9781,7 +9783,6 @@ class Swordfish {
             this.tailPhase += dt * 5;
             return;
         }
-        this.tailPhase += dt * (this.tamed || this.isHero ? 3.2 : 4.2);
         this.spearCooldown = Math.max(0, this.spearCooldown - dt);
         this.huntTimer -= dt;
         if (this.friendlyBoost > 0) this.friendlyBoost = Math.max(0, this.friendlyBoost - dt);
@@ -9797,12 +9798,15 @@ class Swordfish {
             updatePlantMorph(this, dt);
             return;
         }
+        // Golden apex: settle still on the lakebed like a gold fish.
         if (this.golden) {
             if (this.lifting) return;
             this.sinkTimer += dt;
             this.sinkDepth = Math.min(1, this.sinkTimer / CONFIG.goldSinkTime);
             return;
         }
+
+        this.tailPhase += dt * (this.tamed || this.isHero ? 3.2 : 4.2);
 
         this.digestStuck(dt);
 
@@ -9976,7 +9980,7 @@ class Swordfish {
         if (this.plantMorph) drawPlantMorphAura(ctx, this);
         const L = this.size;
         const W = this.size * 0.22;
-        const wig = Math.sin(this.tailPhase) * 0.25;
+        const wig = this.golden ? 0 : Math.sin(this.tailPhase) * 0.25;
         const sink = this.golden ? (this.sinkDepth || 0) : 0;
         const morphA = this.plantMorph && this._morphAlpha != null ? this._morphAlpha : 1;
         const finaleA = (swordfishSpearEnding && swordfishSpearEnding.sf === this)
@@ -10403,8 +10407,6 @@ class Octopus {
             this.pulse += dt * 2.8;
             return;
         }
-        this.phase += dt * 2.1;
-        this.pulse += dt * 2.8;
         this.grabCooldown = Math.max(0, this.grabCooldown - dt);
         this.eatPulse = Math.max(0, this.eatPulse - dt);
         if (this.friendlyBoost > 0) this.friendlyBoost = Math.max(0, this.friendlyBoost - dt);
@@ -10420,12 +10422,16 @@ class Octopus {
             updatePlantMorph(this, dt);
             return;
         }
+        // Golden octopus freezes: no mantle pulse or arm sway while sunk.
         if (this.golden) {
             if (this.lifting) return;
             this.sinkTimer += dt;
             this.sinkDepth = Math.min(1, this.sinkTimer / CONFIG.goldSinkTime);
             return;
         }
+
+        this.phase += dt * 2.1;
+        this.pulse += dt * 2.8;
 
         // Wild octopus alone (glow fish do not count): summon a whale fight.
         if (!this.tamed && !this.isHero
@@ -10725,7 +10731,7 @@ class Octopus {
         if (this.dead) return;
         if (this.plantMorph) drawPlantMorphAura(ctx, this);
         const S = this.size;
-        const breath = 1 + Math.sin(this.pulse) * 0.05;
+        const breath = this.golden ? 1 : 1 + Math.sin(this.pulse) * 0.05;
         const sink = this.golden ? (this.sinkDepth || 0) : 0;
         const morphA = this.plantMorph && this._morphAlpha != null ? this._morphAlpha : 1;
         const drawY = this.y + sink * 6;
@@ -10825,7 +10831,7 @@ class Octopus {
         ctx.translate(this.x, drawY);
         ctx.rotate(this.dir);
         const breathW = breath;
-        const pulse = Math.sin(this.pulse);
+        const pulse = this.golden ? 0 : Math.sin(this.pulse);
 
         const fillLobe = (x, y, rx, ry, rot, col) => {
             ctx.fillStyle = col;
