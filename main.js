@@ -700,14 +700,14 @@ function resize() {
     canvas.style.height = viewH + "px";
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // work in CSS pixel coordinates
 
-    // Warm dusk vignette so golden hour light still feels submerged.
+    // Soft yellow-gold vignette so golden hour light still feels submerged.
     vignette = ctx.createRadialGradient(
-        viewW / 2, viewH / 2, Math.min(viewW, viewH) * 0.3,
-        viewW / 2, viewH / 2, Math.max(viewW, viewH) * 0.77
+        viewW / 2, viewH / 2, Math.min(viewW, viewH) * 0.32,
+        viewW / 2, viewH / 2, Math.max(viewW, viewH) * 0.78
     );
-    vignette.addColorStop(0, "rgba(32, 18, 8, 0)");
-    vignette.addColorStop(0.58, "rgba(32, 18, 8, 0.1)");
-    vignette.addColorStop(1, "rgba(18, 8, 4, 0.54)");
+    vignette.addColorStop(0, "rgba(28, 22, 10, 0)");
+    vignette.addColorStop(0.6, "rgba(28, 22, 10, 0.08)");
+    vignette.addColorStop(1, "rgba(16, 12, 6, 0.5)");
 
     if (water) water.resize();
     if (typeof rebuildScenery === "function") rebuildScenery();
@@ -2071,12 +2071,12 @@ class WaterSim {
         const causticPhase = sunOn && typeof sunPhase === "number" ? sunPhase * 0.42 : 1.7;
         let p = 0;
         for (let y = 0; y < rows; y++) {
-            // Soft amber water under golden hour (less hard orange).
+            // Soft yellow-gold water under golden hour.
             const ty = y / rows;
             const depth = ty * ty;
-            const baseR = (showBed ? 22 : 12) + ty * 8 + depth * 6 + sunClear * 20;
-            const baseG = (showBed ? 32 : 22) + ty * 11 + depth * 6 + sunClear * 11;
-            const baseB = (showBed ? 26 : 16) + ty * 7 + depth * 5 + sunClear * 3;
+            const baseR = (showBed ? 20 : 11) + ty * 7 + depth * 5 + sunClear * 16;
+            const baseG = (showBed ? 34 : 24) + ty * 12 + depth * 7 + sunClear * 14;
+            const baseB = (showBed ? 28 : 18) + ty * 8 + depth * 6 + sunClear * 5;
             for (let x = 0; x < cols; x++) {
                 const i = y * cols + x;
                 const l = x > 0 ? field[i - 1] : field[i];
@@ -2085,10 +2085,10 @@ class WaterSim {
                 const d = y < rows - 1 ? field[i + cols] : field[i];
                 const sx = l - r;
                 const sy = u - d;
-                const shade = (sx * (0.95 + sunClear * 0.38) + sy * 0.88) * (0.9 + sunClear * 0.24);
+                const shade = (sx * (0.95 + sunClear * 0.35) + sy * 0.9) * (0.88 + sunClear * 0.22);
                 let spec = 0;
                 const s = sx * 0.55 + sy;
-                if (s > 5.0) spec = Math.min(92, (s - 5.0) * (s - 5.0) * (0.38 + sunClear * 0.16));
+                if (s > 5.0) spec = Math.min(88, (s - 5.0) * (s - 5.0) * (0.36 + sunClear * 0.14));
                 let caustic = 0;
                 if (sunOn && gfxQuality >= 1) {
                     const cx = x * 0.12 + causticPhase + y * 0.035;
@@ -2096,13 +2096,13 @@ class WaterSim {
                     const n = Math.sin(cx) * Math.sin(cy * 1.15)
                         + Math.sin(cx * 0.4 + cy * 0.65) * 0.5
                         + Math.sin(cx * 1.7 - cy * 0.9) * 0.25;
-                    caustic = (n + 1.5) * (3.0 + sunClear * 0.48) * sunClear;
+                    caustic = (n + 1.5) * (2.8 + sunClear * 0.4) * sunClear;
                 }
 
-                // Spec and caustics stay gold-leaning without heavy orange cast.
-                data[p] = clampByte(baseR + shade * 1.05 + spec * 0.85 + caustic * 1.3);
-                data[p + 1] = clampByte(baseG + shade * 0.9 + spec * 0.72 + caustic * 1.0);
-                data[p + 2] = clampByte(baseB + shade * 0.7 + spec * 0.45 + caustic * 0.55);
+                // Spec and caustics lean yellow-gold, not orange.
+                data[p] = clampByte(baseR + shade * 0.95 + spec * 0.75 + caustic * 1.15);
+                data[p + 1] = clampByte(baseG + shade * 0.95 + spec * 0.8 + caustic * 1.15);
+                data[p + 2] = clampByte(baseB + shade * 0.85 + spec * 0.5 + caustic * 0.65);
                 data[p + 3] = alpha;
                 p += 4;
             }
@@ -2691,16 +2691,16 @@ function drawPondBed(ctx) {
     ctx.drawImage(pondBedCanvas, 0, 0, viewW, viewH);
     // Soft water-column veil: submerged feel without hiding floor silhouettes.
     const daySun = scenery.sun && !nightMode && !crystalMode;
-    ctx.globalAlpha = daySun ? 0.055 : 0.08;
-    ctx.fillStyle = daySun ? "rgba(50, 34, 18, 1)" : "rgba(22, 48, 46, 1)";
+    ctx.globalAlpha = daySun ? 0.05 : 0.08;
+    ctx.fillStyle = daySun ? "rgba(42, 36, 20, 1)" : "rgba(22, 48, 46, 1)";
     ctx.fillRect(0, 0, viewW, viewH);
     if (daySun) {
-        // Soft amber depth falloff toward the lower frame.
+        // Soft yellow depth falloff toward the lower frame.
         const depth = ctx.createLinearGradient(0, 0, 0, viewH);
-        depth.addColorStop(0, "rgba(255, 170, 80, 0)");
-        depth.addColorStop(0.45, "rgba(255, 140, 60, 0.035)");
-        depth.addColorStop(0.75, "rgba(80, 42, 20, 0.07)");
-        depth.addColorStop(1, "rgba(32, 16, 8, 0.15)");
+        depth.addColorStop(0, "rgba(255, 220, 120, 0)");
+        depth.addColorStop(0.5, "rgba(255, 200, 90, 0.03)");
+        depth.addColorStop(0.78, "rgba(70, 52, 22, 0.06)");
+        depth.addColorStop(1, "rgba(28, 20, 10, 0.12)");
         ctx.globalAlpha = 1;
         ctx.fillStyle = depth;
         ctx.fillRect(0, 0, viewW, viewH);
@@ -2757,7 +2757,7 @@ function withFloorShadow(ctx, x, y, sizeHint, alpha, rot, drawFn) {
         ? `rgba(22, 4, 36, ${Math.min(0.82, a)})`
         : nightMode
             ? `rgba(3, 6, 16, ${Math.min(0.78, a)})`
-            : `rgba(28, 14, 6, ${Math.min(0.7, a)})`;
+            : `rgba(22, 18, 10, ${Math.min(0.7, a)})`;
     drawFn(ctx);
     ctx.restore();
 }
@@ -3077,9 +3077,9 @@ function drawBedCaustics(ctx) {
             g.addColorStop(0.4, `rgba(160, 90, 230, ${0.038 * tw})`);
             g.addColorStop(1, "rgba(90, 40, 160, 0)");
         } else {
-            g.addColorStop(0, `rgba(255, 220, 140, ${0.18 * tw})`);
-            g.addColorStop(0.3, `rgba(255, 150, 55, ${0.09 * tw})`);
-            g.addColorStop(1, "rgba(220, 90, 20, 0)");
+            g.addColorStop(0, `rgba(255, 236, 170, ${0.14 * tw})`);
+            g.addColorStop(0.32, `rgba(255, 210, 110, ${0.065 * tw})`);
+            g.addColorStop(1, "rgba(210, 150, 50, 0)");
         }
         ctx.fillStyle = g;
         ctx.beginPath();
@@ -3112,7 +3112,7 @@ function drawBedCaustics(ctx) {
         }
         ctx.strokeStyle = crystal
             ? `rgba(200, 150, 255, ${0.045 + pulse * 0.04})`
-            : `rgba(255, 190, 110, ${0.1 + pulse * 0.07})`;
+            : `rgba(255, 220, 140, ${0.08 + pulse * 0.05})`;
         ctx.lineWidth = 1.5 + (n % 3) * 0.55;
         ctx.stroke();
     }
@@ -3507,7 +3507,7 @@ function fillFrogShadowPaths(ctx, frog) {
     }
 }
 
-// Golden hour wash: heavy orange amber top light, living depth, soft surface glare.
+// Golden hour wash: yellow-gold top light, living depth, soft surface glare.
 function drawSunAmbience(ctx) {
     // Day only. Never draws under moon or crystal sky.
     if (!scenery.sun || nightMode || crystalMode) return;
@@ -3518,83 +3518,83 @@ function drawSunAmbience(ctx) {
 
     ctx.save();
 
-    // Strong orange sky wash that gently breathes.
+    // Yellow-gold sky wash that gently breathes.
     ctx.globalCompositeOperation = "soft-light";
     const wash = ctx.createLinearGradient(0, 0, 0, viewH);
-    wash.addColorStop(0, `rgba(255, 165, 70, ${0.42 + breath * 0.08})`);
-    wash.addColorStop(0.28, `rgba(255, 120, 40, ${0.26 + breath * 0.05})`);
-    wash.addColorStop(0.62, `rgba(210, 90, 35, ${0.14 + breath * 0.03})`);
-    wash.addColorStop(1, `rgba(70, 28, 10, ${0.22 + drift * 0.04})`);
+    wash.addColorStop(0, `rgba(255, 220, 130, ${0.32 + breath * 0.06})`);
+    wash.addColorStop(0.32, `rgba(255, 200, 100, ${0.16 + breath * 0.04})`);
+    wash.addColorStop(0.65, `rgba(220, 170, 70, ${0.09 + breath * 0.025})`);
+    wash.addColorStop(1, `rgba(60, 42, 18, ${0.15 + drift * 0.03})`);
     ctx.fillStyle = wash;
     ctx.fillRect(0, 0, viewW, viewH);
 
-    // Hot late-day sun pool from upper right.
+    // Soft sun pool from upper right.
     ctx.globalCompositeOperation = "screen";
     const hot = ctx.createRadialGradient(
-        viewW * (0.7 + drift * 0.03), viewH * 0.08, 10,
-        viewW * 0.55, viewH * 0.42, Math.max(viewW, viewH) * 0.74
+        viewW * (0.68 + drift * 0.03), viewH * 0.1, 12,
+        viewW * 0.54, viewH * 0.4, Math.max(viewW, viewH) * 0.72
     );
-    hot.addColorStop(0, `rgba(255, 230, 150, ${0.28 + breath * 0.07})`);
-    hot.addColorStop(0.28, `rgba(255, 150, 55, ${0.14 + pulse * 0.04})`);
-    hot.addColorStop(0.65, `rgba(230, 90, 25, ${0.05 + pulse * 0.02})`);
-    hot.addColorStop(1, "rgba(160, 50, 10, 0)");
+    hot.addColorStop(0, `rgba(255, 240, 180, ${0.2 + breath * 0.05})`);
+    hot.addColorStop(0.32, `rgba(255, 215, 120, ${0.09 + pulse * 0.03})`);
+    hot.addColorStop(0.7, `rgba(230, 180, 70, ${0.03 + pulse * 0.015})`);
+    hot.addColorStop(1, "rgba(170, 120, 40, 0)");
     ctx.fillStyle = hot;
     ctx.fillRect(0, 0, viewW, viewH);
 
-    // Warm orange subsurface scatter under the lit water.
+    // Warm yellow subsurface scatter under the lit water.
     ctx.globalCompositeOperation = "screen";
     const scatter = ctx.createRadialGradient(
-        viewW * 0.52, viewH * 0.36, 16,
-        viewW * 0.5, viewH * 0.5, Math.max(viewW, viewH) * 0.58
+        viewW * 0.5, viewH * 0.38, 18,
+        viewW * 0.5, viewH * 0.48, Math.max(viewW, viewH) * 0.56
     );
-    scatter.addColorStop(0, `rgba(255, 150, 60, ${0.1 + breath * 0.035})`);
-    scatter.addColorStop(0.5, "rgba(230, 100, 35, 0.045)");
-    scatter.addColorStop(1, "rgba(140, 50, 15, 0)");
+    scatter.addColorStop(0, `rgba(255, 220, 120, ${0.07 + breath * 0.025})`);
+    scatter.addColorStop(0.55, "rgba(230, 180, 80, 0.025)");
+    scatter.addColorStop(1, "rgba(140, 100, 40, 0)");
     ctx.fillStyle = scatter;
     ctx.fillRect(0, 0, viewW, viewH);
 
-    // Depth falloff toward the shores and lower water (umber dusk).
+    // Depth falloff toward the shores and lower water.
     ctx.globalCompositeOperation = "multiply";
-    ctx.globalAlpha = 0.42 + breath * 0.05;
+    ctx.globalAlpha = 0.36 + breath * 0.04;
     const shade = ctx.createRadialGradient(
-        viewW * (0.6 + drift * 0.02), viewH * 0.22, viewH * 0.12,
-        viewW * 0.5, viewH * 0.58, Math.max(viewW, viewH) * 0.82
+        viewW * (0.58 + drift * 0.02), viewH * 0.24, viewH * 0.13,
+        viewW * 0.5, viewH * 0.56, Math.max(viewW, viewH) * 0.8
     );
-    shade.addColorStop(0, "rgba(255, 236, 190, 1)");
-    shade.addColorStop(0.4, "rgba(255, 175, 100, 1)");
-    shade.addColorStop(0.75, "rgba(160, 85, 40, 1)");
-    shade.addColorStop(1, "rgba(38, 16, 6, 1)");
+    shade.addColorStop(0, "rgba(255, 248, 220, 1)");
+    shade.addColorStop(0.45, "rgba(250, 220, 150, 1)");
+    shade.addColorStop(0.8, "rgba(160, 120, 55, 1)");
+    shade.addColorStop(1, "rgba(40, 28, 12, 1)");
     ctx.fillStyle = shade;
     ctx.fillRect(0, 0, viewW, viewH);
 
     // Warm shore darkening so the pond feels enclosed at dusk.
-    ctx.globalAlpha = 0.36 + drift * 0.05;
+    ctx.globalAlpha = 0.3 + drift * 0.04;
     const edge = ctx.createRadialGradient(
-        viewW * 0.5, viewH * 0.42, Math.min(viewW, viewH) * 0.24,
-        viewW * 0.5, viewH * 0.5, Math.max(viewW, viewH) * 0.74
+        viewW * 0.5, viewH * 0.44, Math.min(viewW, viewH) * 0.26,
+        viewW * 0.5, viewH * 0.5, Math.max(viewW, viewH) * 0.73
     );
     edge.addColorStop(0, "rgba(255, 255, 255, 1)");
-    edge.addColorStop(0.6, "rgba(255, 190, 120, 1)");
-    edge.addColorStop(1, "rgba(34, 12, 4, 1)");
+    edge.addColorStop(0.65, "rgba(250, 225, 170, 1)");
+    edge.addColorStop(1, "rgba(30, 22, 10, 1)");
     ctx.fillStyle = edge;
     ctx.fillRect(0, 0, viewW, viewH);
 
-    // Slow golden-orange surface glare streaks.
+    // Slow yellow-gold surface glare streaks.
     if (gfxQuality >= 1) {
         ctx.globalCompositeOperation = "screen";
         ctx.globalAlpha = 1;
-        const streakN = gfxQuality >= 2 ? 8 : 5;
+        const streakN = gfxQuality >= 2 ? 7 : 4;
         for (let i = 0; i < streakN; i++) {
             const px = ((i * 163.7 + sunPhase * (9 + i * 1.4)) % (viewW + 120)) - 60;
-            const py = viewH * (0.12 + (i % 5) * 0.11)
+            const py = viewH * (0.13 + (i % 5) * 0.11)
                 + Math.sin(sunPhase * 0.3 + i) * 10;
-            const rw = 52 + (i % 3) * 30;
-            const rh = 5 + (i % 2) * 3.5;
+            const rw = 50 + (i % 3) * 28;
+            const rh = 5 + (i % 2) * 3;
             const g = ctx.createRadialGradient(px, py, 0, px, py, rw);
-            const a = 0.07 + pulse * 0.045 + (i % 3) * 0.01;
-            g.addColorStop(0, `rgba(255, 230, 150, ${a})`);
-            g.addColorStop(0.4, `rgba(255, 150, 55, ${a * 0.5})`);
-            g.addColorStop(1, "rgba(230, 80, 15, 0)");
+            const a = 0.055 + pulse * 0.035 + (i % 3) * 0.009;
+            g.addColorStop(0, `rgba(255, 245, 190, ${a})`);
+            g.addColorStop(0.42, `rgba(255, 215, 120, ${a * 0.45})`);
+            g.addColorStop(1, "rgba(220, 160, 50, 0)");
             ctx.fillStyle = g;
             ctx.beginPath();
             ctx.ellipse(px, py, rw, rh, (i * 0.35) + Math.sin(sunPhase * 0.2 + i) * 0.12, 0, Math.PI * 2);
@@ -20280,6 +20280,7 @@ let registryOpen = false;
 let registryTab = "common";
 let registrySelectedId = null;
 let _registryCatalog = null;
+let registryPreviewQuiet = false;
 
 const REGISTRY_TABS = [
     { id: "common", label: "Common" },
@@ -20354,6 +20355,7 @@ function registryIdForType(type) {
 }
 
 function noteRegistryEncounter(id) {
+    if (registryPreviewQuiet) return false;
     if (!id || typeof id !== "string") return false;
     if (registrySeen[id]) return false;
     registrySeen[id] = Date.now();
@@ -20393,6 +20395,7 @@ function pushRegistryTypeEntry(list, type, group) {
         label: registryPrettyName(type.name),
         color: type.body || "#7aa89a",
         tip,
+        previewType: type,
     });
 }
 
@@ -20406,7 +20409,14 @@ function getRegistryCatalog() {
     for (const t of CRYSTAL_FISH_TYPES) pushRegistryTypeEntry(list, t, "crystal");
     for (const t of CRYSTAL_EXOTIC_TYPES) pushRegistryTypeEntry(list, t, "crystal");
     for (const a of REGISTRY_APEX_META) {
-        list.push({ id: a.id, group: "apex", label: a.label, color: a.color, tip: a.tip });
+        list.push({
+            id: a.id,
+            group: "apex",
+            label: a.label,
+            color: a.color,
+            tip: a.tip,
+            previewApex: a.id.replace(/^apex:/, ""),
+        });
     }
     for (const kind of Object.keys(PACIFIST_KIND_META)) {
         const m = PACIFIST_KIND_META[kind];
@@ -20417,10 +20427,18 @@ function getRegistryCatalog() {
             label: registryPrettyName(m.label || kind),
             color: (pal && pal.body) || "#9ec4b4",
             tip: REGISTRY_HELPER_TIP[kind] || "A pacifist helper. Gifts and auras instead of hunting.",
+            previewPac: kind,
         });
     }
     for (const r of REGISTRY_RARE_META) {
-        list.push({ id: r.id, group: "rare", label: r.label, color: r.color, tip: r.tip });
+        list.push({
+            id: r.id,
+            group: "rare",
+            label: r.label,
+            color: r.color,
+            tip: r.tip,
+            previewForm: r.id.replace(/^form:/, ""),
+        });
     }
     _registryCatalog = list;
     return list;
@@ -20507,6 +20525,156 @@ function setRegistryOpen(open) {
     if (registryOpen) renderRegistryUI();
 }
 
+function withRegistryPreviewQuiet(fn) {
+    const prev = registryPreviewQuiet;
+    registryPreviewQuiet = true;
+    const whaleCall = Audio && Audio.whaleCall;
+    const predatorEat = Audio && Audio.predatorEat;
+    const disturb = water && water.disturb;
+    try {
+        if (Audio) {
+            Audio.whaleCall = () => {};
+            Audio.predatorEat = () => {};
+        }
+        if (water) water.disturb = () => {};
+        return fn();
+    } finally {
+        registryPreviewQuiet = prev;
+        if (Audio && whaleCall) Audio.whaleCall = whaleCall;
+        if (Audio && predatorEat) Audio.predatorEat = predatorEat;
+        if (water && disturb) water.disturb = disturb;
+    }
+}
+
+function registryFixLimbTips(ent) {
+    if (!ent || !ent.legs || !ent.legs.length) return;
+    for (let i = 0; i < ent.legs.length; i++) {
+        const leg = ent.legs[i];
+        const t = ent.legs.length > 1 ? i / (ent.legs.length - 1) : 0.5;
+        const rear = -Math.PI * 0.9 + t * Math.PI * 1.8;
+        const ang = (ent.dir || 0) + Math.PI + rear * 0.55;
+        const len = leg.len || ent.size * 1.1;
+        leg.tipX = ent.x + Math.cos(ang) * len * 0.85;
+        leg.tipY = ent.y + Math.sin(ang) * len * 0.7;
+    }
+}
+
+function createRegistryPreviewEntity(entry) {
+    return withRegistryPreviewQuiet(() => {
+        let ent = null;
+        let fit = 0.72;
+        if (entry.previewType) {
+            ent = new Fish(entry.previewType);
+            ent.isHero = false;
+            ent.isPredator = false;
+            ent.size = Math.max(14, (entry.previewType.size && entry.previewType.size[0]) || 18);
+            fit = entry.previewType.shape === "eel" || entry.previewType.shape === "ray" ? 0.62 : 0.74;
+        } else if (entry.previewForm) {
+            const base = FISH_TYPES.find((t) => t.name === "ogon") || FISH_TYPES[0];
+            ent = new Fish(base);
+            ent.isHero = false;
+            ent.size = 22;
+            if (entry.previewForm === "rainbow") {
+                ent.isRainbow = true;
+                ent.isPredator = true;
+                ent.age = 1.2;
+            } else if (entry.previewForm === "monster") {
+                ent.isMonster = true;
+                ent.isPredator = true;
+                ent.size = 30;
+            } else if (entry.previewForm === "platinum") {
+                ent.isPlatinum = true;
+                ent.age = 1.4;
+            } else if (entry.previewForm === "gold") {
+                ent.golden = true;
+                ent.sinkDepth = 0.35;
+            }
+            fit = 0.7;
+        } else if (entry.previewPac) {
+            ent = new PacifistVisitor(entry.previewPac);
+            ent.size = Math.min(ent.size, 78);
+            fit = 0.68;
+        } else if (entry.previewApex) {
+            const k = entry.previewApex;
+            if (k === "shark") {
+                ent = new Shark(null);
+            } else if (k === "orca") {
+                ent = new Shark(null, { orca: true });
+            } else if (k === "prismshark") {
+                ent = new Shark(null, { crystal: true });
+            } else if (k === "whale") {
+                ent = new Whale();
+            } else if (k === "crocodile") {
+                ent = new Reptile("crocodile", { quiet: true });
+            } else if (k === "alligator") {
+                ent = new Reptile("alligator", { quiet: true });
+            } else if (k === "swordfish") {
+                ent = new Swordfish();
+            } else if (k === "octopus") {
+                ent = new Octopus({ quiet: true });
+            } else if (k === "mantle") {
+                ent = new Octopus({ crystal: true, quiet: true });
+            } else if (k === "serpent") {
+                ent = new CrystalSerpent({ quiet: true });
+            }
+            if (ent) {
+                ent.size = Math.min(ent.size, k === "whale" ? 120 : 90);
+                fit = k === "whale" || k === "octopus" || k === "mantle" ? 0.58 : 0.7;
+            }
+        }
+        if (!ent) return null;
+        ent.x = 0;
+        ent.y = 0;
+        ent.dir = 0;
+        ent.tailPhase = 0.4;
+        ent.phase = 0.4;
+        ent.dead = false;
+        ent.leaving = false;
+        registryFixLimbTips(ent);
+        return { ent, fit };
+    });
+}
+
+function paintRegistryPreview(canvas, entry, seen) {
+    if (!canvas || !entry) return;
+    const cssW = 68;
+    const cssH = 42;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.max(1, Math.floor(cssW * dpr));
+    canvas.height = Math.max(1, Math.floor(cssH * dpr));
+    canvas.style.width = cssW + "px";
+    canvas.style.height = cssH + "px";
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+
+    const preview = createRegistryPreviewEntity(entry);
+    if (!preview || !preview.ent || typeof preview.ent.draw !== "function") return;
+    const ent = preview.ent;
+    const native = Math.max(8, ent.size || 20);
+    const scale = (Math.min(cssW, cssH) * (preview.fit || 0.7)) / native;
+    ent.x = 0;
+    ent.y = 0;
+    ent.dir = 0;
+    registryFixLimbTips(ent);
+
+    ctx.save();
+    ctx.translate(cssW * 0.52, cssH * 0.56);
+    ctx.scale(scale, scale);
+    if (!seen) {
+        ctx.filter = "brightness(0)";
+        ctx.globalAlpha = 0.55;
+    }
+    try {
+        ent.draw(ctx);
+    } catch (err) {
+        // Preview should never break the registry panel.
+    }
+    ctx.restore();
+    ent.dead = true;
+}
+
 function renderRegistryUI() {
     const cat = getRegistryCatalog();
     const counts = registryCounts();
@@ -20555,13 +20723,13 @@ function renderRegistryUI() {
         card.setAttribute("role", "listitem");
         card.style.setProperty("--reg-color", entry.color || "#7aa89a");
         card.title = seen ? entry.label : "Not yet met";
-        const sil = document.createElement("span");
-        sil.className = "registry-sil";
-        sil.setAttribute("aria-hidden", "true");
+        const preview = document.createElement("canvas");
+        preview.className = "registry-preview";
+        preview.setAttribute("aria-hidden", "true");
         const name = document.createElement("span");
         name.className = "registry-name";
         name.textContent = seen ? entry.label : "???";
-        card.appendChild(sil);
+        card.appendChild(preview);
         card.appendChild(name);
         if (seen) {
             card.addEventListener("click", (e) => {
@@ -20574,6 +20742,7 @@ function renderRegistryUI() {
             card.disabled = true;
         }
         grid.appendChild(card);
+        paintRegistryPreview(preview, entry, seen);
     }
     if (detail) {
         if (selected) {
