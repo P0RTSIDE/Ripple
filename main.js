@@ -6538,10 +6538,11 @@ class Fish {
     }
 
     // Eating pink breeding food: soft blush; stays pink after breeding.
-    // Heroes / redeemed keep hero identity over the breeding blush.
+    // Natural heroes skip blush; tamed (redeemed) former evils can breed.
     turnPink() {
         if (this.dead || this.golden || this.isRainbow || this.rainbowLeaving) return;
-        if (this.isHero || this.redeemed || this.isMonster) return;
+        if (this.isMonster) return;
+        if (this.isHero && !this.redeemed) return;
         this.isPink = true;
         const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
         Audio.fishNote({
@@ -7313,8 +7314,8 @@ class Fish {
                 speed = this.baseSpeed * CONFIG.fleeSpeedMult;
             } else {
             // Pink fish lock onto the nearest eligible mate (full speed; no chaseToward softlock).
-            // Heroes keep hunting priority over breeding blush.
-            const mate = (this.isHero || this.redeemed) ? null : this.findPinkMate();
+            // Redeemed heroes in blush seek mates; natural heroes stay on hunt (canBreedFish false).
+            const mate = this.findPinkMate();
             if (mate) {
                 const dist = Math.hypot(mate.x - this.x, mate.y - this.y);
                 const touch = pinkBreedRange(this, mate);
@@ -8131,8 +8132,9 @@ class Fish {
         } else if (this.isMonster) {
             body = "#2a1020";
             belly = "#6a2038";
-        } else if (this.isPink && !this.isHero && !this.redeemed) {
+        } else if (this.isPink) {
             // Soft pink wash over species colors; patterns still draw underneath.
+            // Redeemed heroes keep a blush while breeding.
             body = washHexTowardPink(this.type.body, 0.58);
             belly = washHexTowardPink(this.type.belly, 0.48);
         } else if (this.lineageHue != null && this.lineageGen < CONFIG.lineageFadeGens
@@ -8536,8 +8538,7 @@ class Fish {
             pathFishFusiform(ctx, L, W, shape);
             ctx.fill();
         }
-        if (this.isPink && !this.golden && !this.isRainbow && !this.isMonster
-            && !this.isHero && !this.redeemed) {
+        if (this.isPink && !this.golden && !this.isRainbow && !this.isMonster) {
             // Extra blush so pink reads clearly while shape and pattern stay visible.
             ctx.fillStyle = "rgba(255,120,180,0.2)";
             pathFishFusiform(ctx, L, W, shape);
@@ -8964,8 +8965,10 @@ function mixFishTypes(ta, tb) {
 }
 
 function canBreedFish(f) {
+    // Redeemed (tamed evil) heroes may breed while blushed; natural heroes may not.
     return !!(f && f.isPink && !f.dead && !f.golden && !f.isRainbow
-        && !f.rainbowLeaving && !f.isMonster && !f.isHero && !f.redeemed
+        && !f.rainbowLeaving && !f.isMonster
+        && (!f.isHero || f.redeemed)
         && f.breedCooldown <= 0);
 }
 
@@ -8982,7 +8985,8 @@ function spawnBreedOffspring(a, b) {
     if (living >= CONFIG.maxBreedPop) return null;
     const type = mixFishTypes(a.type, b.type);
     const baby = new Fish(type);
-    baby.isHero = false;
+    // Tamed-evil bloodline: either parent redeemed means the young are born heroes.
+    baby.isHero = !!(a.redeemed || b.redeemed);
     baby.isPredator = false;
     baby.isPink = false;
     baby.isRainbow = false;
