@@ -2411,15 +2411,24 @@ function lightCastsFloorShadows() {
 // Transform to the sky-offset floor contact and slightly squash so the silhouette sits on the bed.
 function withFloorShadow(ctx, x, y, sizeHint, alpha, rot, drawFn) {
     const d = skyShadowDir();
-    const stretch = nightMode ? 1.18 : 0.95;
-    const len = (nightMode ? 30 : 22) + Math.max(8, sizeHint) * stretch;
+    const stretch = nightMode ? 1.28 : 1.08;
+    const len = (nightMode ? 34 : 26) + Math.max(8, sizeHint) * stretch;
+    const a = Math.min(0.92, alpha * (nightMode ? 1.25 : 1.35));
     ctx.save();
     ctx.translate(x + d.x * len, y + d.y * len);
-    ctx.scale(1, nightMode ? 0.52 : 0.58);
+    ctx.scale(1, nightMode ? 0.5 : 0.55);
     if (rot != null) ctx.rotate(rot);
+    // Soft penumbra, then a darker core that keeps the silhouette readable.
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, a * 0.45);
+    ctx.fillStyle = nightMode ? "rgba(4, 8, 18, 1)" : "rgba(10, 8, 6, 1)";
+    ctx.scale(1.12, 1.18);
+    drawFn(ctx);
+    ctx.restore();
+    ctx.globalAlpha = Math.min(1, a);
     ctx.fillStyle = nightMode
-        ? `rgba(6, 10, 22, ${Math.min(0.72, alpha * 1.08)})`
-        : `rgba(12, 10, 8, ${Math.min(0.78, alpha * 1.15)})`;
+        ? `rgba(3, 6, 16, ${Math.min(0.95, a)})`
+        : `rgba(8, 6, 4, ${Math.min(0.95, a)})`;
     drawFn(ctx);
     ctx.restore();
 }
@@ -2541,6 +2550,8 @@ function fishShadowDims(f) {
 }
 
 function fillFishShadowPaths(ctx, L, W, shape) {
+    // Map night spear silhouette onto the long arrow body.
+    if (shape === "long") shape = "arrow";
     // Tail lobe (rays use a whip; eels a small fan).
     ctx.beginPath();
     if (shape === "ray") {
@@ -2563,6 +2574,11 @@ function fillFishShadowPaths(ctx, L, W, shape) {
         ctx.quadraticCurveTo(-L * 1.05, -W * 0.55, -L * 1.2, -W * 0.2);
         ctx.quadraticCurveTo(-L * 1.08, 0, -L * 1.2, W * 0.2);
         ctx.quadraticCurveTo(-L * 1.05, W * 0.55, -L * 0.9, 0);
+    } else if (shape === "arrow") {
+        ctx.moveTo(-L * 0.72, 0);
+        ctx.bezierCurveTo(-L * 0.85, -W * 0.35, -L * 0.98, -W * 0.75, -L * 1.18, -W * 0.55);
+        ctx.quadraticCurveTo(-L * 0.95, 0, -L * 1.18, W * 0.55);
+        ctx.bezierCurveTo(-L * 0.98, W * 0.75, -L * 0.85, W * 0.35, -L * 0.72, 0);
     } else {
         ctx.moveTo(-L * 0.42, 0);
         ctx.quadraticCurveTo(-L * 0.62, -W * 0.55, -L * 0.92, -W * 0.95);
@@ -2570,8 +2586,65 @@ function fillFishShadowPaths(ctx, L, W, shape) {
         ctx.quadraticCurveTo(-L * 0.62, W * 0.55, -L * 0.42, 0);
     }
     ctx.fill();
+    // Body silhouette matches the live fish path.
     pathFishBody(ctx, L, W, shape);
     ctx.fill();
+    // Fins so the cast shadow reads as the same fish, not a blob.
+    if (shape === "ray") {
+        // Wing disc already carries the mass; tiny dorsal nub.
+        ctx.beginPath();
+        ctx.moveTo(-L * 0.28, -W * 0.08);
+        ctx.quadraticCurveTo(-L * 0.22, -W * 0.32, -L * 0.12, -W * 0.06);
+        ctx.fill();
+    } else if (shape === "eel") {
+        ctx.beginPath();
+        ctx.moveTo(L * 0.15, -W * 0.55);
+        ctx.quadraticCurveTo(-L * 0.1, -W * 1.15, -L * 0.75, -W * 0.45);
+        ctx.quadraticCurveTo(-L * 0.2, -W * 0.7, L * 0.15, -W * 0.55);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(L * 0.05, W * 0.45);
+        ctx.quadraticCurveTo(-L * 0.25, W * 0.95, -L * 0.8, W * 0.35);
+        ctx.quadraticCurveTo(-L * 0.2, W * 0.7, L * 0.05, W * 0.45);
+        ctx.fill();
+    } else {
+        const tall = shape === "longfin" ? 2.35
+            : shape === "angel" ? 2.05
+            : shape === "discus" ? 1.85
+            : shape === "diamond" ? 1.75
+            : shape === "arrow" ? 1.15
+            : shape === "koi" ? 1.4 : 1.55;
+        const startX = shape === "arrow" ? L * 0.05 : -L * 0.08;
+        ctx.beginPath();
+        ctx.moveTo(startX, -W * 0.72);
+        ctx.quadraticCurveTo(L * 0.02, -W * tall, L * 0.22, -W * (tall * 0.92));
+        ctx.quadraticCurveTo(L * 0.32, -W * 0.55, L * 0.18, -W * 0.48);
+        ctx.quadraticCurveTo(L * 0.05, -W * 0.72, startX, -W * 0.72);
+        ctx.fill();
+        if (shape === "longfin" || shape === "angel") {
+            ctx.beginPath();
+            ctx.moveTo(-L * 0.18, -W * 0.48);
+            ctx.quadraticCurveTo(L * 0.08, -W * (shape === "angel" ? 2.45 : 2.35), L * 0.4, -W * 0.32);
+            ctx.quadraticCurveTo(L * 0.08, -W * 0.95, -L * 0.18, -W * 0.48);
+            ctx.fill();
+        }
+        // Anal / ventral.
+        ctx.beginPath();
+        if (isTallDiscFishShape(shape)) {
+            ctx.moveTo(-L * 0.05, W * 0.7);
+            ctx.quadraticCurveTo(L * 0.08, W * 1.85, -L * 0.22, W * 1.95);
+            ctx.quadraticCurveTo(-L * 0.18, W * 0.95, -L * 0.05, W * 0.7);
+        } else {
+            ctx.moveTo(-L * 0.05, W * 0.55);
+            ctx.quadraticCurveTo(L * 0.08, W * 1.15, -L * 0.2, W * 1.2);
+            ctx.quadraticCurveTo(-L * 0.16, W * 0.7, -L * 0.05, W * 0.55);
+        }
+        ctx.fill();
+        // Pectoral paddle.
+        ctx.beginPath();
+        ctx.ellipse(L * 0.08, W * 0.55, L * 0.16, W * 0.42, 0.55, 0, Math.PI * 2);
+        ctx.fill();
+    }
 }
 
 function fillReptileShadowPaths(ctx, r) {
@@ -2599,6 +2672,15 @@ function fillReptileShadowPaths(ctx, r) {
         ctx.closePath();
     }
     ctx.fill();
+    // Limb paddles so the bed shadow matches the walking silhouette.
+    for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.ellipse(L * 0.12, side * W * 1.15, L * 0.16, W * 0.55, side * 0.35, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(-L * 0.18, side * W * 1.05, L * 0.14, W * 0.5, side * -0.25, 0, Math.PI * 2);
+        ctx.fill();
+    }
 }
 
 function fillSharkShadowPaths(ctx, L, W) {
@@ -2696,12 +2778,12 @@ function drawSunContactShadows(ctx) {
     if (!lightCastsFloorShadows()) return;
     ctx.save();
     ctx.globalCompositeOperation = "multiply";
-    ctx.globalAlpha = nightMode ? 0.88 : 0.95;
+    ctx.globalAlpha = nightMode ? 0.95 : 1;
 
     if (scenery.debris) {
         for (const o of obstacles) {
             const hint = isLongObstacle(o) ? o.len * 0.45 : obstacleRadius(o);
-            withFloorShadow(ctx, o.x, o.y, hint, isLongObstacle(o) ? 0.58 : 0.55, o.rot, (c) => {
+            withFloorShadow(ctx, o.x, o.y, hint, isLongObstacle(o) ? 0.78 : 0.74, o.rot, (c) => {
                 if (o.kind === "driftwood") {
                     pathJaggedCapsule(c, o.len, o.thick * 0.85, o.profile, o.knobs);
                     c.fill();
@@ -2723,7 +2805,7 @@ function drawSunContactShadows(ctx) {
     if (scenery.stones) {
         for (const s of sceneryItems.stones) {
             if (!s.profile) s.profile = makeObstacleDetail(Math.floor(s.x + s.y), 9, 5);
-            withFloorShadow(ctx, s.x, s.y, Math.max(s.rx, s.ry), 0.5, s.rot, (c) => {
+            withFloorShadow(ctx, s.x, s.y, Math.max(s.rx, s.ry), 0.72, s.rot, (c) => {
                 pathOrganicOval(c, s.rx * 1.05, s.ry * 0.95, 9, s.profile, 0.2);
                 c.fill();
             });
@@ -2731,8 +2813,238 @@ function drawSunContactShadows(ctx) {
     }
     if (scenery.lilies) {
         for (const L of sceneryItems.lilies) {
-            withFloorShadow(ctx, L.x, L.y, L.r, 0.52, L.rot, (c) => {
+            withFloorShadow(ctx, L.x, L.y, L.r, 0.7, L.rot, (c) => {
                 pathLilyPad(c, L.r);
+                c.fill();
+            });
+        }
+    }
+    if (scenery.sticks) {
+        for (const s of sceneryItems.sticks) {
+            withFloorShadow(ctx, s.x, s.y, s.len * 0.4, 0.62, s.rot, (c) => {
+                c.beginPath();
+                c.moveTo(-s.len * 0.5, -s.thick * 0.35);
+                c.quadraticCurveTo(0, -s.thick * 0.5, s.len * 0.48, -s.thick * 0.15);
+                c.lineTo(s.len * 0.52, s.thick * 0.2);
+                c.quadraticCurveTo(0, s.thick * 0.55, -s.len * 0.5, s.thick * 0.45);
+                c.closePath();
+                c.fill();
+            });
+        }
+    }
+    if (scenery.reeds) {
+        for (const r of sceneryItems.reeds) {
+            withFloorShadow(ctx, r.x, r.y, (r.h || 40) * 0.35, 0.48, r.ang, (c) => {
+                c.beginPath();
+                c.moveTo(-1.2, 0);
+                c.quadraticCurveTo(4, -(r.h || 40) * 0.5, 1.5, -(r.h || 40));
+                c.lineTo(-1.5, -(r.h || 40));
+                c.quadraticCurveTo(-4, -(r.h || 40) * 0.5, 1.2, 0);
+                c.closePath();
+                c.fill();
+            });
+        }
+    }
+    if (scenery.cattails) {
+        for (const ct of sceneryItems.cattails) {
+            withFloorShadow(ctx, ct.x, ct.y, (ct.h || 50) * 0.35, 0.52, ct.ang, (c) => {
+                c.beginPath();
+                c.moveTo(-1.6, 0);
+                c.quadraticCurveTo(5, -(ct.h || 50) * 0.5, 2, -(ct.h || 50));
+                c.lineTo(-2, -(ct.h || 50));
+                c.quadraticCurveTo(-5, -(ct.h || 50) * 0.5, 1.6, 0);
+                c.closePath();
+                c.fill();
+                c.beginPath();
+                c.ellipse(0, -(ct.h || 50) * 0.82, 4.2, 11, 0, 0, Math.PI * 2);
+                c.fill();
+            });
+        }
+    }
+    // Grown ornaments / plants: cast their own silhouette, not a round blob.
+    for (const p of pondPlants) {
+        const hint = softPropRadius(p);
+        withFloorShadow(ctx, p.x, p.y, hint, 0.68, p.rot || 0, (c) => {
+            pathPondPlantShadow(c, p);
+            c.fill();
+        });
+    }
+    ctx.restore();
+}
+
+function pathPondPlantShadow(ctx, p) {
+    const s = p.size || 24;
+    if (p.kind === "woodenfish") {
+        const L = s * 0.7;
+        const W = s * 0.28;
+        ctx.beginPath();
+        ctx.moveTo(L * 0.55, 0);
+        ctx.bezierCurveTo(L * 0.2, -W * 1.05, -L * 0.15, -W * 0.95, -L * 0.42, -W * 0.35);
+        ctx.quadraticCurveTo(-L * 0.5, 0, -L * 0.42, W * 0.35);
+        ctx.bezierCurveTo(-L * 0.15, W * 0.95, L * 0.2, W * 1.05, L * 0.55, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(-L * 0.38, 0);
+        ctx.lineTo(-L * 0.78, -W * 1.05);
+        ctx.quadraticCurveTo(-L * 0.55, 0, -L * 0.78, W * 1.05);
+        ctx.closePath();
+        return;
+    }
+    if (p.kind === "lantern") {
+        const h = s * 0.85;
+        const w = s * 0.38;
+        ctx.beginPath();
+        ctx.moveTo(-w * 0.55, -h * 0.15);
+        ctx.quadraticCurveTo(0, -h * 0.55, w * 0.55, -h * 0.15);
+        ctx.lineTo(w * 0.48, h * 0.35);
+        ctx.quadraticCurveTo(0, h * 0.48, -w * 0.48, h * 0.35);
+        ctx.closePath();
+        return;
+    }
+    if (p.kind === "buoy") {
+        ctx.beginPath();
+        ctx.ellipse(0, 0, s * 0.42, s * 0.3, 0, 0, Math.PI * 2);
+        return;
+    }
+    if (p.kind === "bottle") {
+        const h = s * 0.9;
+        const w = s * 0.28;
+        ctx.beginPath();
+        ctx.moveTo(-w * 0.55, h * 0.35);
+        ctx.quadraticCurveTo(-w * 0.7, 0, -w * 0.35, -h * 0.35);
+        ctx.lineTo(-w * 0.18, -h * 0.55);
+        ctx.lineTo(w * 0.18, -h * 0.55);
+        ctx.lineTo(w * 0.35, -h * 0.35);
+        ctx.quadraticCurveTo(w * 0.7, 0, w * 0.55, h * 0.35);
+        ctx.closePath();
+        return;
+    }
+    if (p.kind === "shell") {
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.4, s * 0.1);
+        ctx.quadraticCurveTo(0, -s * 0.45, s * 0.42, s * 0.08);
+        ctx.quadraticCurveTo(0, s * 0.35, -s * 0.4, s * 0.1);
+        ctx.closePath();
+        return;
+    }
+    if (p.kind === "coral" || p.kind === "weed") {
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.15, s * 0.35);
+        ctx.quadraticCurveTo(-s * 0.35, -s * 0.1, -s * 0.08, -s * 0.55);
+        ctx.quadraticCurveTo(0, -s * 0.2, s * 0.1, -s * 0.6);
+        ctx.quadraticCurveTo(s * 0.35, -s * 0.05, s * 0.18, s * 0.35);
+        ctx.closePath();
+        return;
+    }
+    if (p.kind === "mushroom") {
+        ctx.beginPath();
+        ctx.ellipse(0, -s * 0.12, s * 0.42, s * 0.28, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(0, s * 0.18, s * 0.14, s * 0.22, 0, 0, Math.PI * 2);
+        return;
+    }
+    // Default soft plant blob with a slight stem.
+    ctx.beginPath();
+    ctx.ellipse(0, 0, s * 0.45, s * 0.32, 0, 0, Math.PI * 2);
+}
+
+function drawSunCreatureShadows(ctx) {
+    if (!lightCastsFloorShadows()) return;
+    ctx.save();
+    ctx.globalCompositeOperation = "multiply";
+    ctx.globalAlpha = nightMode ? 0.95 : 1;
+    for (const f of fishes) {
+        if (f.dead) continue;
+        const { L, W, shape } = fishShadowDims(f);
+        const scale = f.golden ? (1 - (f.sinkDepth || 0) * 0.35) : 1;
+        const yOff = f.golden ? (f.sinkDepth || 0) * 6 : 0;
+        const liftZ = f.pickerLiftZ || 0;
+        // Lifted fish: longer, softer floor contact under the water plane.
+        const alpha = f.golden ? 0.62 : (liftZ > 1 ? 0.55 : 0.78);
+        withFloorShadow(ctx, f.x, f.y + yOff, L, alpha, f.dir, (c) => {
+            c.scale(scale, scale);
+            fillFishShadowPaths(c, L, W, shape);
+        });
+    }
+    for (const r of reptiles) {
+        if (r.dead) continue;
+        withFloorShadow(ctx, r.x, r.y, r.size, 0.76, r.dir, (c) => {
+            fillReptileShadowPaths(c, r);
+        });
+    }
+    if (swordfish && !swordfish.dead) {
+        withFloorShadow(ctx, swordfish.x, swordfish.y, swordfish.size, 0.76, swordfish.dir, (c) => {
+            fillFishShadowPaths(c, swordfish.size, swordfish.size * 0.32, "arrow");
+            // Spear bill.
+            c.beginPath();
+            c.moveTo(swordfish.size * 0.45, -swordfish.size * 0.04);
+            c.lineTo(swordfish.size * 0.95, 0);
+            c.lineTo(swordfish.size * 0.45, swordfish.size * 0.04);
+            c.closePath();
+            c.fill();
+        });
+    }
+    if (octopus && !octopus.dead) {
+        withFloorShadow(ctx, octopus.x, octopus.y, octopus.size * 1.2, 0.7, 0, (c) => {
+            c.beginPath();
+            c.ellipse(0, 0, octopus.size * 0.42, octopus.size * 0.34, octopus.dir || 0, 0, Math.PI * 2);
+            c.fill();
+            for (const leg of octopus.legs || []) {
+                const lx = leg.tipX - octopus.x;
+                const ly = leg.tipY - octopus.y;
+                c.beginPath();
+                c.moveTo(Math.cos(octopus.dir || 0) * -octopus.size * 0.15,
+                    Math.sin(octopus.dir || 0) * -octopus.size * 0.15);
+                c.quadraticCurveTo(lx * 0.45, ly * 0.45, lx, ly);
+                c.lineTo(lx + 3, ly + 2);
+                c.quadraticCurveTo(lx * 0.45 + 2, ly * 0.45 + 2,
+                    Math.cos(octopus.dir || 0) * -octopus.size * 0.1,
+                    Math.sin(octopus.dir || 0) * -octopus.size * 0.1);
+                c.closePath();
+                c.fill();
+            }
+        });
+    }
+    if (shark && !shark.dead) {
+        const L = shark.size;
+        const W = shark.size * 0.38;
+        withFloorShadow(ctx, shark.x, shark.y, L, 0.8, shark.dir, (c) => {
+            fillSharkShadowPaths(c, L, W);
+        });
+    }
+    if (whale && !whale.dead) {
+        const L = whale.size;
+        const W = whale.size * 0.3;
+        withFloorShadow(ctx, whale.x, whale.y, L, 0.72, whale.dir, (c) => {
+            fillWhaleShadowPaths(c, L, W);
+        });
+    }
+    if (scenery.frogs) {
+        for (const g of frogGroups) {
+            const frog = g.frog;
+            if (!frog || frog.dead) continue;
+            withFloorShadow(ctx, frog.x, frog.y, frog.size, 0.7, frog.dir || 0, (c) => {
+                fillFrogShadowPaths(c, frog);
+            });
+            for (const t of g.tadpoles || []) {
+                withFloorShadow(ctx, t.x, t.y, t.size || 6, 0.5, t.dir || 0, (c) => {
+                    c.beginPath();
+                    c.ellipse(0, 0, (t.size || 6) * 0.55, (t.size || 6) * 0.28, 0, 0, Math.PI * 2);
+                    c.fill();
+                    c.beginPath();
+                    c.moveTo(-(t.size || 6) * 0.4, 0);
+                    c.quadraticCurveTo(-(t.size || 6) * 0.9, -(t.size || 6) * 0.25, -(t.size || 6) * 1.1, 0);
+                    c.quadraticCurveTo(-(t.size || 6) * 0.9, (t.size || 6) * 0.25, -(t.size || 6) * 0.4, 0);
+                    c.fill();
+                });
+            }
+        }
+        for (const t of hungryTadpoles) {
+            withFloorShadow(ctx, t.x, t.y, t.size || 6, 0.5, t.dir || 0, (c) => {
+                c.beginPath();
+                c.ellipse(0, 0, (t.size || 6) * 0.55, (t.size || 6) * 0.28, 0, 0, Math.PI * 2);
                 c.fill();
             });
         }
@@ -2740,54 +3052,26 @@ function drawSunContactShadows(ctx) {
     ctx.restore();
 }
 
-function drawSunCreatureShadows(ctx) {
-    if (!lightCastsFloorShadows()) return;
-    ctx.save();
-    ctx.globalCompositeOperation = "multiply";
-    ctx.globalAlpha = nightMode ? 0.88 : 0.95;
-    for (const f of fishes) {
-        if (f.dead) continue;
-        const { L, W, shape } = fishShadowDims(f);
-        const scale = f.golden ? (1 - (f.sinkDepth || 0) * 0.35) : 1;
-        const yOff = f.golden ? (f.sinkDepth || 0) * 6 : 0;
-        withFloorShadow(ctx, f.x, f.y + yOff, L, f.golden ? 0.45 : 0.6, f.dir, (c) => {
-            c.scale(scale, scale);
-            fillFishShadowPaths(c, L, W, shape);
-        });
+function fillFrogShadowPaths(ctx, frog) {
+    const s = frog.size || 14;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, s * 0.55, s * 0.38, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Hind legs splay.
+    for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.15, side * s * 0.15);
+        ctx.quadraticCurveTo(-s * 0.55, side * s * 0.55, -s * 0.85, side * s * 0.35);
+        ctx.quadraticCurveTo(-s * 0.5, side * s * 0.25, -s * 0.2, side * s * 0.1);
+        ctx.closePath();
+        ctx.fill();
     }
-    for (const r of reptiles) {
-        if (r.dead) continue;
-        withFloorShadow(ctx, r.x, r.y, r.size, 0.58, r.dir, (c) => {
-            fillReptileShadowPaths(c, r);
-        });
+    // Front feet.
+    for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.ellipse(s * 0.28, side * s * 0.28, s * 0.16, s * 0.1, side * 0.4, 0, Math.PI * 2);
+        ctx.fill();
     }
-    if (swordfish && !swordfish.dead) {
-        withFloorShadow(ctx, swordfish.x, swordfish.y, swordfish.size, 0.58, swordfish.dir, (c) => {
-            fillFishShadowPaths(c, swordfish.size, swordfish.size * 0.32, "long");
-        });
-    }
-    if (octopus && !octopus.dead) {
-        withFloorShadow(ctx, octopus.x, octopus.y, octopus.size, 0.5, octopus.dir, (c) => {
-            c.beginPath();
-            c.ellipse(0, 0, octopus.size * 0.42, octopus.size * 0.34, 0, 0, Math.PI * 2);
-            c.fill();
-        });
-    }
-    if (shark && !shark.dead) {
-        const L = shark.size;
-        const W = shark.size * 0.38;
-        withFloorShadow(ctx, shark.x, shark.y, L, 0.62, shark.dir, (c) => {
-            fillSharkShadowPaths(c, L, W);
-        });
-    }
-    if (whale && !whale.dead) {
-        const L = whale.size;
-        const W = whale.size * 0.3;
-        withFloorShadow(ctx, whale.x, whale.y, L, 0.52, whale.dir, (c) => {
-            fillWhaleShadowPaths(c, L, W);
-        });
-    }
-    ctx.restore();
 }
 
 // Warm golden-hour wash from the viewer: amber light, no sun disc, no rays.
@@ -5139,11 +5423,13 @@ function drawWoodenFishOrnament(ctx, p, sway) {
     const tone = p.tone != null ? p.tone : 0.5;
     const mid = Math.floor(110 + tone * 50);
     ctx.rotate(p.rot + sway * 0.25);
-    // Soft lakebed shadow.
-    ctx.fillStyle = "rgba(0,0,0,0.18)";
-    ctx.beginPath();
-    ctx.ellipse(2, 4, L * 0.55, W * 0.7, 0, 0, Math.PI * 2);
-    ctx.fill();
+    // Soft lakebed shadow (cast pass owns the strong silhouette when sun/moon is on).
+    if (!lightCastsFloorShadows()) {
+        ctx.fillStyle = "rgba(0,0,0,0.22)";
+        ctx.beginPath();
+        ctx.ellipse(2, 4, L * 0.55, W * 0.7, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
     const wood = ctx.createLinearGradient(0, -W, 0, W);
     wood.addColorStop(0, `rgb(${mid + 40},${mid + 18},${Math.floor(mid * 0.55)})`);
     wood.addColorStop(0.45, `rgb(${mid},${Math.floor(mid * 0.72)},${Math.floor(mid * 0.42)})`);
@@ -5200,10 +5486,12 @@ function drawPondPlants(ctx, t, dt) {
             ctx.rotate(p.rot + sway * 0.4);
             const h = p.size * 0.85;
             const w = p.size * 0.38;
+            if (!lightCastsFloorShadows()) {
             ctx.fillStyle = "rgba(0,0,0,0.16)";
             ctx.beginPath();
             ctx.ellipse(1, h * 0.35, w * 0.7, w * 0.35, 0, 0, Math.PI * 2);
             ctx.fill();
+            }
             const paper = ctx.createLinearGradient(0, -h * 0.5, 0, h * 0.45);
             paper.addColorStop(0, "#f2d8a8");
             paper.addColorStop(0.5, "#e0a858");
@@ -5233,10 +5521,12 @@ function drawPondPlants(ctx, t, dt) {
         } else if (p.kind === "buoy") {
             ctx.rotate(p.rot + sway * 0.2);
             const r = p.size * 0.42;
+            if (!lightCastsFloorShadows()) {
             ctx.fillStyle = "rgba(0,0,0,0.16)";
             ctx.beginPath();
             ctx.ellipse(2, 3, r * 1.05, r * 0.55, 0, 0, Math.PI * 2);
             ctx.fill();
+            }
             ctx.fillStyle = "#c4583a";
             ctx.beginPath();
             ctx.ellipse(0, 0, r, r * 0.72, 0, 0, Math.PI * 2);
@@ -5254,10 +5544,12 @@ function drawPondPlants(ctx, t, dt) {
             ctx.rotate(p.rot + sway * 0.35);
             const h = p.size * 0.9;
             const w = p.size * 0.28;
+            if (!lightCastsFloorShadows()) {
             ctx.fillStyle = "rgba(0,0,0,0.14)";
             ctx.beginPath();
             ctx.ellipse(2, h * 0.2, w * 0.9, w * 0.4, 0, 0, Math.PI * 2);
             ctx.fill();
+            }
             ctx.fillStyle = "rgba(120,180,170,0.55)";
             ctx.beginPath();
             ctx.moveTo(-w * 0.55, h * 0.25);
@@ -5278,10 +5570,12 @@ function drawPondPlants(ctx, t, dt) {
         } else if (p.kind === "shell") {
             ctx.rotate(p.rot);
             const r = p.size * 0.48;
+            if (!lightCastsFloorShadows()) {
             ctx.fillStyle = "rgba(0,0,0,0.14)";
             ctx.beginPath();
             ctx.ellipse(2, 3, r * 1.05, r * 0.55, 0, 0, Math.PI * 2);
             ctx.fill();
+            }
             const shell = ctx.createRadialGradient(-r * 0.2, -r * 0.15, 2, 0, 0, r);
             shell.addColorStop(0, "#f2e4d0");
             shell.addColorStop(0.55, "#e0b898");
@@ -5373,10 +5667,12 @@ function drawPondPlants(ctx, t, dt) {
         } else if (p.kind === "teapot") {
             ctx.rotate(p.rot + sway * 0.2);
             const s = p.size * 0.55;
+            if (!lightCastsFloorShadows()) {
             ctx.fillStyle = "rgba(0,0,0,0.15)";
             ctx.beginPath();
             ctx.ellipse(2, 4, s * 0.85, s * 0.4, 0, 0, Math.PI * 2);
             ctx.fill();
+            }
             const pot = ctx.createRadialGradient(-s * 0.15, -s * 0.2, 2, 0, 0, s);
             pot.addColorStop(0, "#d8c8b0");
             pot.addColorStop(1, "#8a7060");
@@ -5399,10 +5695,12 @@ function drawPondPlants(ctx, t, dt) {
         } else if (p.kind === "coral") {
             ctx.rotate(p.rot);
             const s = p.size * 0.55;
+            if (!lightCastsFloorShadows()) {
             ctx.fillStyle = "rgba(0,0,0,0.14)";
             ctx.beginPath();
             ctx.ellipse(2, 3, s * 0.9, s * 0.4, 0, 0, Math.PI * 2);
             ctx.fill();
+            }
             const cols = ["#d87898", "#c868a0", "#e898b0"];
             for (let i = 0; i < 5; i++) {
                 const a = -0.9 + i * 0.45;
@@ -5424,10 +5722,12 @@ function drawPondPlants(ctx, t, dt) {
             ctx.rotate(p.rot + (p.tipBob || 0));
             p.tipBob = (p.tipBob || 0) + ((wake * 0.04) - (p.tipBob || 0)) * Math.min(1, (dt || 0.016) * 2.5);
             const r = p.size * (p.kind === "lotus" ? 0.7 : 0.55);
+            if (!lightCastsFloorShadows()) {
             ctx.fillStyle = "rgba(0,0,0,0.16)";
             ctx.beginPath();
             ctx.ellipse(1, 2, r * 1.05, r * 0.85, 0, 0, Math.PI * 2);
             ctx.fill();
+            }
             const g = ctx.createRadialGradient(-r * 0.2, -r * 0.2, 2, 0, 0, r);
             g.addColorStop(0, p.kind === "lotus" ? "#7eb86a" : "#6f9a5a");
             g.addColorStop(0.7, "#3f6a3a");
@@ -8392,13 +8692,16 @@ class Fish {
 
         ctx.save();
         if (this.plantMorph) drawPlantMorphAura(ctx, this);
-        // Lifted fish: shadow stays on the water plane, body rises above it.
+        // Lifted fish: shape-matched shadow stays on the water plane.
         if (liftZ > 1 && !this.golden) {
             ctx.save();
-            ctx.fillStyle = `rgba(0,0,0,${0.18 + 0.12 * Math.min(1, liftZ / 50)})`;
-            ctx.beginPath();
-            ctx.ellipse(this.x, this.y, L * 0.42, L * 0.22, 0, 0, Math.PI * 2);
-            ctx.fill();
+            ctx.globalCompositeOperation = "multiply";
+            const liftA = 0.28 + 0.22 * Math.min(1, liftZ / 50);
+            ctx.fillStyle = `rgba(8,6,4,${liftA})`;
+            ctx.translate(this.x, this.y);
+            ctx.scale(1, 0.55);
+            ctx.rotate(this.dir);
+            fillFishShadowPaths(ctx, L, W, shape);
             ctx.restore();
         }
         const bobY = (!this.golden && (shape === "angel" || shape === "discus"))
