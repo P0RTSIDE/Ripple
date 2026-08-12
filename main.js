@@ -88,7 +88,8 @@ const CONFIG = {
     exoticEdgeChance: 0.14, // chance a repopulating fish is an exotic
     // Blobfish: same cadence as whale apex checks, smaller roll chance, night only.
     blobfishChance: 0.018,
-    heroChance: 0.18,       // chance a new fish is a hero (hunts smaller predators)
+    heroChance: 0.28,       // chance a new fish is a hero (hunts smaller predators)
+    heroFoodChance: 0.005,  // rare hero food: turns a fish into a hero
     heroChaseMult: 2.1,     // hero chase: a bit faster than evil fish so they can catch them    // After a whale eats a fish, a large hero may hunt it below full whale size.
     whaleHeroHuntFrac: 0.55,    // hero.size > whale.size * this
     whaleHeroHuntScreen: 0.28,  // or hero.size >= min(viewW, viewH) * this
@@ -176,7 +177,7 @@ let guaranteeRainbow = false;
 // Type a variant name (anywhere) to force that kind on the next food drop.
 // When adding a new food variant: append its keyword here and handle it in applyFoodVariant.
 // "breed" is an alias keyword for pink breeding food.
-const FOOD_VARIANT_KEYWORDS = ["rainbow", "golden", "green", "grower", "pink", "breed", "platinum"];
+const FOOD_VARIANT_KEYWORDS = ["rainbow", "golden", "green", "grower", "pink", "breed", "platinum", "hero"];
 let nextFoodVariant = null;
 let foodTypeBuffer = "";
 // Dev menu state lives up here so typed codes work even if later UI setup throws.
@@ -207,6 +208,7 @@ function applyFoodVariant(target, variant) {
     target.grower = false;
     target.pink = false;
     target.platinum = false;
+    target.hero = false;
     const v = normalizeFoodVariant(variant);
     if (!v || v === "normal" || v === "carcass") return v;
     if (v === "rainbow") target.rainbow = true;
@@ -215,16 +217,19 @@ function applyFoodVariant(target, variant) {
     else if (v === "grower") target.grower = true;
     else if (v === "pink") target.pink = true;
     else if (v === "platinum") target.platinum = true;
+    else if (v === "hero") target.hero = true;
     return v;
 }
 
 function isRareFoodFlags(f) {
-    return !!(f && (f.golden || f.rainbow || f.green || f.grower || f.pink || f.platinum || f.carcass));
+    return !!(f && (f.golden || f.rainbow || f.green || f.grower || f.pink
+        || f.platinum || f.hero || f.carcass));
 }
 
 function foodVariantKey(f) {
     if (!f) return null;
     if (f.platinum) return "platinum";
+    if (f.hero) return "hero";
     if (f.rainbow) return "rainbow";
     if (f.green) return "green";
     if (f.grower) return "grower";
@@ -258,6 +263,8 @@ function pickFoodVariant() {
     if (roll < edge) return "green";
     edge += CONFIG.growerChance;
     if (roll < edge) return "grower";
+    edge += CONFIG.heroFoodChance;
+    if (roll < edge) return "hero";
     edge += CONFIG.pinkChance;
     if (roll < edge) return "pink";
     edge += CONFIG.goldenChance;
@@ -4100,6 +4107,20 @@ function pathFishFusiform(ctx, L, W, shape) {
     ctx.closePath();
 }
 
+// Clip subsequent draws to the filled body silhouette (keeps patterns inside the fish).
+function clipFishBody(ctx, L, W, shape) {
+    if (shape === "diamond") {
+        ctx.beginPath();
+        ctx.moveTo(L * 0.5, 0);
+        ctx.bezierCurveTo(L * 0.22, -W * 0.95, -L * 0.02, -W * 1.25, -L * 0.36, 0);
+        ctx.bezierCurveTo(-L * 0.02, W * 1.25, L * 0.22, W * 0.95, L * 0.5, 0);
+        ctx.closePath();
+    } else {
+        pathFishFusiform(ctx, L, W, shape);
+    }
+    ctx.clip();
+}
+
 // Soft dorsal darkening + belly lift for a rounder, more solid fish read.
 function paintFishBodyVolume(ctx, L, W, shape, body, belly) {
     const g = ctx.createLinearGradient(0, -W * 1.15, 0, W * 1.15);
@@ -5319,6 +5340,8 @@ class Rock {
             green: false,
             grower: false,
             pink: false,
+            platinum: false,
+            hero: false,
         };
         applyFoodVariant(flags, foodVariantKey({
             golden: !!this.golden,
@@ -5326,6 +5349,8 @@ class Rock {
             green: !!this.green,
             grower: !!this.grower,
             pink: !!this.pink,
+            platinum: !!this.platinum,
+            hero: !!this.hero,
         }));
         foods.push(new Food(this.tx, this.ty, this.size, flags));
     }
@@ -5370,6 +5395,12 @@ class Rock {
             g.addColorStop(0, "#ffe8f4");
             g.addColorStop(0.5, "#ff7eb6");
             g.addColorStop(1, "#d63a7a");
+        } else if (this.hero) {
+            ctx.shadowColor = "rgba(90,170,255,0.95)";
+            ctx.shadowBlur = 15;
+            g.addColorStop(0, "#e8f4ff");
+            g.addColorStop(0.5, "#5aa8e8");
+            g.addColorStop(1, "#2a5f9a");
         } else if (this.grower) {
             ctx.shadowColor = "rgba(255,120,160,0.95)";
             ctx.shadowBlur = 16;
@@ -5485,6 +5516,7 @@ class Food {
         this.grower = !!(flags && flags.grower);
         this.pink = !!(flags && flags.pink);
         this.platinum = !!(flags && flags.platinum);
+        this.hero = !!(flags && flags.hero);
         this.carcass = !!(flags && flags.carcass);
         this.rare = isRareFoodFlags(this);
         this.eaten = false;
@@ -5561,6 +5593,12 @@ class Food {
             g.addColorStop(0, "#ffe8f4");
             g.addColorStop(0.5, "#ff7eb6");
             g.addColorStop(1, "#d63a7a");
+        } else if (this.hero) {
+            ctx.shadowColor = "rgba(90,170,255,0.95)";
+            ctx.shadowBlur = 13 * alpha;
+            g.addColorStop(0, "#e8f4ff");
+            g.addColorStop(0.5, "#5aa8e8");
+            g.addColorStop(1, "#2a5f9a");
         } else if (this.grower) {
             ctx.shadowColor = "rgba(255,120,160,0.95)";
             ctx.shadowBlur = 13 * alpha;
@@ -6517,6 +6555,49 @@ class Fish {
         });
         water.disturb(this.x, this.y, this.size * 0.6, 140);
         spawnSplash(this.x, this.y, this.size * 0.28, 0.35);
+    }
+
+    // Eating hero food: join the heroes (and stop hunting as an evil fish).
+    turnHero() {
+        if (this.dead || this.golden || this.isRainbow || this.rainbowLeaving || this.isPlatinum) return;
+        if (this.isMonster && !this.tamedMonster) {
+            this.tameMonster();
+            return;
+        }
+        if (this.isHero && this.redeemed) {
+            this.petTimer = Math.max(this.petTimer, 1.2);
+            return;
+        }
+        this.isHero = true;
+        this.redeemed = true;
+        this.isPredator = false;
+        this.isPink = false;
+        this.prey = null;
+        this.evilPetCount = 0;
+        this.evilPetProgress = 0;
+        this.petTimer = Math.max(this.petTimer, 1.8);
+        const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+        Audio.fishNote({
+            freq: (this.type.petFreq || 320) * 1.2,
+            wave: "sine",
+            pan,
+            dur: 0.55,
+            level: 0.11,
+            partialAmt: 0.35,
+            partialRatio: 2.4,
+            bright: 1.35,
+        });
+        Audio.fishNote({
+            freq: (this.type.petFreq || 320) * 1.65,
+            wave: "triangle",
+            pan,
+            dur: 0.4,
+            level: 0.07,
+            partialAmt: 0.22,
+            bright: 1.4,
+        });
+        water.disturb(this.x, this.y, this.size * 0.75, 160);
+        spawnSplash(this.x, this.y, this.size * 0.35, 0.4);
     }
 
     // Victory lap: swim a fish logo, ease to center, burst into two rainbow food.
@@ -7741,6 +7822,12 @@ class Fish {
             this.turnPink();
             return;
         }
+        if (food.hero) {
+            food.eaten = true;
+            this.target = null;
+            this.turnHero();
+            return;
+        }
 
         const chunk = Math.min(this.type.bite * (food.carcass ? 1.6 : 1), food.amount);
         food.amount -= chunk;
@@ -7862,11 +7949,13 @@ class Fish {
         }
     }
 
-    drawPattern(ctx, L, W) {
+    drawPattern(ctx, L, W, shape) {
         const kind = this.type.pattern;
         if (!kind) return;
         const col = this.type.patternColor || "rgba(0,0,0,0.35)";
+        const bodyShape = shape || this.type.shape || "oval";
         ctx.save();
+        clipFishBody(ctx, L, W, bodyShape);
         ctx.fillStyle = col;
         ctx.strokeStyle = col;
         if (kind === "stripe") {
@@ -7889,8 +7978,8 @@ class Fish {
                 const x = i * L * 0.15;
                 ctx.globalAlpha = 0.55 + (i === 0 ? 0.25 : 0);
                 ctx.beginPath();
-                ctx.moveTo(x - L * 0.02, -W * 0.8);
-                ctx.quadraticCurveTo(x + L * 0.03, 0, x - L * 0.02, W * 0.8);
+                ctx.moveTo(x - L * 0.02, -W * 0.55);
+                ctx.quadraticCurveTo(x + L * 0.03, 0, x - L * 0.02, W * 0.55);
                 ctx.stroke();
             }
         } else if (kind === "spots") {
@@ -8378,22 +8467,25 @@ class Fish {
             }
         });
 
-        // Scale shimmer: koi always (when quality allows), most other fish when large enough.
-        if (!this.golden && !this.isRainbow && !this.isMonster && !this.tamedMonster && gfxQuality >= 1) {
-            if (isKoi) {
-                drawFishScaleField(ctx, L, W, 0.3);
-            } else if (gfxQuality >= 2 && (this.type.exotic || shape === "round" || L > 22)) {
-                drawFishScaleField(ctx, L, W, this.type.exotic ? 0.26 : 0.16);
+        // Scale shimmer and body patterns stay clipped to the fusiform silhouette.
+        if (!this.golden && !this.isRainbow && !this.isMonster && !this.tamedMonster) {
+            ctx.save();
+            clipFishBody(ctx, L, W, shape);
+            if (gfxQuality >= 1) {
+                if (isKoi) {
+                    drawFishScaleField(ctx, L, W, 0.3);
+                } else if (gfxQuality >= 2 && (this.type.exotic || shape === "round" || L > 22)) {
+                    drawFishScaleField(ctx, L, W, this.type.exotic ? 0.26 : 0.16);
+                }
             }
-        }
-
-        if (!this.golden && !this.isRainbow && !this.isMonster && !this.isPlatinum && !this.tamedMonster) {
-            this.drawPattern(ctx, L, W);
+            if (!this.isPlatinum) this.drawPattern(ctx, L, W, shape);
+            ctx.restore();
         }
 
         if (this.isPlatinum) {
             // Fine chrome scale sheen over the metal body.
             ctx.save();
+            clipFishBody(ctx, L, W, shape);
             ctx.globalAlpha *= 0.4;
             ctx.strokeStyle = "rgba(255,255,255,0.75)";
             ctx.lineWidth = Math.max(0.5, L * 0.018);
@@ -9351,7 +9443,7 @@ class Reptile {
         if (!this.foodTarget) return false;
         // Untamed crocs only chase transform pellets; tamed crocs eat any food.
         const food = this.foodTarget;
-        if (!this.tamed && !(food.rainbow || food.golden || food.green)) {
+        if (!this.tamed && !(food.rainbow || food.golden || food.green || food.hero)) {
             this.foodTarget = null;
             return false;
         }
@@ -9421,6 +9513,28 @@ class Reptile {
             });
             water.disturb(this.x, this.y, this.size * 0.5, 140);
             spawnSplash(this.x, this.y, this.size * 0.25, 0.3);
+            return;
+        }
+        if (food.hero) {
+            // Hero food turns wild reptiles into heroic guardians.
+            food.eaten = true;
+            this.foodTarget = null;
+            if (!this.tamed && typeof this.tame === "function") this.tame();
+            else {
+                this.tamed = true;
+                this.isHero = true;
+            }
+            Audio.fishNote({
+                freq: 280,
+                wave: "sine",
+                pan,
+                dur: 0.5,
+                level: 0.11,
+                partialAmt: 0.28,
+                bright: 1.25,
+            });
+            water.disturb(this.x, this.y, this.size * 0.55, 160);
+            spawnSplash(this.x, this.y, this.size * 0.28, 0.35);
             return;
         }
 
@@ -10196,7 +10310,7 @@ function nightPredatorTryBiteFood(ent, dt) {
     if (!ent.foodTarget) return false;
     const food = ent.foodTarget;
     if (!ent.tamed && !ent.isHero
-        && !(food.rainbow || food.golden || food.green || food.grower || food.platinum)) {
+        && !(food.rainbow || food.golden || food.green || food.grower || food.platinum || food.hero)) {
         ent.foodTarget = null;
         return false;
     }
@@ -10262,6 +10376,21 @@ function nightPredatorBiteFood(ent) {
             freq: 300, wave: "sine", pan, dur: 0.4, level: 0.1, partialAmt: 0.25, bright: 1.15,
         });
         water.disturb(ent.x, ent.y, ent.size * 0.5, 140);
+        return;
+    }
+    if (food.hero) {
+        food.eaten = true;
+        ent.foodTarget = null;
+        if (!ent.tamed && typeof nightPredatorTame === "function") nightPredatorTame(ent);
+        else {
+            ent.tamed = true;
+            ent.isHero = true;
+        }
+        Audio.fishNote({
+            freq: 290, wave: "sine", pan, dur: 0.5, level: 0.11, partialAmt: 0.28, bright: 1.3,
+        });
+        water.disturb(ent.x, ent.y, ent.size * 0.6, 180);
+        spawnSplash(ent.x, ent.y, ent.size * 0.3, 0.4);
         return;
     }
     const chunk = Math.min(food.carcass ? 12 : 7, food.amount);
@@ -14502,6 +14631,7 @@ const STASH_SWATCH = {
     green: { from: "#c8f5b0", mid: "#5db84a", to: "#2a6b2e", label: "Green food" },
     grower: { from: "#ffe0f0", mid: "#ff6fa0", to: "#b03060", label: "Grower food" },
     pink: { from: "#ffe8f4", mid: "#ff7eb6", to: "#d63a7a", label: "Breeding food" },
+    hero: { from: "#e8f4ff", mid: "#5aa8e8", to: "#2a5f9a", label: "Hero food" },
     platinum: { from: "#ffffff", mid: "#c8d8ec", to: "#7a8aa0", label: "Platinum food" },
     carcass: { from: "#d07060", mid: "#8a3030", to: "#4a1818", label: "Carcass" },
 };
@@ -14588,6 +14718,7 @@ function flagsFromStashVariant(variant) {
         green: v === "green",
         grower: v === "grower",
         pink: v === "pink",
+        hero: v === "hero",
         platinum: v === "platinum",
         carcass: v === "carcass",
     };
@@ -17231,7 +17362,7 @@ function buildDevMenu() {
         goldCollected += 20;
     });
     btn(unlocks, "Fill stash", () => {
-        for (const v of ["normal", "rainbow", "golden", "green", "grower", "pink", "platinum"]) {
+        for (const v of ["normal", "rainbow", "golden", "green", "grower", "pink", "hero", "platinum"]) {
             for (let i = 0; i < 3; i++) stashFood(v);
         }
         normalFoodBank = Math.max(normalFoodBank, 40);
@@ -17427,6 +17558,7 @@ function buildDevMenu() {
     btn(food, "Force next rainbow", () => { nextFoodVariant = "rainbow"; });
     btn(food, "Force next gold", () => { nextFoodVariant = "golden"; });
     btn(food, "Force next pink", () => { nextFoodVariant = "pink"; });
+    btn(food, "Force next hero", () => { nextFoodVariant = "hero"; });
     btn(food, "Force next platinum", () => { nextFoodVariant = "platinum"; });
 
     const transform = section("Transform nearest");
@@ -17445,6 +17577,10 @@ function buildDevMenu() {
     btn(transform, "To pink", () => {
         const f = devNearestFish();
         if (f) f.turnPink();
+    });
+    btn(transform, "To hero", () => {
+        const f = devNearestFish();
+        if (f) f.turnHero();
     });
     btn(transform, "To plant", () => {
         const f = devNearestFish();
