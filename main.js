@@ -699,14 +699,14 @@ function resize() {
     canvas.style.height = viewH + "px";
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // work in CSS pixel coordinates
 
-    // Cool teal vignette so the frame feels submerged, not blacked out.
+    // Warm dusk vignette so golden hour light still feels submerged.
     vignette = ctx.createRadialGradient(
-        viewW / 2, viewH / 2, Math.min(viewW, viewH) * 0.32,
-        viewW / 2, viewH / 2, Math.max(viewW, viewH) * 0.78
+        viewW / 2, viewH / 2, Math.min(viewW, viewH) * 0.28,
+        viewW / 2, viewH / 2, Math.max(viewW, viewH) * 0.76
     );
-    vignette.addColorStop(0, "rgba(6, 28, 32, 0)");
-    vignette.addColorStop(0.62, "rgba(8, 24, 28, 0.08)");
-    vignette.addColorStop(1, "rgba(4, 14, 18, 0.52)");
+    vignette.addColorStop(0, "rgba(36, 18, 6, 0)");
+    vignette.addColorStop(0.55, "rgba(40, 18, 6, 0.12)");
+    vignette.addColorStop(1, "rgba(22, 8, 2, 0.58)");
 
     if (water) water.resize();
     if (typeof rebuildScenery === "function") rebuildScenery();
@@ -2064,18 +2064,18 @@ class WaterSim {
         const sunOn = typeof scenery !== "undefined" && scenery.sun
             && typeof nightMode !== "undefined" && !nightMode
             && typeof crystalMode !== "undefined" && !crystalMode;
-        // Clear teal water with a soft depth falloff so the bed still reads.
-        const alpha = showBed ? (sunOn ? 74 : 132) : 255;
+        // Clearer near the lit surface; alpha still lets bed read through.
+        const alpha = showBed ? (sunOn ? 68 : 132) : 255;
         const sunClear = sunOn ? 1 : 0;
         const causticPhase = sunOn && typeof sunPhase === "number" ? sunPhase * 0.42 : 1.7;
         let p = 0;
         for (let y = 0; y < rows; y++) {
-            // Cool pond teal; clearer near the lit surface, denser toward the far bed.
+            // Orange-gold water column under late golden hour.
             const ty = y / rows;
             const depth = ty * ty;
-            const baseR = (showBed ? 12 : 8) + ty * 5 + depth * 4 + sunClear * 5;
-            const baseG = (showBed ? 34 : 22) + ty * 14 + depth * 8 + sunClear * 12;
-            const baseB = (showBed ? 40 : 26) + ty * 14 + depth * 10 + sunClear * 14;
+            const baseR = (showBed ? 28 : 14) + ty * 10 + depth * 8 + sunClear * 28;
+            const baseG = (showBed ? 30 : 20) + ty * 9 + depth * 5 + sunClear * 12;
+            const baseB = (showBed ? 18 : 12) + ty * 5 + depth * 3 + sunClear * 2;
             for (let x = 0; x < cols; x++) {
                 const i = y * cols + x;
                 const l = x > 0 ? field[i - 1] : field[i];
@@ -2084,10 +2084,10 @@ class WaterSim {
                 const d = y < rows - 1 ? field[i + cols] : field[i];
                 const sx = l - r;
                 const sy = u - d;
-                const shade = (sx * (0.95 + sunClear * 0.35) + sy * 0.9) * (0.88 + sunClear * 0.22);
+                const shade = (sx * (0.95 + sunClear * 0.4) + sy * 0.85) * (0.9 + sunClear * 0.25);
                 let spec = 0;
                 const s = sx * 0.55 + sy;
-                if (s > 5.0) spec = Math.min(88, (s - 5.0) * (s - 5.0) * (0.36 + sunClear * 0.14));
+                if (s > 5.0) spec = Math.min(96, (s - 5.0) * (s - 5.0) * (0.4 + sunClear * 0.18));
                 let caustic = 0;
                 if (sunOn && gfxQuality >= 1) {
                     const cx = x * 0.12 + causticPhase + y * 0.035;
@@ -2095,12 +2095,13 @@ class WaterSim {
                     const n = Math.sin(cx) * Math.sin(cy * 1.15)
                         + Math.sin(cx * 0.4 + cy * 0.65) * 0.5
                         + Math.sin(cx * 1.7 - cy * 0.9) * 0.25;
-                    caustic = (n + 1.5) * (2.7 + sunClear * 0.4) * sunClear;
+                    caustic = (n + 1.5) * (3.2 + sunClear * 0.55) * sunClear;
                 }
 
-                data[p] = clampByte(baseR + shade + spec * 0.6 + caustic * 0.95);
-                data[p + 1] = clampByte(baseG + shade * 0.95 + spec * 0.8 + caustic * 1.3);
-                data[p + 2] = clampByte(baseB + shade * 1.05 + spec * 0.85 + caustic * 1.4);
+                // Spec and caustics lean gold / orange, not cool teal.
+                data[p] = clampByte(baseR + shade * 1.15 + spec * 0.95 + caustic * 1.45);
+                data[p + 1] = clampByte(baseG + shade * 0.85 + spec * 0.7 + caustic * 0.95);
+                data[p + 2] = clampByte(baseB + shade * 0.55 + spec * 0.35 + caustic * 0.4);
                 data[p + 3] = alpha;
                 p += 4;
             }
@@ -2128,7 +2129,7 @@ const scenery = {
     duckweed: true,
     debris: true, // solid movable lake clutter (logs, rocks, driftwood, pots, and more)
     bed: true,    // rocky / sandy pond floor seen through the water
-    sun: true,    // clear daylight, cool caustic web, and crisp silhouette floor shadows
+    sun: true,    // golden hour wash, warm caustic web, and crisp silhouette floor shadows
     frogs: true,  // underwater frogs swimming with tadpole clusters (background)
 };
 let sceneryItems = {
@@ -2689,15 +2690,16 @@ function drawPondBed(ctx) {
     ctx.drawImage(pondBedCanvas, 0, 0, viewW, viewH);
     // Soft water-column veil: submerged feel without hiding floor silhouettes.
     const daySun = scenery.sun && !nightMode && !crystalMode;
-    ctx.globalAlpha = daySun ? 0.045 : 0.08;
-    ctx.fillStyle = daySun ? "rgba(22, 52, 58, 1)" : "rgba(22, 48, 46, 1)";
+    ctx.globalAlpha = daySun ? 0.06 : 0.08;
+    ctx.fillStyle = daySun ? "rgba(58, 32, 12, 1)" : "rgba(22, 48, 46, 1)";
     ctx.fillRect(0, 0, viewW, viewH);
     if (daySun) {
-        // Gentle depth gradient toward the lower frame.
+        // Stronger orange depth falloff toward the lower frame.
         const depth = ctx.createLinearGradient(0, 0, 0, viewH);
-        depth.addColorStop(0, "rgba(40, 90, 100, 0)");
-        depth.addColorStop(0.55, "rgba(20, 50, 56, 0.03)");
-        depth.addColorStop(1, "rgba(10, 32, 38, 0.1)");
+        depth.addColorStop(0, "rgba(255, 150, 55, 0)");
+        depth.addColorStop(0.4, "rgba(255, 120, 40, 0.05)");
+        depth.addColorStop(0.7, "rgba(90, 40, 14, 0.1)");
+        depth.addColorStop(1, "rgba(36, 14, 4, 0.2)");
         ctx.globalAlpha = 1;
         ctx.fillStyle = depth;
         ctx.fillRect(0, 0, viewW, viewH);
@@ -2748,13 +2750,13 @@ function withFloorShadow(ctx, x, y, sizeHint, alpha, rot, drawFn) {
         drawFn(ctx);
         ctx.restore();
     }
-    // Cool dark teal-grey core (underwater shadow), not warm brown.
+    // Cool dark teal-grey core at night / crystal; warm dusk umber in day.
     ctx.globalAlpha = Math.min(1, a);
     ctx.fillStyle = crystalMode
         ? `rgba(22, 4, 36, ${Math.min(0.82, a)})`
         : nightMode
             ? `rgba(3, 6, 16, ${Math.min(0.78, a)})`
-            : `rgba(6, 22, 28, ${Math.min(0.72, a)})`;
+            : `rgba(28, 14, 6, ${Math.min(0.7, a)})`;
     drawFn(ctx);
     ctx.restore();
 }
@@ -3074,9 +3076,9 @@ function drawBedCaustics(ctx) {
             g.addColorStop(0.4, `rgba(160, 90, 230, ${0.038 * tw})`);
             g.addColorStop(1, "rgba(90, 40, 160, 0)");
         } else {
-            g.addColorStop(0, `rgba(230, 252, 255, ${0.12 * tw})`);
-            g.addColorStop(0.35, `rgba(150, 228, 238, ${0.055 * tw})`);
-            g.addColorStop(1, "rgba(90, 180, 190, 0)");
+            g.addColorStop(0, `rgba(255, 220, 140, ${0.18 * tw})`);
+            g.addColorStop(0.3, `rgba(255, 150, 55, ${0.09 * tw})`);
+            g.addColorStop(1, "rgba(220, 90, 20, 0)");
         }
         ctx.fillStyle = g;
         ctx.beginPath();
@@ -3109,7 +3111,7 @@ function drawBedCaustics(ctx) {
         }
         ctx.strokeStyle = crystal
             ? `rgba(200, 150, 255, ${0.045 + pulse * 0.04})`
-            : `rgba(210, 245, 255, ${0.07 + pulse * 0.05})`;
+            : `rgba(255, 190, 110, ${0.1 + pulse * 0.07})`;
         ctx.lineWidth = 1.5 + (n % 3) * 0.55;
         ctx.stroke();
     }
@@ -3504,7 +3506,7 @@ function fillFrogShadowPaths(ctx, frog) {
     }
 }
 
-// Clear daylight wash: cool top light, living depth, soft surface glare.
+// Golden hour wash: heavy orange amber top light, living depth, soft surface glare.
 function drawSunAmbience(ctx) {
     // Day only. Never draws under moon or crystal sky.
     if (!scenery.sun || nightMode || crystalMode) return;
@@ -3515,80 +3517,83 @@ function drawSunAmbience(ctx) {
 
     ctx.save();
 
-    // Cool sky wash that gently breathes.
+    // Strong orange sky wash that gently breathes.
     ctx.globalCompositeOperation = "soft-light";
     const wash = ctx.createLinearGradient(0, 0, 0, viewH);
-    wash.addColorStop(0, `rgba(210, 236, 246, ${0.2 + breath * 0.05})`);
-    wash.addColorStop(0.4, `rgba(150, 210, 222, ${0.07 + breath * 0.02})`);
-    wash.addColorStop(1, `rgba(32, 62, 70, ${0.12 + drift * 0.03})`);
+    wash.addColorStop(0, `rgba(255, 165, 70, ${0.42 + breath * 0.08})`);
+    wash.addColorStop(0.28, `rgba(255, 120, 40, ${0.26 + breath * 0.05})`);
+    wash.addColorStop(0.62, `rgba(210, 90, 35, ${0.14 + breath * 0.03})`);
+    wash.addColorStop(1, `rgba(70, 28, 10, ${0.22 + drift * 0.04})`);
     ctx.fillStyle = wash;
     ctx.fillRect(0, 0, viewW, viewH);
 
-    // Soft sun pool from upper right.
+    // Hot late-day sun pool from upper right.
     ctx.globalCompositeOperation = "screen";
     const hot = ctx.createRadialGradient(
-        viewW * (0.62 + drift * 0.03), viewH * 0.12, 12,
-        viewW * 0.5, viewH * 0.4, Math.max(viewW, viewH) * 0.7
+        viewW * (0.7 + drift * 0.03), viewH * 0.08, 10,
+        viewW * 0.55, viewH * 0.42, Math.max(viewW, viewH) * 0.74
     );
-    hot.addColorStop(0, `rgba(240, 250, 255, ${0.12 + breath * 0.04})`);
-    hot.addColorStop(0.4, `rgba(170, 224, 232, ${0.04 + pulse * 0.015})`);
-    hot.addColorStop(1, "rgba(90, 150, 160, 0)");
+    hot.addColorStop(0, `rgba(255, 230, 150, ${0.28 + breath * 0.07})`);
+    hot.addColorStop(0.28, `rgba(255, 150, 55, ${0.14 + pulse * 0.04})`);
+    hot.addColorStop(0.65, `rgba(230, 90, 25, ${0.05 + pulse * 0.02})`);
+    hot.addColorStop(1, "rgba(160, 50, 10, 0)");
     ctx.fillStyle = hot;
     ctx.fillRect(0, 0, viewW, viewH);
 
-    // Subsurface teal scatter under the lit water.
+    // Warm orange subsurface scatter under the lit water.
     ctx.globalCompositeOperation = "screen";
     const scatter = ctx.createRadialGradient(
-        viewW * 0.48, viewH * 0.38, 20,
-        viewW * 0.48, viewH * 0.48, Math.max(viewW, viewH) * 0.55
+        viewW * 0.52, viewH * 0.36, 16,
+        viewW * 0.5, viewH * 0.5, Math.max(viewW, viewH) * 0.58
     );
-    scatter.addColorStop(0, `rgba(140, 210, 220, ${0.045 + breath * 0.02})`);
-    scatter.addColorStop(0.55, "rgba(90, 160, 170, 0.015)");
-    scatter.addColorStop(1, "rgba(50, 100, 110, 0)");
+    scatter.addColorStop(0, `rgba(255, 150, 60, ${0.1 + breath * 0.035})`);
+    scatter.addColorStop(0.5, "rgba(230, 100, 35, 0.045)");
+    scatter.addColorStop(1, "rgba(140, 50, 15, 0)");
     ctx.fillStyle = scatter;
     ctx.fillRect(0, 0, viewW, viewH);
 
-    // Depth falloff toward the shores and lower water.
+    // Depth falloff toward the shores and lower water (umber dusk).
     ctx.globalCompositeOperation = "multiply";
-    ctx.globalAlpha = 0.34 + breath * 0.04;
+    ctx.globalAlpha = 0.42 + breath * 0.05;
     const shade = ctx.createRadialGradient(
-        viewW * (0.54 + drift * 0.02), viewH * 0.26, viewH * 0.14,
-        viewW * 0.5, viewH * 0.55, Math.max(viewW, viewH) * 0.8
+        viewW * (0.6 + drift * 0.02), viewH * 0.22, viewH * 0.12,
+        viewW * 0.5, viewH * 0.58, Math.max(viewW, viewH) * 0.82
     );
-    shade.addColorStop(0, "rgba(248, 252, 255, 1)");
-    shade.addColorStop(0.5, "rgba(190, 224, 230, 1)");
-    shade.addColorStop(1, "rgba(28, 48, 54, 1)");
+    shade.addColorStop(0, "rgba(255, 236, 190, 1)");
+    shade.addColorStop(0.4, "rgba(255, 175, 100, 1)");
+    shade.addColorStop(0.75, "rgba(160, 85, 40, 1)");
+    shade.addColorStop(1, "rgba(38, 16, 6, 1)");
     ctx.fillStyle = shade;
     ctx.fillRect(0, 0, viewW, viewH);
 
-    // Cool shore darkening so the pond feels enclosed.
-    ctx.globalAlpha = 0.28 + drift * 0.04;
+    // Warm shore darkening so the pond feels enclosed at dusk.
+    ctx.globalAlpha = 0.36 + drift * 0.05;
     const edge = ctx.createRadialGradient(
-        viewW * 0.5, viewH * 0.45, Math.min(viewW, viewH) * 0.28,
-        viewW * 0.5, viewH * 0.5, Math.max(viewW, viewH) * 0.72
+        viewW * 0.5, viewH * 0.42, Math.min(viewW, viewH) * 0.24,
+        viewW * 0.5, viewH * 0.5, Math.max(viewW, viewH) * 0.74
     );
     edge.addColorStop(0, "rgba(255, 255, 255, 1)");
-    edge.addColorStop(0.7, "rgba(170, 210, 215, 1)");
-    edge.addColorStop(1, "rgba(22, 40, 46, 1)");
+    edge.addColorStop(0.6, "rgba(255, 190, 120, 1)");
+    edge.addColorStop(1, "rgba(34, 12, 4, 1)");
     ctx.fillStyle = edge;
     ctx.fillRect(0, 0, viewW, viewH);
 
-    // Slow surface glare streaks, like bright water skin in the reference.
+    // Slow golden-orange surface glare streaks.
     if (gfxQuality >= 1) {
         ctx.globalCompositeOperation = "screen";
         ctx.globalAlpha = 1;
-        const streakN = gfxQuality >= 2 ? 7 : 4;
+        const streakN = gfxQuality >= 2 ? 8 : 5;
         for (let i = 0; i < streakN; i++) {
             const px = ((i * 163.7 + sunPhase * (9 + i * 1.4)) % (viewW + 120)) - 60;
-            const py = viewH * (0.14 + (i % 5) * 0.11)
+            const py = viewH * (0.12 + (i % 5) * 0.11)
                 + Math.sin(sunPhase * 0.3 + i) * 10;
-            const rw = 48 + (i % 3) * 28;
-            const rh = 5 + (i % 2) * 3;
+            const rw = 52 + (i % 3) * 30;
+            const rh = 5 + (i % 2) * 3.5;
             const g = ctx.createRadialGradient(px, py, 0, px, py, rw);
-            const a = 0.04 + pulse * 0.025 + (i % 3) * 0.008;
-            g.addColorStop(0, `rgba(245, 252, 255, ${a})`);
-            g.addColorStop(0.45, `rgba(190, 230, 240, ${a * 0.35})`);
-            g.addColorStop(1, "rgba(120, 190, 200, 0)");
+            const a = 0.07 + pulse * 0.045 + (i % 3) * 0.01;
+            g.addColorStop(0, `rgba(255, 230, 150, ${a})`);
+            g.addColorStop(0.4, `rgba(255, 150, 55, ${a * 0.5})`);
+            g.addColorStop(1, "rgba(230, 80, 15, 0)");
             ctx.fillStyle = g;
             ctx.beginPath();
             ctx.ellipse(px, py, rw, rh, (i * 0.35) + Math.sin(sunPhase * 0.2 + i) * 0.12, 0, Math.PI * 2);
@@ -4448,7 +4453,17 @@ function beginFrogFinale(frog) {
     frog.state = "finale";
     frog.foodTarget = null;
     frog.prey = null;
-    frogFinale = { frog, group, t: 0, burst: false };
+    frogFinale = {
+        frog,
+        group,
+        t: 0,
+        burst: false,
+        orbitAng: Math.atan2(frog.y - viewH * 0.5, frog.x - viewW * 0.5),
+        orbitRad: Math.max(55, Math.hypot(frog.x - viewW * 0.5, frog.y - viewH * 0.5)),
+        wash: 0,
+        wake: [],
+        alpha: 1,
+    };
     const pan = Math.max(-1, Math.min(1, (frog.x / viewW) * 2 - 1));
     Audio.goldChime(pan);
     Audio.fishNote({
@@ -4474,7 +4489,8 @@ function explodeFrogIntoTadpoles(frog) {
     const n = CONFIG.frogFinaleTadpoles;
     for (let i = 0; i < n; i++) {
         const ang = (i / n) * Math.PI * 2 + Math.random() * 0.2;
-        const rad = 20 + Math.random() * 50;
+        const rad = 8 + Math.random() * 18;
+        const spd = 70 + Math.random() * 55;
         hungryTadpoles.push({
             x: cx + Math.cos(ang) * rad,
             y: cy + Math.sin(ang) * rad,
@@ -4484,8 +4500,12 @@ function explodeFrogIntoTadpoles(frog) {
             tone: Math.random(),
             speed: 55 + Math.random() * 25,
             foodTarget: null,
-            biteTimer: 0,
+            biteTimer: 0.05 + Math.random() * 0.15,
             hungry: true,
+            // Outward spray velocity that eases into normal swim.
+            vx: Math.cos(ang) * spd,
+            vy: Math.sin(ang) * spd,
+            sprayT: 0.55 + Math.random() * 0.35,
         });
     }
     water.disturb(cx, cy, 100, 600);
@@ -4497,26 +4517,38 @@ function updateFrogFinale(dt) {
     if (!frogFinale) return;
     frogFinale.t += dt;
     const f = frogFinale.frog;
-    const t = frogFinale.t;
+    const e = frogFinale;
+    const t = e.t;
     const cx = viewW * 0.5;
     const cy = viewH * 0.5;
-    const ease = (rate) => 1 - Math.exp(-rate * dt);
-    if (f && !f.dead && !frogFinale.burst) {
+    const ease = (rate) => finaleEase(rate, dt);
+    if (f && !f.dead && !e.burst) {
         const sizeGoal = CONFIG.sharkSize * 1.15;
-        f.size += (sizeGoal - f.size) * ease(1.6);
-        // Swim into center rather than snapping with a lerp factor.
-        easeToward(f, cx, cy, dt, 48 + Math.min(40, t * 18), 0.95);
-        f.dir += dt * (0.35 + 0.25 * Math.sin(t * 3.2));
-        f.kick = 0.28 + 0.35 * Math.sin(t * 5.2);
+        softSizeToward(f, sizeGoal, dt, 1.45);
+        // Spiral swim into center with kick pulses.
+        e.orbitAng += dt * (0.9 + Math.min(0.8, t * 0.25));
+        e.orbitRad += (18 - e.orbitRad) * ease(0.9);
+        const tx = cx + Math.cos(e.orbitAng) * e.orbitRad;
+        const ty = cy + Math.sin(e.orbitAng) * e.orbitRad * 0.7;
+        easeToward(f, tx, ty, dt, 44 + Math.min(36, t * 14), 1.05);
+        bankToward(f, e.orbitAng + Math.PI * 0.5, dt, 1.3);
+        f.kick = 0.22 + 0.4 * Math.abs(Math.sin(t * 4.6));
         f.petTimer = Math.max(f.petTimer, 1.2);
         f.breath += dt * 2.2;
-        if (Math.random() < 0.14) water.disturb(f.x, f.y, f.size * 0.4, 55);
+        e.wash += ((t < 2.6 ? Math.min(0.55, t * 0.22) : 0.7) - e.wash) * ease(2.0);
+        if (Math.random() < 0.18) {
+            water.disturb(f.x, f.y, f.size * 0.4, 55);
+            pushFinaleWake(e.wake, f.x, f.y, 1, { ang: f.dir + Math.PI, hue: 120, warm: true, spd: 24 });
+        }
+        if (t > 2.7) e.alpha = Math.max(0.15, 1 - (t - 2.7) / 0.7);
     }
-    if (t >= 3.05 && !frogFinale.burst) {
-        frogFinale.burst = true;
+    updateFinaleWake(e.wake, dt, 18);
+    if (t >= 3.35 && !e.burst) {
+        e.burst = true;
         explodeFrogIntoTadpoles(f);
+        pushFinaleWake(e.wake, cx, cy, 14, { hue: 110, spd: 80, warm: true, lift: 12 });
     }
-    if (t >= 4.0) frogFinale = null;
+    if (t >= 4.6) frogFinale = null;
 }
 
 function updateHungryTadpoles(dt) {
@@ -4526,6 +4558,18 @@ function updateHungryTadpoles(dt) {
         const t = hungryTadpoles[i];
         t.phase += dt * 3.2;
         t.biteTimer -= dt;
+        // Finale spray: coast outward before normal seeking.
+        if (t.sprayT != null && t.sprayT > 0) {
+            t.sprayT -= dt;
+            t.x += (t.vx || 0) * dt;
+            t.y += (t.vy || 0) * dt;
+            t.vx *= Math.exp(-2.2 * dt);
+            t.vy *= Math.exp(-2.2 * dt);
+            t.dir = Math.atan2(t.vy || Math.sin(t.dir), t.vx || Math.cos(t.dir));
+            t.x = Math.max(8, Math.min(viewW - 8, t.x));
+            t.y = Math.max(yMin, Math.min(yMax, t.y));
+            continue;
+        }
         if (!t.foodTarget || t.foodTarget.eaten) {
             t.foodTarget = nearestFood(t.x, t.y, CONFIG.perception * 1.6);
         }
@@ -4978,7 +5022,21 @@ function drawFrogGroups(ctx) {
             drawFrogModel(ctx, g.frog, alpha);
         }
     } else if (frogFinale && frogFinale.frog && !frogFinale.frog.dead) {
-        drawFrogModel(ctx, frogFinale.frog, 1);
+        if (frogFinale.wash > 0.02) {
+            ctx.save();
+            const wash = ctx.createRadialGradient(
+                frogFinale.frog.x, frogFinale.frog.y, frogFinale.frog.size * 0.2,
+                frogFinale.frog.x, frogFinale.frog.y, Math.max(viewW, viewH) * 0.55
+            );
+            wash.addColorStop(0, `rgba(140, 210, 120, ${frogFinale.wash * 0.22})`);
+            wash.addColorStop(0.45, `rgba(60, 110, 70, ${frogFinale.wash * 0.12})`);
+            wash.addColorStop(1, "rgba(20, 40, 28, 0)");
+            ctx.fillStyle = wash;
+            ctx.fillRect(0, 0, viewW, viewH);
+            ctx.restore();
+        }
+        drawFinaleWake(ctx, frogFinale.wake, 0.9);
+        drawFrogModel(ctx, frogFinale.frog, frogFinale.alpha == null ? 1 : frogFinale.alpha);
     }
     for (const t of hungryTadpoles) drawTadpole(ctx, t, 1);
 }
@@ -7095,20 +7153,22 @@ function updateRainbowNinjaEnding(dt) {
         const cy = viewH * 0.48;
         for (let i = 0; i < fighters.length; i++) {
             const f = fighters[i];
-            const ang = (i / Math.max(1, fighters.length)) * Math.PI * 2 + e.t * 1.4;
-            const rad = 70 + Math.min(90, fighters.length * 10);
+            // Wider, slower spiral gather with facing along the orbit.
+            const ang = (i / Math.max(1, fighters.length)) * Math.PI * 2 + e.t * 1.05;
+            const rad = Math.max(48, 95 - e.t * 18) + Math.min(70, fighters.length * 8);
             easeNinjaFishToward(
                 f,
                 cx + Math.cos(ang) * rad,
-                cy + Math.sin(ang) * rad * 0.72,
-                150 + f.size * 0.8,
+                cy + Math.sin(ang) * rad * 0.7,
+                110 + f.size * 0.6,
                 dt
             );
-            if (Math.random() < 0.12) {
+            bankToward(f, ang + Math.PI * 0.5, dt, 2.2);
+            if (Math.random() < 0.14) {
                 water.disturb(f.x, f.y, 6, 22);
             }
         }
-        if (e.t >= 1.35 || fighters.length < 2) {
+        if (e.t >= 1.85 || fighters.length < 2) {
             e.phase = "fight";
             e.fightT = 0;
             e.pairCd = 0;
@@ -7123,7 +7183,7 @@ function updateRainbowNinjaEnding(dt) {
         const cy = viewH * 0.48;
 
         if (e.pairCd <= 0 && fighters.length >= 2) {
-            e.pairCd = 0.28 + Math.random() * 0.22;
+            e.pairCd = 0.34 + Math.random() * 0.28;
             // Fresh pairings: shuffle indices and link neighbors.
             const order = fighters.slice();
             for (let i = order.length - 1; i > 0; i--) {
@@ -7137,28 +7197,31 @@ function updateRainbowNinjaEnding(dt) {
                 const b = order[i + 1] || order[0];
                 a._ninjaPartner = b;
                 b._ninjaPartner = a;
-                a._ninjaDashT = 0.35 + Math.random() * 0.25;
+                a._ninjaDashT = 0.42 + Math.random() * 0.28;
                 b._ninjaDashT = a._ninjaDashT;
+                a._ninjaCoast = 0;
+                b._ninjaCoast = 0;
             }
         }
 
         for (const f of fighters) {
             f._ninjaDashT = Math.max(0, (f._ninjaDashT || 0) - dt);
+            if (f._ninjaDashT <= 0) f._ninjaCoast = Math.min(0.45, (f._ninjaCoast || 0) + dt);
             const partner = f._ninjaPartner && !f._ninjaPartner.dead ? f._ninjaPartner : null;
             let tx = cx + (Math.random() - 0.5) * 40;
             let ty = cy + (Math.random() - 0.5) * 30;
-            let spd = 170 + f.size * 1.1;
-            if (partner) {
-                // Dash through / past the partner for a ninja pass.
+            // Dash hard, then coast (decelerate) so passes read as swimming strikes.
+            let spd = (170 + f.size * 1.1) * (f._ninjaDashT > 0 ? 1 : Math.max(0.35, 1 - (f._ninjaCoast || 0) * 1.4));
+            if (partner && f._ninjaDashT > 0) {
                 const ang = Math.atan2(partner.y - f.y, partner.x - f.x);
-                const overshoot = 40 + f.size * 0.6;
+                const overshoot = 48 + f.size * 0.7;
                 tx = partner.x + Math.cos(ang) * overshoot;
                 ty = partner.y + Math.sin(ang) * overshoot;
-                spd = 210 + f.size * 1.4;
+                spd = 200 + f.size * 1.35;
             } else {
-                const orbit = e.fightT * 2.2 + (f.age || 0);
-                tx = cx + Math.cos(orbit) * 110;
-                ty = cy + Math.sin(orbit * 1.3) * 80;
+                const orbit = e.fightT * 1.7 + (f.age || 0);
+                tx = cx + Math.cos(orbit) * 100;
+                ty = cy + Math.sin(orbit * 1.25) * 72;
             }
             const dist = easeNinjaFishToward(f, tx, ty, spd, dt);
             if (partner && dist < f.size * 0.45 + partner.size * 0.45 + 10) {
@@ -7187,7 +7250,7 @@ function updateRainbowNinjaEnding(dt) {
             if (Math.random() < 0.18) water.disturb(f.x, f.y, 5, 18);
         }
 
-        if (e.fightT >= 4.4 || fighters.length < 2) {
+        if (e.fightT >= 5.0 || fighters.length < 2) {
             e.phase = "burst";
             e.burstT = 0;
             e.burstQueue = fighters.slice();
@@ -7231,20 +7294,21 @@ function drawRainbowNinjaEnding(ctx) {
     if (!e) return;
     ctx.save();
     // Soft colorful tension wash during the fight.
-    const pulse = 0.5 + 0.5 * Math.sin(e.t * 6);
-    const wash = Math.min(0.22, e.t * 0.08) * (e.phase === "burst" ? 0.4 : 1);
+    const pulse = 0.5 + 0.5 * Math.sin(e.t * 5.2);
+    const wash = Math.min(0.26, e.t * 0.07) * (e.phase === "burst" ? 0.45 : e.phase === "gather" ? 0.7 : 1);
     if (wash > 0.02) {
         ctx.globalCompositeOperation = "screen";
         const g = ctx.createRadialGradient(
             viewW * 0.5, viewH * 0.48, 20,
-            viewW * 0.5, viewH * 0.48, Math.max(viewW, viewH) * 0.55
+            viewW * 0.5, viewH * 0.48, Math.max(viewW, viewH) * 0.58
         );
-        g.addColorStop(0, `hsla(${(e.t * 80) % 360}, 90%, 60%, ${wash * pulse})`);
-        g.addColorStop(0.55, `hsla(${(e.t * 80 + 120) % 360}, 80%, 50%, ${wash * 0.35})`);
+        g.addColorStop(0, `hsla(${(e.t * 70) % 360}, 90%, 60%, ${wash * pulse})`);
+        g.addColorStop(0.55, `hsla(${(e.t * 70 + 120) % 360}, 80%, 50%, ${wash * 0.38})`);
         g.addColorStop(1, "rgba(0,0,0,0)");
         ctx.fillStyle = g;
         ctx.fillRect(0, 0, viewW, viewH);
         ctx.globalCompositeOperation = "source-over";
+        drawFinaleVignette(ctx, wash * 0.9, { r: 20, g: 10, b: 35 });
     }
     for (const fl of e.flashes || []) {
         const u = 1 - fl.age / fl.life;
@@ -10119,6 +10183,22 @@ function countableSwimmers() {
     return fishes.filter(isCountableSwimmer);
 }
 
+// Wild apex that must clear before an empty pond can restock.
+// Hero / tamed / golden / already-leaving allies must not softlock restock.
+function isWildRestockBlocker(ent) {
+    return !!(ent && !ent.dead && !ent.tamed && !ent.isHero && !ent.golden && !ent.leaving);
+}
+
+function wildApexBlocksEmptyRestock() {
+    if (isWildRestockBlocker(octopus)) return true;
+    if (isWildRestockBlocker(swordfish)) return true;
+    if (isWildRestockBlocker(crystalSerpent)) return true;
+    if (isWildRestockBlocker(crystalMantle)) return true;
+    if (isWildRestockBlocker(shark)) return true;
+    if (isWildRestockBlocker(whale)) return true;
+    return false;
+}
+
 function livingPlatinumFish() {
     return fishes.filter((f) => !f.dead && f.isPlatinum && !f.insideShark);
 }
@@ -10747,6 +10827,7 @@ let heroRemorseEnding = null; // { fish, t, burst }
 let orcaFeastEnding = null; // night coronation after eating the orca
 let swordfishSpearEnding = null; // { sf, t, approach, fade, liveAlpha } POV tip thrust finale
 let rainbowNinjaEnding = null; // multi-rainbow ninja fight when only rainbows remain
+let crystalApexEnding = null; // { kind: "prism"|"serpent"|"mantle", t, phase, ... }
 let whaleRemorseDone = false; // one-shot: remorse finale already fired this session
 let apexDuel = null; // croc/alligator vs shark when the pond is emptied
 let repopulating = false;
@@ -10761,14 +10842,17 @@ function pondFinaleActive() {
     // Soft return fades are not hard lockouts: life can swim under the curtain.
     const giantReturn = giantEnding && giantEnding.kind === "peace" && giantEnding.restocked;
     const octopusReturn = octopusWhaleFight && octopusWhaleFight.restocked;
-    if (giantReturn || octopusReturn) {
+    const crystalReturn = crystalApexEnding && crystalApexEnding.restocked;
+    if (giantReturn || octopusReturn || crystalReturn) {
         return !!(povAttack || heroRemorseEnding || frogFinale
             || orcaFeastEnding || swordfishSpearEnding || rainbowNinjaEnding
             || (giantEnding && !giantReturn)
-            || (octopusWhaleFight && !octopusReturn));
+            || (octopusWhaleFight && !octopusReturn)
+            || (crystalApexEnding && !crystalReturn));
     }
     return !!(povAttack || giantEnding || heroRemorseEnding || frogFinale
-        || octopusWhaleFight || orcaFeastEnding || swordfishSpearEnding || rainbowNinjaEnding);
+        || octopusWhaleFight || orcaFeastEnding || swordfishSpearEnding || rainbowNinjaEnding
+        || crystalApexEnding);
 }
 
 function giantSizeThreshold() {
@@ -10916,13 +11000,14 @@ function updateApexDuel(dt) {
         Audio.predatorEat(pan);
         water.disturb(mx, my, 36, 520);
         spawnSplash(mx, my, 22, 0.9);
-        // Shove apart a little so the fight reads as clashing passes.
+        // Soft shove apart over a short window (no teleport).
         const nx = (shark.x - r.x) / (dist || 1);
         const ny = (shark.y - r.y) / (dist || 1);
-        shark.x += nx * 10;
-        shark.y += ny * 10;
-        r.x -= nx * 10;
-        r.y -= ny * 10;
+        const push = Math.min(18, 70 * Math.min(0.2, Math.max(0.05, apexDuel.biteCd || 0.1)));
+        shark.x += nx * push;
+        shark.y += ny * push;
+        r.x -= nx * push;
+        r.y -= ny * push;
         if (shark.hp <= 0 || r.hp <= 0) {
             finishApexDuel();
         }
@@ -10939,29 +11024,40 @@ function updateRainbowReptileFinale(r, dt) {
     if (!r || !r.rainbowFinale) return;
     const fin = r.rainbowFinale;
     fin.t += dt;
+    if (!fin.wake) fin.wake = [];
     const cx = viewW * 0.5;
     const cy = viewH * 0.5;
     if (fin.phase === "crazy") {
-        r.dir += dt * (4.5 + Math.sin(fin.t * 9) * 3.2);
-        const spd = r.speed * (1.55 + 0.35 * Math.sin(fin.t * 7));
+        r.dir += dt * (3.6 + Math.sin(fin.t * 8) * 2.4);
+        const spd = r.speed * (1.4 + 0.3 * Math.sin(fin.t * 6));
         r.x += Math.cos(r.dir) * spd * dt;
         r.y += Math.sin(r.dir) * spd * dt;
         r.x = Math.max(30, Math.min(viewW - 30, r.x));
         r.y = Math.max(30, Math.min(viewH - 30, r.y));
-        if (Math.random() < 0.35) water.disturb(r.x, r.y, r.size * 0.35, 55);
-        if (fin.t >= 2.4) {
+        if (Math.random() < 0.3) {
+            water.disturb(r.x, r.y, r.size * 0.35, 55);
+            pushFinaleWake(fin.wake, r.x, r.y, 1, {
+                ang: r.dir + Math.PI,
+                hue: (fin.t * 110) % 360,
+                spd: 45,
+            });
+        }
+        if (fin.t >= 2.55) {
             fin.phase = "center";
             fin.t = 0;
         }
     } else if (fin.phase === "center") {
-        easeToward(r, cx, cy, dt, 62, 1.35);
-        r.dir += dt * (1.6 + Math.sin(fin.t * 5) * 0.8);
-        if (Math.random() < 0.18) water.disturb(r.x, r.y, r.size * 0.4, 70);
-        if (fin.t >= 1.85 || Math.hypot(r.x - cx, r.y - cy) < 16) {
+        easeToward(r, cx, cy, dt, 58, 1.25);
+        bankToward(r, Math.atan2(cy - r.y, cx - r.x), dt, 1.5);
+        r.dir += dt * (1.2 + Math.sin(fin.t * 4.5) * 0.6);
+        if (Math.random() < 0.2) water.disturb(r.x, r.y, r.size * 0.4, 70);
+        if (fin.t >= 2.0 || Math.hypot(r.x - cx, r.y - cy) < 22) {
             fin.phase = "burst";
             explodeRainbowReptile(r);
+            return;
         }
     }
+    updateFinaleWake(fin.wake, dt, 22);
 }
 
 function explodeRainbowReptile(r) {
@@ -12346,6 +12442,29 @@ class Swordfish {
             return;
         }
 
+        // Wrong sky or empty pond: ease off so restock never softlocks.
+        if (!this.tamed && !this.isHero) {
+            if (!nightMode || crystalMode) this.leaving = true;
+            else if (countableSwimmers().length === 0 && !pondFinaleActive() && !repopulating) {
+                this.leaving = true;
+            }
+        }
+        if (this.leaving && !this.tamed && !this.isHero) {
+            this.tailPhase += dt * 5.5;
+            const edgeX = this.x < viewW * 0.5 ? -this.size * 1.4 : viewW + this.size * 1.4;
+            const edgeY = this.y < viewH * 0.5 ? -this.size * 1.4 : viewH + this.size * 1.4;
+            const leaveDir = Math.atan2(edgeY - this.y, edgeX - this.x);
+            const diffLeave = normAngle(leaveDir - this.dir);
+            this.dir += Math.max(-2.2 * dt, Math.min(2.2 * dt, diffLeave));
+            this.x += Math.cos(this.dir) * this.speed * 1.45 * dt;
+            this.y += Math.sin(this.dir) * this.speed * 1.45 * dt;
+            if (this.x < -this.size * 1.5 || this.x > viewW + this.size * 1.5
+                || this.y < -this.size * 1.5 || this.y > viewH + this.size * 1.5) {
+                this.dead = true;
+            }
+            return;
+        }
+
         this.tailPhase += dt * (this.tamed || this.isHero ? 3.2 : 4.2);
 
         this.digestStuck(dt);
@@ -12945,14 +13064,17 @@ class Octopus {
         Audio.sharkStrike(pan);
         water.disturb(this.x, this.y, this.size * 0.9, 360);
         spawnSplash(this.x, this.y, 22, 0.75);
-        // Crystal mantle: prism gift burst after wrapping another apex.
+        // Crystal mantle: soft gift burst after wrapping another apex (respect food cap).
         if (this.isCrystal) {
+            const livingFood = () => foods.filter((f) => f && !f.eaten).length;
             for (let i = 0; i < 3; i++) {
+                if (livingFood() >= CONFIG.maxFoods) break;
                 const ang = Math.random() * Math.PI * 2;
                 const rad = 18 + Math.random() * 28;
                 const roll = Math.random();
-                const flags = roll < 0.4 ? { rainbow: true }
-                    : roll < 0.7 ? { grower: true }
+                // Prefer grower/pink; rare rainbow so helpers do not chain-burst.
+                const flags = roll < 0.12 ? { rainbow: true }
+                    : roll < 0.55 ? { grower: true }
                     : { pink: true };
                 foods.push(new Food(
                     this.x + Math.cos(ang) * rad,
@@ -13049,23 +13171,31 @@ class Octopus {
         this.pulse += dt * 2.8;
 
         // Wild octopus alone (glow fish do not count): summon a whale fight.
-        // Crystal mantle alone: ease a whale in and wrap it with prism arms.
+        // Crystal mantle alone with nothing wrapable: leave so restock is never softlocked.
         if (!this.tamed && !this.isHero
-            && countableSwimmers().length === 0 && !whale && !shark && !swordfish
-            && !(this.isCrystal ? crystalSerpent : null)
-            && reptiles.every((r) => r.dead) && !pondFinaleActive()) {
+            && countableSwimmers().length === 0
+            && reptiles.every((r) => r.dead)
+            && !pondFinaleActive()
+            && !repopulating) {
+            const wrapTarget = this.findApexWrapTarget();
             if (this.isCrystal) {
-                whale = new Whale();
-                whale.fromLeft = this.x < viewW * 0.5;
-                whale.x = whale.fromLeft ? -whale.size * 0.8 : viewW + whale.size * 0.8;
-                whale.y = viewH * 0.48 + (Math.random() - 0.5) * 30;
-                whale.dir = whale.fromLeft ? 0 : Math.PI;
-                whale.isHero = false;
-                whale.ateFish = true;
-                Audio.predatorEat(0);
-            } else {
-                beginOctopusWhaleFight();
-                return;
+                // Even if shark/whale exist but cannot be wrapped (hero, oversized),
+                // still finale or leave so empty-pond restock cannot softlock.
+                if (!wrapTarget) {
+                    if (typeof beginCrystalApexEnding === "function"
+                        && beginCrystalApexEnding("mantle", this)) {
+                        return;
+                    }
+                    this.leaving = true;
+                }
+            } else if (!wrapTarget && !whale && !shark) {
+                if (isWildNightPredator(swordfish)) {
+                    // Empty pond with both night hunters: ease the sail out so the fight can start.
+                    swordfish.leaving = true;
+                } else {
+                    beginOctopusWhaleFight();
+                    return;
+                }
             }
         }
 
@@ -13670,6 +13800,102 @@ function easeTipToward(leg, gx, gy, dt, rate) {
     leg.tipY += (gy - leg.tipY) * k;
 }
 
+// Shared finale motion: frame-rate independent ease, orbit swim, soft size, wake motes.
+function finaleEase(rate, dt) {
+    return 1 - Math.exp(-(rate || 2) * dt);
+}
+
+function softSizeToward(ent, goal, dt, rate) {
+    if (!ent || goal == null) return;
+    ent.size += (goal - ent.size) * finaleEase(rate || 1.8, dt);
+}
+
+function easeOrbitToward(ent, cx, cy, radius, ang, dt, maxSpd, turnRate, yScale) {
+    const ys = yScale == null ? 0.72 : yScale;
+    easeToward(
+        ent,
+        cx + Math.cos(ang) * radius,
+        cy + Math.sin(ang) * radius * ys,
+        dt,
+        maxSpd,
+        turnRate
+    );
+}
+
+function bankToward(ent, wantDir, dt, turnRate) {
+    if (!ent) return;
+    const diff = normAngle(wantDir - ent.dir);
+    const cap = (turnRate == null ? 1.2 : turnRate) * dt;
+    ent.dir += Math.max(-cap, Math.min(cap, diff));
+}
+
+function pushFinaleWake(list, x, y, n, opts) {
+    if (!list) return;
+    const o = opts || {};
+    for (let i = 0; i < n; i++) {
+        const a = (o.ang != null ? o.ang : Math.random() * Math.PI * 2)
+            + (Math.random() - 0.5) * (o.spread || 1.2);
+        const spd = (o.spd || 28) * (0.55 + Math.random() * 0.9);
+        list.push({
+            x: x + (Math.random() - 0.5) * (o.jitter || 14),
+            y: y + (Math.random() - 0.5) * (o.jitter || 10),
+            vx: Math.cos(a) * spd,
+            vy: Math.sin(a) * spd - (o.lift || 6),
+            life: o.life || (0.7 + Math.random() * 0.9),
+            age: 0,
+            r: o.r || (1.4 + Math.random() * 3.2),
+            hue: o.hue != null ? o.hue : (performance.now() * 0.12 + i * 40) % 360,
+            warm: !!o.warm,
+        });
+    }
+}
+
+function updateFinaleWake(list, dt, gravity) {
+    if (!list || !list.length) return;
+    const g = gravity == null ? 22 : gravity;
+    for (let i = list.length - 1; i >= 0; i--) {
+        const m = list[i];
+        m.age += dt;
+        m.x += m.vx * dt;
+        m.y += m.vy * dt;
+        m.vy += g * dt;
+        m.vx *= Math.exp(-0.7 * dt);
+        if (m.age >= m.life) list.splice(i, 1);
+    }
+}
+
+function drawFinaleWake(ctx, list, alphaScale) {
+    if (!list || !list.length) return;
+    const scale = alphaScale == null ? 1 : alphaScale;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (const m of list) {
+        const a = Math.max(0, 1 - m.age / m.life) * scale;
+        if (a < 0.02) continue;
+        ctx.fillStyle = m.warm
+            ? `rgba(255, ${170 + (m.hue % 40)}, 90, ${a * 0.65})`
+            : `hsla(${m.hue}, 80%, 68%, ${a * 0.7})`;
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, m.r * a, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.restore();
+}
+
+function drawFinaleVignette(ctx, alpha, tint) {
+    if (alpha < 0.01) return;
+    const t = tint || { r: 8, g: 12, b: 18 };
+    const g = ctx.createRadialGradient(
+        viewW * 0.5, viewH * 0.48, Math.min(viewW, viewH) * 0.18,
+        viewW * 0.5, viewH * 0.5, Math.max(viewW, viewH) * 0.72
+    );
+    g.addColorStop(0, `rgba(${t.r},${t.g},${t.b},0)`);
+    g.addColorStop(0.55, `rgba(${t.r},${t.g},${t.b},${alpha * 0.35})`);
+    g.addColorStop(1, `rgba(${Math.max(0, t.r - 4)},${Math.max(0, t.g - 4)},${Math.max(0, t.b - 4)},${alpha * 0.85})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, viewW, viewH);
+}
+
 function beginOctopusWhaleFight() {
     if (octopusWhaleFight || !octopus || octopus.dead) return;
     const cx = viewW * 0.5;
@@ -13712,12 +13938,13 @@ function updateOctopusWhaleFight(dt) {
 
     // Soft vignette builds and falls with the scene, never snaps.
     // Ship-pull stays dark (not washed out); fade softens before pond return.
-    let overlayGoal = 0.14;
-    if (fight.phase === "wrap") overlayGoal = 0.28;
-    else if (fight.phase === "eat") overlayGoal = 0.42;
-    else if (fight.phase === "ship") overlayGoal = 0.52;
-    else if (fight.phase === "fade") overlayGoal = fight.restocked ? 0.08 : 0.62;
-    fight.overlay += (overlayGoal - fight.overlay) * ease(1.4);
+    let overlayGoal = 0.12;
+    if (fight.phase === "wrap") overlayGoal = 0.26;
+    else if (fight.phase === "eat") overlayGoal = 0.4;
+    else if (fight.phase === "ship") overlayGoal = 0.5;
+    else if (fight.phase === "fade") overlayGoal = fight.restocked ? 0.06 : 0.6;
+    fight.overlay += (overlayGoal - fight.overlay) * ease(1.25);
+    fight.breath = (fight.breath || 0) + dt;
 
     if (fight.phase === "approach") {
         if (octopus && !octopus.dead) {
@@ -14052,12 +14279,125 @@ function drawOctopusWhaleFight(ctx) {
 
 function beginPovAttack(fish) {
     if (pondFinaleActive()) return;
-    povAttack = { fish, t: 0 };
+    povAttack = {
+        fish,
+        t: 0,
+        loom: 0,
+        mouth: 0,
+        wash: 0.08,
+        wake: [],
+    };
     fish.petTimer = 0;
     fish.target = null;
     fish.prey = null;
     Audio.sharkStrike(0);
     Audio.predatorEat(0);
+}
+
+function updatePovAttack(dt) {
+    if (!povAttack) return;
+    povAttack.t += dt;
+    const e = povAttack;
+    const f = e.fish;
+    const ease = (rate) => finaleEase(rate, dt);
+    const cx = viewW * 0.5;
+    const cy = viewH * 0.5;
+    if (f && !f.dead) {
+        // Swim toward the lens with a capped surge; loom follows distance, not a hard scale jump.
+        const surge = 48 + Math.min(85, (f.size || 40) * 0.85) + Math.min(40, e.t * 18);
+        easeToward(f, cx, cy, dt, surge, 1.45);
+        f.tailPhase = (f.tailPhase || 0) + dt * (4.2 + Math.min(3.2, e.t));
+        bankToward(f, Math.atan2(cy - f.y, cx - f.x), dt, 2.2);
+        const dist = Math.hypot(f.x - cx, f.y - cy);
+        const near = 1 - clamp01(dist / (Math.min(viewW, viewH) * 0.55));
+        const loomWant = Math.min(1, near * 0.75 + Math.min(0.55, e.t * 0.22));
+        e.loom += (loomWant - (e.loom || 0)) * ease(2.0);
+        // Mouth opens behind the approach (lag).
+        const mouthWant = Math.min(1, Math.max(0, (e.loom || 0) - 0.12) * 1.15 + Math.min(0.35, e.t * 0.08));
+        e.mouth += (mouthWant - (e.mouth || 0)) * ease(1.6);
+        e.wash += ((0.15 + (e.loom || 0) * 0.55) - e.wash) * ease(1.8);
+        if (Math.random() < 0.22) {
+            water.disturb(f.x, f.y, f.size * 0.45, 80);
+            pushFinaleWake(e.wake, f.x, f.y, 1, { ang: f.dir + Math.PI, hue: 5, spd: 30 });
+        }
+    }
+    updateFinaleWake(e.wake, dt, 28);
+    if (e.t >= 4.2) {
+        resetPond();
+    }
+}
+
+function drawPovAttack(ctx) {
+    if (!povAttack) return;
+    const e = povAttack;
+    const t = e.t;
+    const loom = e.loom == null ? Math.min(1, 1 - Math.exp(-t * 0.85)) : e.loom;
+    const choke = t > 3.0 ? Math.min(1, (t - 3.0) / 1.1) : 0;
+    const breath = 0.5 + 0.5 * Math.sin(t * 4.6);
+    const mouthOpen = e.mouth == null
+        ? (0.12 + loom * 0.5 + choke * 0.28 + breath * 0.04)
+        : (0.1 + e.mouth * 0.62 + choke * 0.22 + breath * 0.03);
+
+    ctx.save();
+    ctx.fillStyle = `rgba(4, 6, 8, ${(e.wash || 0.2) * 0.85 + choke * 0.35})`;
+    ctx.fillRect(0, 0, viewW, viewH);
+    drawFinaleVignette(ctx, 0.25 + loom * 0.45 + choke * 0.3, { r: 8, g: 2, b: 4 });
+    drawFinaleWake(ctx, e.wake, 0.8);
+
+    const cx = viewW * 0.5;
+    const cy = viewH * 0.5;
+    const scale = 0.32 + loom * 3.85 + choke * 0.35;
+    ctx.translate(cx, cy);
+    // Slight sway so the loom feels alive, not a locked stamp.
+    ctx.rotate(Math.sin(t * 1.8) * 0.04 * (1 - choke));
+    ctx.scale(scale, scale);
+    ctx.globalAlpha = 0.86 + loom * 0.12;
+
+    const g = ctx.createRadialGradient(0, 0, 10, 0, 0, 95);
+    g.addColorStop(0, "#4a1828");
+    g.addColorStop(0.6, "#1a0810");
+    g.addColorStop(1, "#050308");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 70, 55, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#ff3030";
+    ctx.shadowColor = "rgba(255,40,40,0.8)";
+    ctx.shadowBlur = 12 + choke * 18 + loom * 8;
+    ctx.beginPath();
+    ctx.ellipse(-22, -12, 8, 5, -0.2, 0, Math.PI * 2);
+    ctx.ellipse(22, -12, 8, 5, 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "#120008";
+    ctx.beginPath();
+    ctx.ellipse(-22, -12, 3, 4, 0, 0, Math.PI * 2);
+    ctx.ellipse(22, -12, 3, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#2a0508";
+    ctx.beginPath();
+    ctx.ellipse(0, 18, 40, 10 + mouthOpen * 50, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#e8e0d0";
+    for (let i = -4; i <= 4; i++) {
+        const tx = i * 7;
+        ctx.beginPath();
+        ctx.moveTo(tx - 2.2, 18 - mouthOpen * 20);
+        ctx.lineTo(tx, 18 - mouthOpen * 34);
+        ctx.lineTo(tx + 2.2, 18 - mouthOpen * 20);
+        ctx.closePath();
+        ctx.fill();
+    }
+    ctx.restore();
+
+    ctx.save();
+    if (choke > 0) {
+        ctx.fillStyle = `rgba(0,0,0,${choke * 0.9})`;
+        ctx.fillRect(0, 0, viewW, viewH);
+    }
+    ctx.restore();
 }
 
 function beginOrcaFeastEnding(fish) {
@@ -14079,6 +14419,7 @@ function beginOrcaFeastEnding(fish) {
         },
         rings: [],
         motes: [],
+        wake: [],
         marked: 0,
     };
     fish.petTimer = 0;
@@ -14153,14 +14494,19 @@ function updateOrcaFeastEnding(dt) {
         }
         easeToward(f, tx, ty, dt, maxSpd, 1.1);
         const growGoal = e.startSize * (1 + Math.min(0.85, t * 0.28));
-        f.size += (Math.min(Math.min(viewW, viewH) * 0.42, growGoal) - f.size) * ease(1.8);
-        f.dir += normAngle((-0.2) - f.dir) * Math.min(1, dt * 1.6);
+        softSizeToward(f, Math.min(Math.min(viewW, viewH) * 0.42, growGoal), dt, 1.8);
+        bankToward(f, Math.atan2(ty - f.y, tx - f.x), dt, 1.35);
         f.tailPhase += dt * (4.5 + (t > 2.8 ? 3 : 0));
         // Orca saddle mark slowly paints onto the victor.
         const markWant = t < 1.8 ? 0 : Math.min(1, (t - 1.8) / 1.6);
         e.marked += (markWant - e.marked) * ease(2.2);
         if (t > 0.5 && t < 4.2 && Math.random() < 0.22) {
             water.disturb(f.x, f.y, f.size * 0.35, 70);
+            pushFinaleWake(e.wake, f.x, f.y, 1, {
+                ang: f.dir + Math.PI,
+                hue: 210,
+                spd: 28,
+            });
         }
     }
 
@@ -14225,10 +14571,11 @@ function updateOrcaFeastEnding(dt) {
         m.vx *= Math.exp(-0.6 * dt);
     }
     e.motes = e.motes.filter((m) => m.age < m.life);
+    updateFinaleWake(e.wake, dt, 14);
 
-    const fadeWant = t > 5.0 ? Math.min(1, (t - 5.0) / 0.95) : 0;
-    e.fade += (fadeWant - e.fade) * ease(3.2);
-    if (t >= 6.1) resetPond();
+    const fadeWant = t > 5.2 ? Math.min(1, (t - 5.2) / 1.05) : 0;
+    e.fade += (fadeWant - e.fade) * ease(2.8);
+    if (t >= 6.5) resetPond();
 }
 
 function drawOrcaSpirit(ctx, g) {
@@ -14284,6 +14631,8 @@ function drawOrcaFeastEnding(ctx) {
     depth.addColorStop(1, `rgba(1, 4, 12, ${0.22 + e.moon * 0.35})`);
     ctx.fillStyle = depth;
     ctx.fillRect(0, 0, viewW, viewH);
+    drawFinaleVignette(ctx, 0.2 + e.moon * 0.35, { r: 2, g: 8, b: 20 });
+    drawFinaleWake(ctx, e.wake, 0.9);
 
     if (e.aurora > 0.02) {
         for (let i = 0; i < 4; i++) {
@@ -14434,7 +14783,8 @@ function beginSwordfishSpearEnding(sf, opts) {
         heroRemorseEnding = null;
         frogFinale = null;
         octopusWhaleFight = null;
-    } else if (povAttack || giantEnding || heroRemorseEnding || frogFinale || octopusWhaleFight) {
+        crystalApexEnding = null;
+    } else if (povAttack || giantEnding || heroRemorseEnding || frogFinale || octopusWhaleFight || crystalApexEnding) {
         return;
     }
     // POV tip thrust: approach/fade ease toward the camera (no body snap to center).
@@ -14444,6 +14794,9 @@ function beginSwordfishSpearEnding(sf, opts) {
         approach: 0,
         fade: 0,
         liveAlpha: 1,
+        sway: 0,
+        wake: [],
+        charge: 0,
     };
     sf.target = null;
     sf.orcaHunt = false;
@@ -14459,41 +14812,48 @@ function updateSwordfishSpearEnding(dt) {
     e.t += dt;
     const t = e.t;
     const sf = e.sf;
+    const ease = (rate) => finaleEase(rate, dt);
 
     // Desired tip closeness over time (tiny point, then thrust, then final lunge).
     let want = 0;
-    if (t < 0.4) want = (t / 0.4) * 0.1;
-    else if (t < 2.15) want = 0.1 + ((t - 0.4) / 1.75) * 0.72;
-    else want = 0.82 + Math.min(0.18, (t - 2.15) / 0.4 * 0.18);
+    if (t < 0.55) want = (t / 0.55) * 0.08;
+    else if (t < 2.35) want = 0.08 + ((t - 0.55) / 1.8) * 0.7;
+    else want = 0.78 + Math.min(0.22, (t - 2.35) / 0.5 * 0.22);
     want = Math.min(1, want);
-    const approachK = t > 2.1 ? 7 : 3.4;
+    const approachK = t > 2.2 ? 6.2 : 2.9;
     e.approach += (want - e.approach) * (1 - Math.exp(-approachK * dt));
+    e.sway = Math.sin(t * 2.4) * (0.08 + e.approach * 0.06);
+    e.charge += ((t < 2.4 ? Math.min(1, t / 1.6) : 1) - (e.charge || 0)) * ease(2.0);
 
-    const wantFade = Math.min(0.72, 0.08 + e.approach * 0.62);
-    e.fade += (wantFade - e.fade) * (1 - Math.exp(-4.2 * dt));
+    const wantFade = Math.min(0.68, 0.06 + e.approach * 0.58);
+    e.fade += (wantFade - e.fade) * (1 - Math.exp(-3.6 * dt));
 
-    // Ease the live body off-camera and fade it out; POV overlay owns the beat.
-    e.liveAlpha += (0 - e.liveAlpha) * (1 - Math.exp(-3.8 * dt));
+    // Keep the live body charging toward camera longer, then ease off-screen.
     if (sf && !sf.dead) {
-        const edgeX = sf.x < viewW * 0.5 ? -sf.size * 1.4 : viewW + sf.size * 1.4;
-        const edgeY = sf.y + (sf.y < viewH * 0.5 ? -1 : 1) * sf.size * 0.35;
-        const ease = 1 - Math.exp(-2.4 * dt);
-        const maxStep = 260 * dt;
-        let dx = (edgeX - sf.x) * ease;
-        let dy = (edgeY - sf.y) * ease;
-        const dist = Math.hypot(dx, dy) || 1;
-        if (dist > maxStep) {
-            dx *= maxStep / dist;
-            dy *= maxStep / dist;
+        const cx = viewW * 0.5;
+        const cy = viewH * 0.5;
+        if (t < 1.8) {
+            e.liveAlpha += (1 - e.liveAlpha) * ease(3);
+            easeToward(sf, cx + Math.sin(t * 1.5) * 20, cy + 30, dt, 120 + t * 40, 2.0);
+            bankToward(sf, Math.atan2(cy - sf.y, cx - sf.x), dt, 2.4);
+            if (Math.random() < 0.25) {
+                pushFinaleWake(e.wake, sf.x, sf.y, 1, {
+                    ang: sf.dir + Math.PI,
+                    hue: 200,
+                    spd: 40,
+                });
+            }
+        } else {
+            e.liveAlpha += (0 - e.liveAlpha) * (1 - Math.exp(-3.2 * dt));
+            const edgeX = sf.x < viewW * 0.5 ? -sf.size * 1.4 : viewW + sf.size * 1.4;
+            const edgeY = sf.y + (sf.y < viewH * 0.5 ? -1 : 1) * sf.size * 0.35;
+            easeToward(sf, edgeX, edgeY, dt, 240, 3.2);
+            sf.tailPhase += dt * (5 + (1 - e.liveAlpha) * 5);
         }
-        sf.x += dx;
-        sf.y += dy;
-        const away = Math.atan2(dy, dx);
-        sf.dir += normAngle(away - sf.dir) * Math.min(1, dt * 3.5);
-        sf.tailPhase += dt * (5 + (1 - e.liveAlpha) * 5);
     }
+    updateFinaleWake(e.wake, dt, 20);
 
-    if (t >= 3.45) resetPond({ fromSwordfishSpear: true });
+    if (t >= 3.85) resetPond({ fromSwordfishSpear: true });
 }
 
 function drawSwordfishSpearEnding(ctx) {
@@ -14501,29 +14861,31 @@ function drawSwordfishSpearEnding(ctx) {
     const e = swordfishSpearEnding;
     const t = e.t;
     const approach = e.approach;
-    const pierce = t > 2.45 ? Math.min(1, (t - 2.45) / 0.85) : 0;
+    const pierce = t > 2.55 ? Math.min(1, (t - 2.55) / 1.0) : 0;
     const cx = viewW * 0.5;
     const cy = viewH * 0.5;
     const base = Math.min(viewW, viewH);
+    const sway = e.sway || 0;
 
     ctx.save();
     ctx.fillStyle = `rgba(6, 8, 14, ${e.fade})`;
     ctx.fillRect(0, 0, viewW, viewH);
+    drawFinaleVignette(ctx, e.fade * 0.8 + (e.charge || 0) * 0.15, { r: 6, g: 10, b: 18 });
+    drawFinaleWake(ctx, e.wake, 0.85);
 
     // POV: one blue head mass wraps eyes + bill root; silver tip grows out of it.
     if (approach > 0.01) {
         ctx.save();
-        ctx.translate(cx, cy);
-        const alpha = Math.min(1, 0.2 + approach * 0.9);
+        ctx.translate(cx + sway * base * 0.04, cy);
+        ctx.rotate(sway * 0.35);
+        const alpha = Math.min(1, 0.18 + approach * 0.92);
         ctx.globalAlpha = alpha;
 
         const tipSize = 5 + approach * base * 0.3 + pierce * base * 0.08;
         const headRx = tipSize * 1.15;
         const headRy = tipSize * 1.35;
-        // Head centered slightly behind the tip so blue fully surrounds eyes and bill base.
         const headY = -tipSize * 0.18;
 
-        // Soft depth rings (same blue family) behind the head mass.
         for (let i = 3; i >= 1; i--) {
             const u = i / 3;
             const rx = headRx * (1.05 + u * 0.55);
@@ -14539,7 +14901,6 @@ function drawSwordfishSpearEnding(ctx) {
             ctx.fill();
         }
 
-        // Continuous blue head/snout: encompasses eyes and the root of the spear.
         const headG = ctx.createRadialGradient(0, headY - tipSize * 0.15, tipSize * 0.12, 0, headY, Math.max(headRx, headRy));
         headG.addColorStop(0, "#6e879c");
         headG.addColorStop(0.4, "#3f586c");
@@ -14547,7 +14908,6 @@ function drawSwordfishSpearEnding(ctx) {
         headG.addColorStop(1, "#121c26");
         ctx.fillStyle = headG;
         ctx.beginPath();
-        // Elongated snout blob: wide at eyes, tapering into the bill.
         ctx.moveTo(-headRx * 0.95, headY - headRy * 0.55);
         ctx.bezierCurveTo(
             -headRx * 1.15, headY - headRy * 0.1,
@@ -14569,7 +14929,6 @@ function drawSwordfishSpearEnding(ctx) {
         ctx.closePath();
         ctx.fill();
 
-        // Eyes sit inside the blue mass, above the tip.
         const eyeSpread = tipSize * 0.48;
         const eyeY = headY - tipSize * 0.55;
         const eyeR = 2.8 + tipSize * 0.1;
@@ -14587,7 +14946,6 @@ function drawSwordfishSpearEnding(ctx) {
         ctx.ellipse(eyeSpread + eyeR * 0.12, eyeY, eyeR * 0.45, eyeR * 0.55, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        // Silver tip grows out of the blue snout (connected, not floating).
         const tipFill = ctx.createRadialGradient(0, tipSize * 0.05, tipSize * 0.04, 0, 0, tipSize);
         tipFill.addColorStop(0, "#ffffff");
         tipFill.addColorStop(0.35, "#e8eef4");
@@ -14601,7 +14959,6 @@ function drawSwordfishSpearEnding(ctx) {
         ctx.lineTo(0, tipSize * 0.62);
         ctx.closePath();
         ctx.fill();
-        // Soft blue collar at the tip root so silver reads as emerging from the head.
         const collar = ctx.createRadialGradient(0, tipSize * 0.12, tipSize * 0.02, 0, tipSize * 0.12, tipSize * 0.38);
         collar.addColorStop(0, "rgba(55,75,92,0)");
         collar.addColorStop(0.45, "rgba(45,65,82,0.35)");
@@ -14622,18 +14979,16 @@ function drawSwordfishSpearEnding(ctx) {
         ctx.restore();
     }
 
-    // Pierce flash from the tip, then blackout (pond reset). No crack spears.
+    // Pierce flash from the tip, then soft blackout (pond reset).
     if (pierce > 0) {
         const flash = ctx.createRadialGradient(cx, cy, 4, cx, cy, base * (0.25 + pierce * 0.75));
-        flash.addColorStop(0, `rgba(255,255,255,${0.75 * pierce})`);
-        flash.addColorStop(0.35, `rgba(220,230,240,${0.35 * pierce})`);
+        flash.addColorStop(0, `rgba(255,255,255,${0.7 * pierce})`);
+        flash.addColorStop(0.35, `rgba(220,230,240,${0.32 * pierce})`);
         flash.addColorStop(1, "rgba(255,255,255,0)");
         ctx.fillStyle = flash;
         ctx.fillRect(0, 0, viewW, viewH);
-        ctx.fillStyle = `rgba(255,255,255,${pierce * 0.22})`;
-        ctx.fillRect(0, 0, viewW, viewH);
-        if (pierce > 0.4) {
-            ctx.fillStyle = `rgba(0,0,0,${(pierce - 0.4) * 1.85})`;
+        if (pierce > 0.35) {
+            ctx.fillStyle = `rgba(0,0,0,${(pierce - 0.35) * 1.55})`;
             ctx.fillRect(0, 0, viewW, viewH);
         }
     }
@@ -14729,8 +15084,13 @@ function beginGiantEnding(fish) {
         kind,
         parts: createGiantBodyParts(fish.size),
         debris: [],
+        wake: [],
         veil: 0,
+        wash: 0.05,
         cracked: false,
+        orbitAng: Math.atan2(fish.y - viewH * 0.5, fish.x - viewW * 0.5),
+        orbitRad: Math.max(50, Math.hypot(fish.x - viewW * 0.5, fish.y - viewH * 0.5)),
+        pulse: 0,
     };
     if (typeof giantBedReveal !== "undefined") giantBedReveal = 0;
     const pan = Math.max(-1, Math.min(1, (fish.x / viewW) * 2 - 1));
@@ -14775,7 +15135,17 @@ function beginHeroRemorseEnding(fish) {
     fish.isPredator = false;
     fish.isMonster = false;
     fish.isHero = true;
-    heroRemorseEnding = { fish, t: 0, burst: false };
+    heroRemorseEnding = {
+        fish,
+        t: 0,
+        burst: false,
+        wash: 0.06,
+        wake: [],
+        orbitAng: Math.atan2(fish.y - viewH * 0.5, fish.x - viewW * 0.5),
+        orbitRad: Math.max(48, Math.hypot(fish.x - viewW * 0.5, fish.y - viewH * 0.5)),
+        pulse: 0,
+        rings: 0,
+    };
     const pan = Math.max(-1, Math.min(1, (fish.x / viewW) * 2 - 1));
     water.disturb(fish.x, fish.y, fish.size * 1.1, 480);
     spawnSplash(fish.x, fish.y, fish.size * 0.5, 0.7);
@@ -14894,7 +15264,12 @@ function spawnEnvironmentHeroApex(cx, cy, roster) {
     }
 
     if (apex.shark || apex.orca || apex.crystal) {
-        if (shark && !shark.dead) shark.dead = true;
+        if (shark && !shark.dead) {
+            if (shark.octopusWrap && typeof shark.octopusWrap.clearApexWrap === "function") {
+                shark.octopusWrap.clearApexWrap();
+            }
+            shark.dead = true;
+        }
         shark = new Shark(null, { orca: !!apex.orca, crystal: !!apex.crystal });
         shark.isHero = true;
         shark.leaving = false;
@@ -14920,12 +15295,14 @@ function spawnEnvironmentHeroApex(cx, cy, roster) {
     }
 
     if (apex.octopus) {
-        if (octopus && !octopus.dead) octopus.dead = true;
+        if (octopus && !octopus.dead) {
+            if (typeof octopus.clearApexWrap === "function") octopus.clearApexWrap();
+            octopus.dead = true;
+        }
         octopus = new Octopus();
         octopus.tamed = true;
         octopus.isHero = true;
         octopus.huntTarget = null;
-        if (typeof octopus.clearApexWrap === "function") octopus.clearApexWrap();
         const op = placeNearBurst(cx, cy, 3.5, 100);
         octopus.x = op.x;
         octopus.y = op.y;
@@ -14933,12 +15310,14 @@ function spawnEnvironmentHeroApex(cx, cy, roster) {
     }
 
     if (apex.mantle) {
-        if (crystalMantle && !crystalMantle.dead) crystalMantle.dead = true;
+        if (crystalMantle && !crystalMantle.dead) {
+            if (typeof crystalMantle.clearApexWrap === "function") crystalMantle.clearApexWrap();
+            crystalMantle.dead = true;
+        }
         crystalMantle = new Octopus({ crystal: true, quiet: true });
         crystalMantle.tamed = true;
         crystalMantle.isHero = true;
         crystalMantle.huntTarget = null;
-        if (typeof crystalMantle.clearApexWrap === "function") crystalMantle.clearApexWrap();
         const mp = placeNearBurst(cx, cy, 4.1, 105);
         crystalMantle.x = mp.x;
         crystalMantle.y = mp.y;
@@ -14946,7 +15325,13 @@ function spawnEnvironmentHeroApex(cx, cy, roster) {
     }
 
     if (apex.serpent) {
-        if (crystalSerpent && !crystalSerpent.dead) crystalSerpent.dead = true;
+        if (crystalSerpent && !crystalSerpent.dead) {
+            if (crystalSerpent.octopusWrap
+                && typeof crystalSerpent.octopusWrap.clearApexWrap === "function") {
+                crystalSerpent.octopusWrap.clearApexWrap();
+            }
+            crystalSerpent.dead = true;
+        }
         crystalSerpent = new CrystalSerpent({ quiet: true });
         crystalSerpent.isHero = true;
         crystalSerpent.tamed = true;
@@ -15057,37 +15442,44 @@ function explodeHeroIntoSchool(hero) {
 function updateHeroRemorseEnding(dt) {
     if (!heroRemorseEnding) return;
     heroRemorseEnding.t += dt;
-    const f = heroRemorseEnding.fish;
-    const t = heroRemorseEnding.t;
+    const e = heroRemorseEnding;
+    const f = e.fish;
+    const t = e.t;
     const cx = viewW * 0.5;
     const cy = viewH * 0.5;
     const targetSize = Math.min(viewW, viewH) * CONFIG.giantCapFrac * 0.96;
-    const ease = (rate) => 1 - Math.exp(-rate * dt);
+    const ease = (rate) => finaleEase(rate, dt);
+    e.pulse = (e.pulse || 0) + dt;
 
-    if (f && !f.dead && !heroRemorseEnding.burst) {
-        // Grow and swim into center with capped ease (no teleport).
-        if (t < 2.0) {
-            f.size += (targetSize - f.size) * ease(1.55);
-        }
-        const maxSpd = t < 1.2 ? 52 : 38;
-        easeToward(f, cx, cy - 4, dt, maxSpd, 0.85);
-        f.dir += dt * (0.28 + 0.12 * Math.sin(t * 2.4));
-        f.tailPhase += dt * (2.8 + Math.min(2.2, t));
-        if (t >= 1.55) {
-            f.petTimer = Math.max(f.petTimer, 1.6);
-        }
-        if (Math.random() < 0.12) {
+    if (f && !f.dead && !e.burst) {
+        if (t < 2.2) softSizeToward(f, targetSize, dt, 1.4);
+        e.orbitAng += dt * (0.7 + Math.min(0.6, t * 0.2));
+        e.orbitRad += ((t < 2.4 ? 28 : 10) - e.orbitRad) * ease(0.95);
+        easeOrbitToward(f, cx, cy - 4, e.orbitRad, e.orbitAng, dt, t < 1.3 ? 50 : 34, 0.95, 0.68);
+        bankToward(f, e.orbitAng + Math.PI * 0.5, dt, 1.15);
+        f.tailPhase += dt * (2.6 + Math.min(2.4, t));
+        if (t >= 1.55) f.petTimer = Math.max(f.petTimer, 1.6);
+        e.wash += ((t < 2.8 ? Math.min(0.7, 0.1 + t * 0.2) : 0.85) - e.wash) * ease(2.0);
+        e.rings += ((t > 1.2 ? Math.min(1, (t - 1.2) / 1.4) : 0) - (e.rings || 0)) * ease(2.2);
+        if (Math.random() < 0.16) {
             water.disturb(f.x, f.y, f.size * 0.4, 65);
+            pushFinaleWake(e.wake, f.x, f.y, 1, {
+                ang: f.dir + Math.PI,
+                hue: 195,
+                spd: 26,
+            });
         }
     }
+    updateFinaleWake(e.wake, dt, 16);
 
-    if (t >= 3.45 && !heroRemorseEnding.burst) {
-        heroRemorseEnding.burst = true;
+    if (t >= 3.7 && !e.burst) {
+        e.burst = true;
         if (f && !f.dead) explodeHeroIntoSchool(f);
         else explodeHeroIntoSchool({ x: cx, y: cy, dead: true });
+        pushFinaleWake(e.wake, cx, cy, 18, { hue: 200, spd: 95, lift: 16, life: 1.3 });
     }
 
-    if (t >= 4.65) {
+    if (t >= 5.1) {
         heroRemorseEnding = null;
         if (whale && whale.dead) whale = null;
     }
@@ -15095,44 +15487,62 @@ function updateHeroRemorseEnding(dt) {
 
 function drawHeroRemorseEnding(ctx) {
     if (!heroRemorseEnding) return;
-    const t = heroRemorseEnding.t;
-    const f = heroRemorseEnding.fish;
-    const glow = Math.min(1, t / 1.1);
-    const burst = heroRemorseEnding.burst
-        ? Math.min(1, (t - 3.45) / 0.65)
-        : 0;
-    const fade = t > 4.05 ? Math.min(1, (t - 4.05) / 0.6) : 0;
+    const e = heroRemorseEnding;
+    const t = e.t;
+    const f = e.fish;
+    const glow = Math.min(1, t / 1.2);
+    const burst = e.burst ? Math.min(1, (t - 3.7) / 0.85) : 0;
+    const fade = t > 4.4 ? Math.min(1, (t - 4.4) / 0.7) : 0;
+    const breath = 0.5 + 0.5 * Math.sin((e.pulse || t) * 2.2);
 
     ctx.save();
     const wash = ctx.createRadialGradient(
         viewW * 0.5, viewH * 0.5, Math.min(viewW, viewH) * 0.06,
-        viewW * 0.5, viewH * 0.5, Math.max(viewW, viewH) * 0.72
+        viewW * 0.5, viewH * 0.5, Math.max(viewW, viewH) * 0.75
     );
-    wash.addColorStop(0, `rgba(170, 210, 235, ${0.07 + glow * 0.16})`);
-    wash.addColorStop(0.5, `rgba(90, 130, 150, ${0.05 + glow * 0.1})`);
-    wash.addColorStop(1, `rgba(18, 32, 42, ${0.08 + glow * 0.14})`);
+    wash.addColorStop(0, `rgba(170, 215, 240, ${(0.08 + glow * 0.18) * (e.wash || 1)})`);
+    wash.addColorStop(0.5, `rgba(90, 135, 155, ${(0.06 + glow * 0.12) * (e.wash || 1)})`);
+    wash.addColorStop(1, `rgba(18, 32, 42, ${(0.1 + glow * 0.16) * (e.wash || 1)})`);
     ctx.fillStyle = wash;
     ctx.fillRect(0, 0, viewW, viewH);
+    drawFinaleVignette(ctx, (e.wash || 0.4) * 0.7, { r: 12, g: 24, b: 36 });
 
-    if (f && !f.dead && !heroRemorseEnding.burst) {
+    if ((e.rings || 0) > 0.05 && f && !f.dead && !e.burst) {
+        ctx.globalCompositeOperation = "screen";
+        for (let i = 0; i < 3; i++) {
+            const u = ((e.pulse || 0) * 0.5 + i * 0.33) % 1;
+            const rr = f.size * (0.55 + u * 1.4);
+            ctx.strokeStyle = `rgba(160,210,240,${(1 - u) * e.rings * 0.4})`;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.ellipse(f.x, f.y, rr, rr * 0.55, f.dir, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+        ctx.globalCompositeOperation = "source-over";
+    }
+
+    drawFinaleWake(ctx, e.wake, 1);
+
+    if (f && !f.dead && !e.burst) {
         ctx.save();
-        ctx.globalAlpha = 0.3 + glow * 0.35;
+        ctx.globalAlpha = 0.28 + glow * 0.35 + breath * 0.06;
         ctx.shadowColor = "rgba(140, 200, 230, 0.85)";
-        ctx.shadowBlur = 30 + glow * 40;
+        ctx.shadowBlur = 28 + glow * 42;
         ctx.fillStyle = "rgba(150, 200, 230, 0.18)";
         ctx.beginPath();
-        ctx.ellipse(f.x, f.y, f.size * 0.8, f.size * 0.42, f.dir, 0, Math.PI * 2);
+        ctx.ellipse(f.x, f.y, f.size * 0.85, f.size * 0.44, f.dir, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
     }
 
     if (burst > 0) {
-        ctx.fillStyle = `rgba(210, 235, 250, ${burst * 0.55})`;
+        ctx.fillStyle = `rgba(210, 235, 250, ${burst * 0.42})`;
         ctx.fillRect(0, 0, viewW, viewH);
     }
     if (fade > 0) {
-        ctx.fillStyle = `rgba(200, 225, 240, ${fade * 0.35})`;
+        ctx.fillStyle = `rgba(200, 225, 240, ${fade * 0.28})`;
         ctx.fillRect(0, 0, viewW, viewH);
+        drawFinaleVignette(ctx, fade * 0.45, { r: 180, g: 210, b: 230 });
     }
     ctx.restore();
 }
@@ -15141,45 +15551,56 @@ function updateGiantEnding(dt) {
     if (!giantEnding) return;
     const e = giantEnding;
     e.t += dt;
+    e.pulse = (e.pulse || 0) + dt;
     const f = e.fish;
     const t = e.t;
-    const ease = (rate) => 1 - Math.exp(-rate * dt);
+    const ease = (rate) => finaleEase(rate, dt);
     const cx = viewW * 0.5;
     const cy = viewH * 0.5;
 
     if (f && !f.dead) {
         if (e.kind === "peace") {
-            // Gather, then physically come apart (no soft light dissolve, no white wash).
-            easeToward(f, cx, cy - 6, dt, 42, 0.8);
-            // Mild thrash while the body stresses, then slow as pieces leave.
-            const split = clamp01((t - 1.15) / 2.6);
-            f.dir += dt * (0.25 + (split > 0 && split < 0.55 ? Math.sin(t * 14) * 0.35 : 0));
-            f.tailPhase += dt * (3.4 + split * 5);
-            if (t < 1.4) f.petTimer = Math.max(f.petTimer, 0.8);
+            // Spiral gather, then physically come apart.
+            e.orbitAng += dt * (0.55 + Math.min(0.5, t * 0.15));
+            e.orbitRad += ((t < 1.4 ? 36 : 12) - e.orbitRad) * ease(0.9);
+            easeOrbitToward(f, cx, cy - 6, e.orbitRad, e.orbitAng, dt, 40, 0.85, 0.7);
+            bankToward(f, e.orbitAng + Math.PI * 0.5, dt, 1.0);
+            const split = clamp01((t - 1.35) / 2.8);
+            f.dir += dt * (0.2 + (split > 0 && split < 0.55 ? Math.sin(t * 12) * 0.3 : 0));
+            f.tailPhase += dt * (3.2 + split * 5);
+            if (t < 1.5) f.petTimer = Math.max(f.petTimer, 0.8);
+            e.wash += ((t < 1.2 ? t / 1.2 * 0.35 : 0.55 + split * 0.25) - (e.wash || 0)) * ease(1.8);
 
             if (split > 0.08 && !e.cracked) {
                 e.cracked = true;
                 spawnGiantDebris(e, f, 18);
                 Audio.predatorEat(Math.max(-1, Math.min(1, (f.x / viewW) * 2 - 1)) * 0.4);
                 water.disturb(f.x, f.y, f.size * 0.7, 220);
+                pushFinaleWake(e.wake, f.x, f.y, 12, { warm: true, hue: 35, spd: 70, lift: 14 });
             }
             if (split > 0.1 && Math.random() < 0.2 + split * 0.25) {
                 spawnGiantDebris(e, f, 1 + (Math.random() < 0.35 ? 1 : 0));
             }
+            if (Math.random() < 0.14) {
+                pushFinaleWake(e.wake, f.x, f.y, 1, {
+                    ang: f.dir + Math.PI,
+                    warm: true,
+                    hue: 40,
+                    spd: 22,
+                });
+            }
             updateGiantBodyParts(e, dt, split);
-            // Keep the host drawable while parts are still on-screen; do not ghost into light.
-            f._giantFlyAlpha = split < 0.85 ? 1 : Math.max(0, 1 - (split - 0.85) / 0.15);
+            f._giantFlyAlpha = split < 0.82 ? 1 : Math.max(0, 1 - (split - 0.82) / 0.18);
             if (Math.random() < 0.1 + split * 0.15) {
                 water.disturb(f.x, f.y, f.size * (0.22 + split * 0.25), 40);
             }
 
-            // Amber dusk veil (not the hero white flash).
-            const veilWant = t < 1.0 ? t / 1.0 * 0.18
-                : t < 3.8 ? 0.18 + clamp01((t - 1.0) / 2.8) * 0.55
-                : 0.73;
-            e.veil += (veilWant - (e.veil || 0)) * ease(2.0);
+            const veilWant = t < 1.2 ? t / 1.2 * 0.16
+                : t < 4.1 ? 0.16 + clamp01((t - 1.2) / 2.9) * 0.58
+                : 0.74;
+            e.veil += (veilWant - (e.veil || 0)) * ease(1.9);
 
-            if (t >= 4.35 && !e.restocked) {
+            if (t >= 4.65 && !e.restocked) {
                 e.restocked = true;
                 f.dead = true;
                 f._giantFlyAlpha = 0;
@@ -15189,7 +15610,8 @@ function updateGiantEnding(dt) {
                 if (!giantEnding) {
                     giantEnding = {
                         fish: f, t, kind: "peace",
-                        veil: 0.75, restocked: true, parts: null, debris: [],
+                        veil: 0.75, wash: 0.5, restocked: true, parts: null, debris: [], wake: e.wake || [],
+                        pulse: e.pulse || 0,
                     };
                 } else {
                     giantEnding.veil = Math.max(giantEnding.veil || 0, 0.72);
@@ -15198,34 +15620,41 @@ function updateGiantEnding(dt) {
                 spawnFriendlyHeroSchool(hx, hy);
             }
         } else {
-            // Shadow giant: violent physical tear, then blackout.
-            easeToward(f, cx, cy, dt, 58, 1.2);
-            const split = clamp01((t - 0.7) / 1.9);
-            f.dir += dt * (1.1 + split * 2.2);
-            f.tailPhase += dt * (7 + split * 6);
+            // Shadow giant: bank in hard, violent tear, then soft choke.
+            e.orbitAng += dt * (1.1 + Math.min(1.2, t * 0.4));
+            e.orbitRad += ((t < 0.9 ? 40 : 8) - e.orbitRad) * ease(1.2);
+            easeOrbitToward(f, cx, cy, e.orbitRad, e.orbitAng, dt, 56, 1.25, 0.75);
+            const split = clamp01((t - 0.85) / 2.1);
+            f.dir += dt * (1.0 + split * 2.0);
+            f.tailPhase += dt * (6.5 + split * 6);
+            e.wash += ((0.3 + split * 0.55) - (e.wash || 0)) * ease(2.2);
             if (split > 0.06 && !e.cracked) {
                 e.cracked = true;
                 spawnGiantDebris(e, f, 22);
                 Audio.sharkStrike(0);
                 water.disturb(f.x, f.y, f.size * 0.85, 280);
+                pushFinaleWake(e.wake, f.x, f.y, 14, { hue: 0, spd: 100, lift: 10, life: 1.1 });
             }
             if (split > 0.1 && Math.random() < 0.28) spawnGiantDebris(e, f, 2);
             updateGiantBodyParts(e, dt, split);
-            f._giantFlyAlpha = split < 0.8 ? 1 : Math.max(0, 1 - (split - 0.8) / 0.2);
+            f._giantFlyAlpha = split < 0.78 ? 1 : Math.max(0, 1 - (split - 0.78) / 0.22);
             if (Math.random() < 0.2) water.disturb(f.x, f.y, f.size * 0.45, 90);
         }
     } else if (e.kind === "peace" && e.restocked) {
-        e.veil = Math.max(0, (e.veil || 0) - dt * 0.38);
+        e.veil = Math.max(0, (e.veil || 0) - dt * 0.34);
+        e.wash = Math.max(0, (e.wash || 0) - dt * 0.25);
         updateGiantDebris(e, dt);
-        if ((e.veil || 0) <= 0.02 && t >= 6.0) {
+        updateFinaleWake(e.wake, dt, 20);
+        if ((e.veil || 0) <= 0.02 && t >= 6.4) {
             giantEnding = null;
             return;
         }
     }
 
     updateGiantDebris(e, dt);
+    updateFinaleWake(e.wake, dt, e.kind === "peace" ? 18 : 26);
 
-    if (e.kind !== "peace" && t >= 3.9) {
+    if (e.kind !== "peace" && t >= 4.35) {
         resetPond();
     }
 }
@@ -15252,164 +15681,79 @@ function drawGiantEnding(ctx) {
     const t = e.t;
     const f = e.fish;
     const kind = e.kind;
+    const breath = 0.5 + 0.5 * Math.sin((e.pulse || t) * 2.0);
 
     ctx.save();
     if (kind === "peace") {
-        const glow = Math.min(1, t / 1.3);
+        const glow = Math.min(1, t / 1.35);
         const veil = Math.max(0, Math.min(1, e.veil || 0));
+        const washA = e.wash == null ? glow : e.wash;
         if (!e.restocked) {
-            // Warm ember dusk: deliberately unlike the cool blue hero remorse wash.
             const wash = ctx.createRadialGradient(
                 viewW * 0.5, viewH * 0.45, Math.min(viewW, viewH) * 0.05,
-                viewW * 0.5, viewH * 0.5, Math.max(viewW, viewH) * 0.8
+                viewW * 0.5, viewH * 0.5, Math.max(viewW, viewH) * 0.82
             );
-            wash.addColorStop(0, `rgba(255, 190, 110, ${0.08 + glow * 0.2})`);
-            wash.addColorStop(0.4, `rgba(120, 70, 40, ${0.1 + glow * 0.18})`);
-            wash.addColorStop(1, `rgba(18, 28, 36, ${0.16 + glow * 0.28})`);
+            wash.addColorStop(0, `rgba(255, 190, 110, ${(0.08 + glow * 0.22) * washA})`);
+            wash.addColorStop(0.4, `rgba(120, 70, 40, ${(0.1 + glow * 0.2) * washA})`);
+            wash.addColorStop(1, `rgba(18, 28, 36, ${(0.16 + glow * 0.3) * washA})`);
             ctx.fillStyle = wash;
             ctx.fillRect(0, 0, viewW, viewH);
+            drawFinaleVignette(ctx, washA * 0.65, { r: 28, g: 16, b: 10 });
             if (f && !f.dead) {
                 ctx.save();
-                ctx.globalAlpha = 0.22 + glow * 0.25;
+                ctx.globalAlpha = 0.2 + glow * 0.28 + breath * 0.05;
                 ctx.shadowColor = "rgba(255,160,60,0.75)";
-                ctx.shadowBlur = 18 + glow * 28;
+                ctx.shadowBlur = 18 + glow * 30;
                 const trail = ctx.createRadialGradient(
                     f.x, f.y, f.size * 0.1,
-                    f.x, f.y, f.size * 1.15
+                    f.x, f.y, f.size * (1.05 + breath * 0.12)
                 );
-                trail.addColorStop(0, "rgba(255,200,120,0.4)");
+                trail.addColorStop(0, "rgba(255,200,120,0.42)");
                 trail.addColorStop(0.5, "rgba(160,90,40,0.16)");
                 trail.addColorStop(1, "rgba(40,30,20,0)");
                 ctx.fillStyle = trail;
                 ctx.beginPath();
-                ctx.ellipse(f.x, f.y, f.size * 0.9, f.size * 0.48, f.dir, 0, Math.PI * 2);
+                ctx.ellipse(f.x, f.y, f.size * 0.95, f.size * 0.5, f.dir, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.restore();
             }
         }
+        drawFinaleWake(ctx, e.wake, 1);
         drawGiantDebris(ctx, e);
         if (veil > 0.01) {
-            // Deep amber pond veil instead of a white screen wipe.
-            ctx.fillStyle = `rgba(28, 18, 10, ${veil * 0.72})`;
+            ctx.fillStyle = `rgba(28, 18, 10, ${veil * 0.68})`;
             ctx.fillRect(0, 0, viewW, viewH);
-            ctx.fillStyle = `rgba(255, 170, 80, ${veil * 0.18})`;
+            ctx.fillStyle = `rgba(255, 170, 80, ${veil * 0.16})`;
             ctx.fillRect(0, 0, viewW, viewH);
+            drawFinaleVignette(ctx, veil * 0.55, { r: 40, g: 22, b: 8 });
         }
     } else {
-        const zoom = Math.min(1, t / 1.8);
-        const choke = t > 2.7 ? Math.min(1, (t - 2.7) / 1.0) : 0;
-        ctx.fillStyle = `rgba(10, 2, 4, ${0.22 + zoom * 0.5})`;
+        const zoom = Math.min(1, t / 1.9);
+        const choke = t > 3.0 ? Math.min(1, (t - 3.0) / 1.2) : 0;
+        ctx.fillStyle = `rgba(10, 2, 4, ${0.2 + zoom * 0.48 + (e.wash || 0) * 0.2})`;
         ctx.fillRect(0, 0, viewW, viewH);
+        drawFinaleVignette(ctx, 0.35 + zoom * 0.4, { r: 18, g: 2, b: 6 });
         if (f && !f.dead) {
             ctx.save();
-            ctx.globalAlpha = 0.4 + zoom * 0.35;
+            ctx.globalAlpha = 0.38 + zoom * 0.35 + breath * 0.05;
             ctx.shadowColor = "rgba(140, 10, 30, 0.9)";
-            ctx.shadowBlur = 24 + zoom * 36;
+            ctx.shadowBlur = 24 + zoom * 38;
             ctx.fillStyle = "rgba(70, 8, 18, 0.5)";
             ctx.beginPath();
-            ctx.ellipse(f.x, f.y, f.size * 0.8, f.size * 0.42, f.dir, 0, Math.PI * 2);
+            ctx.ellipse(f.x, f.y, f.size * 0.85, f.size * 0.45, f.dir, 0, Math.PI * 2);
             ctx.fill();
             ctx.restore();
         }
+        drawFinaleWake(ctx, e.wake, 1);
         drawGiantDebris(ctx, e);
         if (choke > 0) {
-            ctx.fillStyle = `rgba(0, 0, 0, ${choke})`;
+            ctx.fillStyle = `rgba(0, 0, 0, ${choke * 0.92})`;
             ctx.fillRect(0, 0, viewW, viewH);
-            if (choke > 0.4) {
-                ctx.fillStyle = `rgba(30, 0, 5, ${(choke - 0.4) * 1.4})`;
+            if (choke > 0.35) {
+                ctx.fillStyle = `rgba(30, 0, 5, ${(choke - 0.35) * 1.2})`;
                 ctx.fillRect(0, 0, viewW, viewH);
             }
         }
-    }
-    ctx.restore();
-}
-
-function updatePovAttack(dt) {
-    if (!povAttack) return;
-    povAttack.t += dt;
-    const f = povAttack.fish;
-    if (f && !f.dead) {
-        // Swim toward the lens with a capped surge, then loom.
-        const cx = viewW * 0.5;
-        const cy = viewH * 0.5;
-        const surge = 55 + Math.min(90, (f.size || 40) * 0.9);
-        easeToward(f, cx, cy, dt, surge, 1.6);
-        f.tailPhase = (f.tailPhase || 0) + dt * (4.5 + Math.min(3, povAttack.t));
-        f.dir += normAngle(Math.atan2(cy - f.y, cx - f.x) - f.dir) * Math.min(1, 2.4 * dt);
-        if (Math.random() < 0.2) water.disturb(f.x, f.y, f.size * 0.45, 80);
-    }
-    if (povAttack.t >= 3.8) {
-        resetPond();
-    }
-}
-
-function drawPovAttack(ctx) {
-    if (!povAttack) return;
-    const t = povAttack.t;
-    const zoom = Math.min(1, 1 - Math.exp(-t * 0.85));
-    const choke = t > 2.6 ? Math.min(1, (t - 2.6) / 1.0) : 0;
-    const breath = 0.5 + 0.5 * Math.sin(t * 5.2);
-
-    // Darken the pond as the monster fills the view.
-    ctx.save();
-    ctx.fillStyle = `rgba(4, 6, 8, ${0.1 + zoom * 0.5 + choke * 0.35})`;
-    ctx.fillRect(0, 0, viewW, viewH);
-
-    const cx = viewW * 0.5;
-    const cy = viewH * 0.5;
-    const scale = 0.35 + zoom * 4.1;
-    const mouth = 0.12 + zoom * 0.5 + choke * 0.28 + breath * 0.04;
-
-    ctx.translate(cx, cy);
-    ctx.scale(scale, scale);
-    ctx.globalAlpha = 0.88 + zoom * 0.1;
-
-    // Facing-camera head: dark oval with opening jaws.
-    const g = ctx.createRadialGradient(0, 0, 10, 0, 0, 90);
-    g.addColorStop(0, "#4a1828");
-    g.addColorStop(0.6, "#1a0810");
-    g.addColorStop(1, "#050308");
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, 70, 55, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Eyes staring at the user.
-    ctx.fillStyle = "#ff3030";
-    ctx.shadowColor = "rgba(255,40,40,0.8)";
-    ctx.shadowBlur = 12 + choke * 18;
-    ctx.beginPath();
-    ctx.ellipse(-22, -12, 8, 5, -0.2, 0, Math.PI * 2);
-    ctx.ellipse(22, -12, 8, 5, 0.2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = "#120008";
-    ctx.beginPath();
-    ctx.ellipse(-22, -12, 3, 4, 0, 0, Math.PI * 2);
-    ctx.ellipse(22, -12, 3, 4, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Mouth opening toward the camera.
-    ctx.fillStyle = "#2a0508";
-    ctx.beginPath();
-    ctx.ellipse(0, 18, 40, 10 + mouth * 50, 0, 0, Math.PI * 2);
-    ctx.fill();
-    // Teeth.
-    ctx.fillStyle = "#e8e0d0";
-    for (let i = -4; i <= 4; i++) {
-        const tx = i * 7;
-        ctx.beginPath();
-        ctx.moveTo(tx - 2.2, 18 - mouth * 20);
-        ctx.lineTo(tx, 18 - mouth * 34);
-        ctx.lineTo(tx + 2.2, 18 - mouth * 20);
-        ctx.closePath();
-        ctx.fill();
-    }
-    // Soft vignette choke (no hard cut to black until the very end).
-    if (choke > 0) {
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.fillStyle = `rgba(0,0,0,${choke * 0.72})`;
-        ctx.fillRect(0, 0, viewW, viewH);
     }
     ctx.restore();
 }
@@ -15440,6 +15784,7 @@ function resetPond(opts) {
     orcaFeastEnding = null;
     swordfishSpearEnding = null;
     if (!(opts && opts.keepOctopusFight)) octopusWhaleFight = null;
+    if (!(opts && opts.keepCrystalEnding)) crystalApexEnding = null;
     pirateShipDrop = null;
     apexDuel = null;
     shark = null;
@@ -15597,7 +15942,15 @@ class Shark {
             || this.target.isPlatinum) {
             // Apex hunters ignore platinum entirely (invulnerable).
             this.target = nearestFish(this.x, this.y);
-            if (!this.target) { this.startLeaving(); return; }
+            if (!this.target) {
+                if (this.isCrystal && countableSwimmers().length === 0 && !pondFinaleActive()
+                    && typeof beginCrystalApexEnding === "function"
+                    && beginCrystalApexEnding("prism", this)) {
+                    return;
+                }
+                this.startLeaving();
+                return;
+            }
             desired = Math.atan2(this.target.y - this.y, this.target.x - this.x);
             spd = this.rollTimer > 0 ? dash : cruise;
         } else {
@@ -15704,8 +16057,13 @@ class Shark {
         Audio.sharkStrike(pan);
         water.disturb(fish.x, fish.y, this.size * 0.6, 720);
         spawnSplash(fish.x, fish.y, 26, 1);
-        if (countableSwimmers().length === 0) this.startLeaving();
-        else this.target = null;
+        if (countableSwimmers().length === 0) {
+            if (this.isCrystal && typeof beginCrystalApexEnding === "function"
+                && beginCrystalApexEnding("prism", this)) {
+                return;
+            }
+            this.startLeaving();
+        } else this.target = null;
     }
 
     startLeaving() {
@@ -16461,7 +16819,8 @@ class PacifistVisitor {
         });
         water.disturb(this.x, this.y, this.size * 0.35, 50);
         if (this.tamed) {
-            this.giftCd = Math.min(this.giftCd, 0.8);
+            // Crystal helpers already gift often; petting should not dump food every frame.
+            this.giftCd = Math.min(this.giftCd, this.meta.crystal ? 3.5 : 0.8);
             return;
         }
         this.petCount++;
@@ -16501,21 +16860,30 @@ class PacifistVisitor {
     }
 
     dropGift(strong) {
+        if (foods.filter((f) => f && !f.eaten).length >= CONFIG.maxFoods) return;
         const n = strong ? 2 + Math.floor(Math.random() * 2) : 1;
         for (let i = 0; i < n; i++) {
+            if (foods.filter((f) => f && !f.eaten).length >= CONFIG.maxFoods) break;
             const ang = Math.random() * Math.PI * 2;
             const rad = 12 + Math.random() * 22;
             let flags = {};
             const roll = Math.random();
             if (this.kind === "lotus" || this.kind === "garden" || this.kind === "lumen") {
-                flags = roll < 0.55 ? { green: true } : { grower: true };
-                if (this.kind === "lumen" && roll < 0.35) flags = { rainbow: true };
+                // Lumen routine gifts stay soft (green / grower). Rainbow is mood-only.
+                if (this.kind === "lumen") {
+                    flags = roll < 0.6 ? { green: true } : { grower: true };
+                } else {
+                    flags = roll < 0.55 ? { green: true } : { grower: true };
+                }
             } else if (this.kind === "singer" || this.kind === "beluga") {
-                flags = roll < 0.4 ? { pink: true } : roll < 0.7 ? { grower: true } : { rainbow: true };
+                // Avoid rainbow gift spam that helpers immediately re-eat.
+                flags = roll < 0.45 ? { pink: true } : roll < 0.8 ? { grower: true } : {};
             } else if (this.kind === "axolotl") {
                 flags = roll < 0.6 ? { pink: true } : { hero: true };
             } else if (this.kind === "ribbon") {
-                flags = roll < 0.5 ? { rainbow: true } : { grower: true };
+                flags = roll < 0.35 ? { rainbow: true } : { grower: true };
+            } else if (this.kind === "shard" || this.kind === "prism") {
+                flags = roll < 0.5 ? { grower: true } : roll < 0.8 ? { pink: true } : {};
             } else {
                 flags = roll < 0.45 ? { grower: true } : roll < 0.75 ? { pink: true } : {};
             }
@@ -16532,6 +16900,14 @@ class PacifistVisitor {
     // Rainbow food wakes a short role-specific mood instead of a predator finale.
     triggerRainbowMood() {
         if (this.dead || this.leaving) return;
+        // Already glowing: refresh the mood only. Do not burst more food (avoids gift loops).
+        if (this.rainbowMood > 0) {
+            this.rainbowMood = Math.max(this.rainbowMood, 6);
+            this.life = Math.max(this.life, this.tamed ? 40 : 18);
+            this.giftCd = Math.max(this.giftCd, 5);
+            this.jobCd = Math.max(this.jobCd, 2.5);
+            return;
+        }
         this.rainbowMood = Math.max(this.rainbowMood, 11);
         this.life = Math.max(this.life, this.tamed ? 55 : 28);
         this.leaving = false;
@@ -16541,11 +16917,16 @@ class PacifistVisitor {
         water.disturb(this.x, this.y, this.size * 0.85, 240);
         spawnSplash(this.x, this.y, this.size * 0.35, 0.55);
         this.rainbowBurst();
+        // Pause gifts so the burst cannot be eaten and re-burst immediately.
+        this.giftCd = Math.max(this.giftCd, 8);
+        this.jobCd = Math.max(this.jobCd, 4);
     }
 
     rainbowBurst() {
+        const livingFood = () => foods.filter((f) => f && !f.eaten).length;
         const drop = (flags, n) => {
             for (let i = 0; i < n; i++) {
+                if (livingFood() >= CONFIG.maxFoods) break;
                 const ang = Math.random() * Math.PI * 2;
                 const rad = 16 + Math.random() * 28;
                 foods.push(new Food(
@@ -16626,7 +17007,8 @@ class PacifistVisitor {
             }
         } else if (this.kind === "garden" || this.kind === "lumen") {
             drop({ green: true }, this.kind === "lumen" ? 1 : 2);
-            if (this.kind === "lumen") drop({ rainbow: true }, 1);
+            // Lumen: grower instead of rainbow so the helper cannot immediately re-burst.
+            if (this.kind === "lumen") drop({ grower: true }, 1);
             for (const f of fishes) {
                 if (f.dead || !f.isPredator || f.isMonster || f.redeemed || f.isHero) continue;
                 if (Math.hypot(f.x - this.x, f.y - this.y) > this.size * 2.6) continue;
@@ -16697,7 +17079,7 @@ class PacifistVisitor {
                 return;
             }
         } else if (!this.foodTarget || this.foodTarget.eaten) {
-            // Prefer rainbow pellets so role moods can trigger (not while already glowing).
+            // Prefer rainbow only when not already glowing (avoids gift → eat → burst loops).
             let best = null;
             let bd = CONFIG.perception * 1.4;
             for (const food of foods) {
@@ -16705,7 +17087,7 @@ class PacifistVisitor {
                 const d = Math.hypot(food.x - this.x, food.y - this.y);
                 let prefer = 1;
                 if (food.rainbow && this.rainbowMood <= 0) prefer = 0.55;
-                else if (food.rainbow && this.rainbowMood > 0) prefer = 1.35;
+                else if (food.rainbow && this.rainbowMood > 0) prefer = 2.6;
                 if (d * prefer < bd) { bd = d * prefer; best = food; }
             }
             this.foodTarget = best;
@@ -16782,19 +17164,37 @@ class PacifistVisitor {
         }
 
         if (this.giftCd <= 0 && !this.leaving) {
-            this.giftCd = this.tamed
-                ? (this.rainbowMood > 0 ? (3.5 + Math.random() * 2.5) : (7 + Math.random() * 5))
-                : (14 + Math.random() * 10);
-            if (this.tamed || Math.random() < 0.45) this.dropGift(false);
+            const foodBusy = foods.filter((f) => f && !f.eaten).length >= CONFIG.maxFoods * 0.7;
+            if (this.tamed) {
+                if (this.meta.crystal) {
+                    this.giftCd = this.rainbowMood > 0
+                        ? (6.5 + Math.random() * 4)
+                        : (11 + Math.random() * 7);
+                } else {
+                    this.giftCd = this.rainbowMood > 0
+                        ? (3.5 + Math.random() * 2.5)
+                        : (7 + Math.random() * 5);
+                }
+                if (foodBusy) this.giftCd += 4 + Math.random() * 4;
+            } else {
+                this.giftCd = 14 + Math.random() * 10;
+            }
+            if (!foodBusy && (this.tamed || Math.random() < 0.45)) this.dropGift(false);
         }
 
         // Continuous tamed auras (ease each frame).
         if (this.tamed && !this.leaving) this.runTamedAura(dt);
 
         if (this.tamed && this.jobCd <= 0 && !this.leaving) {
-            this.jobCd = this.rainbowMood > 0
-                ? (1.1 + Math.random() * 1.2)
-                : (2.4 + Math.random() * 2.6);
+            if (this.meta.crystal) {
+                this.jobCd = this.rainbowMood > 0
+                    ? (2.4 + Math.random() * 2.2)
+                    : (4.2 + Math.random() * 3.2);
+            } else {
+                this.jobCd = this.rainbowMood > 0
+                    ? (1.1 + Math.random() * 1.2)
+                    : (2.4 + Math.random() * 2.6);
+            }
             this.runTamedPulse();
         }
 
@@ -16945,7 +17345,8 @@ class PacifistVisitor {
                     22 + Math.random() * 18
                 ));
             }
-            if (rush && Math.random() < 0.5) {
+            if (rush && Math.random() < 0.5
+                && foods.filter((f) => f && !f.eaten).length < CONFIG.maxFoods) {
                 foods.push(new Food(this.x, this.y, 7, { green: true }));
             }
         } else if (this.kind === "axolotl") {
@@ -16957,13 +17358,15 @@ class PacifistVisitor {
                 if (!f.isPink && Math.random() < (rush ? 0.28 : 0.12)) f.isPink = true;
             }
         } else if (this.kind === "ribbon") {
-            const back = this.size * 0.55;
-            foods.push(new Food(
-                this.x - Math.cos(this.dir) * back,
-                this.y - Math.sin(this.dir) * back,
-                6 + Math.random() * 3,
-                Math.random() < (rush ? 0.55 : 0.2) ? { rainbow: true } : {}
-            ));
+            if (foods.filter((f) => f && !f.eaten).length < CONFIG.maxFoods) {
+                const back = this.size * 0.55;
+                foods.push(new Food(
+                    this.x - Math.cos(this.dir) * back,
+                    this.y - Math.sin(this.dir) * back,
+                    6 + Math.random() * 3,
+                    Math.random() < (rush ? 0.55 : 0.2) ? { rainbow: true } : {}
+                ));
+            }
             if (typeof pushRainbowTrail === "function") {
                 pushRainbowTrail(this.x, this.y, rush ? 3.2 : 2.2, Math.floor(this.age * 10));
             }
@@ -16979,12 +17382,14 @@ class PacifistVisitor {
                 }
             }
         } else if ((this.kind === "nurse" || this.kind === "shard") && rush) {
-            foods.push(new Food(
-                this.x + (Math.random() - 0.5) * 24,
-                this.y + (Math.random() - 0.5) * 24,
-                7,
-                { grower: true }
-            ));
+            if (foods.filter((f) => f && !f.eaten).length < CONFIG.maxFoods) {
+                foods.push(new Food(
+                    this.x + (Math.random() - 0.5) * 24,
+                    this.y + (Math.random() - 0.5) * 24,
+                    7,
+                    { grower: true }
+                ));
+            }
         }
     }
 
@@ -17300,7 +17705,7 @@ class PacifistVisitor {
 
 
 
-// Crystal Depths apex visitor: long prismatic serpent that hunts smaller fish.
+// Crystal Depths apex visitor: eldritch prism worm that hunts smaller fish.
 class CrystalSerpent {
     constructor(opts) {
         this.size = rand(CONFIG.crystalSerpentSize[0], CONFIG.crystalSerpentSize[1]);
@@ -17319,7 +17724,7 @@ class CrystalSerpent {
         this.petProgress = 0;
         this.isPink = false;
         this.breedCooldown = 0;
-        this.segments = 7;
+        this.segments = 11;
         const side = Math.floor(Math.random() * 4);
         if (side === 0) { this.x = -this.size; this.y = Math.random() * viewH; }
         else if (side === 1) { this.x = viewW + this.size; this.y = Math.random() * viewH; }
@@ -17413,6 +17818,16 @@ class CrystalSerpent {
         }
 
         if (!crystalMode && !this.isHero && !this.tamed) this.leaving = true;
+        // Empty pond: wild serpent finale, else leave so restock cannot softlock.
+        if (!this.isHero && !this.tamed && !this.leaving
+            && countableSwimmers().length === 0
+            && !pondFinaleActive()) {
+            if (typeof beginCrystalApexEnding === "function"
+                && beginCrystalApexEnding("serpent", this)) {
+                return;
+            }
+            this.leaving = true;
+        }
 
         if (this.leaving) {
             this.x += Math.cos(this.dir) * this.speed * 1.4 * dt;
@@ -17464,6 +17879,11 @@ class CrystalSerpent {
                     Audio.predatorEat(Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1)));
                     water.disturb(this.x, this.y, this.size * 0.5, 160);
                     spawnSplash(this.x, this.y, 14, 0.55);
+                    if (countableSwimmers().length === 0
+                        && typeof beginCrystalApexEnding === "function"
+                        && beginCrystalApexEnding("serpent", this)) {
+                        return;
+                    }
                 }
             } else {
                 this.wanderTimer -= dt;
@@ -17491,69 +17911,570 @@ class CrystalSerpent {
     draw(ctx) {
         if (this.dead) return;
         const L = this.size;
-        const W = this.size * 0.22;
+        const W = this.size * 0.24;
+        const segs = Math.max(8, this.segments | 0);
         ctx.save();
         ctx.translate(this.x, this.y);
         ctx.rotate(this.dir);
-        ctx.globalAlpha = this.leaving ? 0.5 : 0.92;
+        ctx.globalAlpha = this.leaving ? 0.5 : 0.94;
         if (this.isPink) {
-            ctx.shadowColor = "rgba(255,140,200,0.8)";
-            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 18;
+            ctx.shadowColor = "rgba(255,80,140,0.75)";
+            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 20;
         } else if (this.isHero) {
-            ctx.shadowColor = "rgba(180,140,255,0.75)";
-            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 16;
+            ctx.shadowColor = "rgba(140,90,255,0.7)";
+            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 18;
         } else {
-            ctx.shadowColor = "rgba(100,60,160,0.45)";
-            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 12;
+            ctx.shadowColor = "rgba(40,10,60,0.55)";
+            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
         }
 
-        // Segmented crystal body with facet ridges.
-        for (let i = this.segments - 1; i >= 0; i--) {
-            const t = i / (this.segments - 1);
-            const along = -L * 0.42 + t * L * 0.95;
-            const sway = Math.sin(this.tailPhase + i * 0.55) * W * (0.35 + t * 0.8);
-            const rw = W * (0.55 + (1 - t) * 0.7);
-            const rh = W * (0.7 + (1 - t) * 0.5);
-            const g = ctx.createLinearGradient(along, sway - rh, along, sway + rh);
+        // Continuous eldritch coil: each ring follows the same sway as its neighbors.
+        const alongOf = (i) => -L * 0.52 + (i / (segs - 1)) * L * 1.05;
+        const swayOf = (i) => Math.sin(this.tailPhase * 1.15 + i * 0.62) * W
+            * (0.25 + (i / (segs - 1)) * 1.15);
+        const radOf = (i) => {
+            const t = i / (segs - 1);
+            // Fat mid-body, tapering toward a blunt abyssal tip (no separate face).
+            return W * (0.35 + Math.sin(t * Math.PI) * 0.85 + (1 - t) * 0.15);
+        };
+
+        // Soft under-glow veil along the whole worm.
+        ctx.globalCompositeOperation = "lighter";
+        ctx.globalAlpha = (this.leaving ? 0.2 : 0.35) * (this.isHero ? 1.15 : 1);
+        for (let i = 0; i < segs; i++) {
+            const ax = alongOf(i);
+            const ay = swayOf(i);
+            const rr = radOf(i) * 1.55;
+            const veil = ctx.createRadialGradient(ax, ay, 0, ax, ay, rr);
+            const hue = this.isPink ? 330 : this.isHero ? 275 : 255;
+            veil.addColorStop(0, `hsla(${hue}, 70%, 55%, 0.22)`);
+            veil.addColorStop(1, `hsla(${hue}, 60%, 20%, 0)`);
+            ctx.fillStyle = veil;
+            ctx.beginPath();
+            ctx.ellipse(ax, ay, rr, rr * 0.75, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.globalCompositeOperation = "source-over";
+        ctx.globalAlpha = this.leaving ? 0.5 : 0.94;
+
+        // Body rings from tip to mouth, each locked to the coil path.
+        for (let i = segs - 1; i >= 0; i--) {
+            const t = i / (segs - 1);
+            const ax = alongOf(i);
+            const ay = swayOf(i);
+            const rw = radOf(i);
+            const rh = rw * (0.78 + 0.12 * Math.sin(this.phase + i));
             const hue = this.isPink
-                ? 320 + t * 25 + Math.sin(this.phase + i) * 12
-                : 260 + t * 80 + Math.sin(this.phase + i) * 20;
-            g.addColorStop(0, `hsl(${hue}, 55%, ${this.isHero ? 72 : 62}%)`);
-            g.addColorStop(0.5, `hsl(${hue + 30}, 50%, ${this.isHero ? 48 : 38}%)`);
-            g.addColorStop(1, `hsl(${hue - 20}, 45%, 28%)`);
+                ? 310 + t * 30 + Math.sin(this.phase + i * 0.7) * 18
+                : this.isHero
+                    ? 265 + t * 40 + Math.sin(this.phase + i * 0.7) * 16
+                    : 248 + t * 55 + Math.sin(this.phase + i * 0.7) * 22;
+            const g = ctx.createRadialGradient(ax - rw * 0.2, ay - rh * 0.25, rw * 0.1, ax, ay, rw);
+            g.addColorStop(0, `hsl(${hue}, ${this.isHero ? 62 : 48}%, ${this.isHero ? 58 : 42}%)`);
+            g.addColorStop(0.55, `hsl(${hue + 25}, 55%, ${this.isHero ? 32 : 22}%)`);
+            g.addColorStop(1, `hsl(${hue - 15}, 40%, 8%)`);
             ctx.fillStyle = g;
             ctx.beginPath();
-            ctx.ellipse(along, sway, rw, rh, 0, 0, Math.PI * 2);
+            ctx.ellipse(ax, ay, rw, rh, Math.sin(this.tailPhase + i) * 0.2, 0, Math.PI * 2);
             ctx.fill();
-            ctx.strokeStyle = "rgba(255,255,255,0.28)";
-            ctx.lineWidth = 1;
+
+            // Ridged void plates / carapace slits.
+            ctx.strokeStyle = `hsla(${hue + 40}, 40%, 70%, 0.22)`;
+            ctx.lineWidth = Math.max(0.8, rw * 0.08);
             ctx.beginPath();
-            ctx.moveTo(along - rw * 0.4, sway);
-            ctx.lineTo(along + rw * 0.4, sway - rh * 0.4);
+            ctx.ellipse(ax, ay, rw * 0.72, rh * 0.55, 0.4, 0.2, Math.PI * 1.4);
+            ctx.stroke();
+
+            // Tiny embedded star-eyes along the flanks (not a head face).
+            if (i % 2 === 0 && i < segs - 1) {
+                const flick = 0.35 + 0.65 * Math.abs(Math.sin(this.phase * 2.2 + i));
+                ctx.fillStyle = `rgba(190, 255, 220, ${0.25 * flick})`;
+                ctx.beginPath();
+                ctx.arc(ax + rw * 0.15, ay - rh * 0.55, Math.max(0.8, rw * 0.12), 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = `rgba(255, 80, 140, ${0.2 * flick})`;
+                ctx.beginPath();
+                ctx.arc(ax + rw * 0.15, ay + rh * 0.55, Math.max(0.7, rw * 0.1), 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Abyssal maw at the front ring: concentric void, teeth as part of the body tip.
+        const mouthX = alongOf(segs - 1);
+        const mouthY = swayOf(segs - 1);
+        const mouthR = radOf(segs - 1);
+        const maw = ctx.createRadialGradient(mouthX, mouthY, 0, mouthX, mouthY, mouthR * 1.15);
+        maw.addColorStop(0, "rgba(8, 0, 14, 0.95)");
+        maw.addColorStop(0.45, "rgba(60, 10, 40, 0.75)");
+        maw.addColorStop(1, "rgba(120, 40, 90, 0)");
+        ctx.fillStyle = maw;
+        ctx.beginPath();
+        ctx.ellipse(mouthX + mouthR * 0.15, mouthY, mouthR * 0.95, mouthR * 0.7, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Needle teeth ringing the orifice (attached to the front segment).
+        const teeth = 9;
+        ctx.fillStyle = this.isPink ? "rgba(255,200,220,0.85)" : "rgba(220,210,255,0.8)";
+        for (let t = 0; t < teeth; t++) {
+            const a = -Math.PI * 0.55 + (t / (teeth - 1)) * Math.PI * 1.1
+                + Math.sin(this.phase * 1.6 + t) * 0.08;
+            const bx = mouthX + Math.cos(a) * mouthR * 0.35;
+            const by = mouthY + Math.sin(a) * mouthR * 0.55;
+            const tx = mouthX + Math.cos(a) * mouthR * (0.95 + 0.12 * Math.sin(this.tailPhase + t));
+            const ty = mouthY + Math.sin(a) * mouthR * (0.75 + 0.1 * Math.sin(this.tailPhase + t));
+            ctx.beginPath();
+            ctx.moveTo(bx, by - mouthR * 0.08);
+            ctx.lineTo(tx, ty);
+            ctx.lineTo(bx, by + mouthR * 0.08);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        // Short tendril fringe just behind the maw, swaying with the coil.
+        ctx.strokeStyle = this.isHero ? "rgba(180,140,255,0.55)" : "rgba(90,40,120,0.55)";
+        ctx.lineWidth = Math.max(1.2, L * 0.025);
+        ctx.lineCap = "round";
+        for (let k = 0; k < 5; k++) {
+            const side = k < 2.5 ? -1 : 1;
+            const baseI = segs - 2;
+            const bx = alongOf(baseI) - L * 0.02;
+            const by = swayOf(baseI) + side * radOf(baseI) * (0.35 + (k % 3) * 0.15);
+            const curl = Math.sin(this.tailPhase * 1.4 + k * 1.1) * W * 0.9;
+            ctx.beginPath();
+            ctx.moveTo(bx, by);
+            ctx.quadraticCurveTo(
+                bx + L * 0.08, by + curl * 0.5,
+                bx + L * 0.18, by + curl
+            );
             ctx.stroke();
         }
 
-        // Faceted head.
-        ctx.fillStyle = this.isPink ? "#ffd0e8" : (this.isHero ? "#e8d0ff" : "#c0a0e8");
-        ctx.beginPath();
-        ctx.moveTo(L * 0.55, 0);
-        ctx.lineTo(L * 0.28, -W * 0.95);
-        ctx.lineTo(L * 0.12, 0);
-        ctx.lineTo(L * 0.28, W * 0.95);
-        ctx.closePath();
-        ctx.fill();
-        ctx.fillStyle = "rgba(250,252,255,0.95)";
-        ctx.beginPath();
-        ctx.ellipse(L * 0.32, -W * 0.35, Math.max(2, L * 0.035), Math.max(2.2, L * 0.04), 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "rgba(40,20,60,0.9)";
-        ctx.beginPath();
-        ctx.arc(L * 0.34, -W * 0.35, Math.max(1, L * 0.018), 0, Math.PI * 2);
-        ctx.fill();
         ctx.restore();
     }
 }
 
+// ===========================================================================
+// CRYSTAL APEX FINALES
+// Prism shark, void worm, and crystal mantle each get a farewell when they
+// finish the Crystal Depths pond. Soft curtain restock keeps the pond safe.
+// ===========================================================================
+function crystalApexEndingActive() {
+    return !!(crystalApexEnding && !crystalApexEnding.restocked);
+}
+
+function pushCrystalFinaleMote(e, x, y, n) {
+    for (let i = 0; i < n; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const spd = 20 + Math.random() * 90;
+        e.motes.push({
+            x: x + (Math.random() - 0.5) * 16,
+            y: y + (Math.random() - 0.5) * 16,
+            vx: Math.cos(a) * spd,
+            vy: Math.sin(a) * spd - 18,
+            life: 0.9 + Math.random() * 1.3,
+            age: 0,
+            r: 1.2 + Math.random() * 3.2,
+            hue: e.kind === "prism" ? 200 + Math.random() * 80
+                : e.kind === "mantle" ? 270 + Math.random() * 50
+                : 250 + Math.random() * 70,
+        });
+    }
+}
+
+function pushCrystalFinaleShard(e, x, y, n) {
+    for (let i = 0; i < n; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const spd = 40 + Math.random() * 140;
+        e.shards.push({
+            x, y,
+            vx: Math.cos(a) * spd,
+            vy: Math.sin(a) * spd - 30,
+            rot: Math.random() * Math.PI * 2,
+            spin: (Math.random() - 0.5) * 6,
+            life: 1.2 + Math.random() * 1.6,
+            age: 0,
+            len: 6 + Math.random() * 14,
+            hue: e.kind === "prism" ? 185 + Math.random() * 90
+                : e.kind === "mantle" ? 280 + Math.random() * 40
+                : 265 + Math.random() * 55,
+        });
+    }
+}
+
+function beginCrystalApexEnding(kind, actor) {
+    if (!actor || actor.dead || crystalApexEnding || !crystalMode) return false;
+    if (orcaFeastEnding || swordfishSpearEnding || octopusWhaleFight
+        || giantEnding || heroRemorseEnding || rainbowNinjaEnding || povAttack) {
+        return false;
+    }
+    const cx = viewW * 0.5;
+    const cy = viewH * 0.46;
+    const startAng = Math.atan2(actor.y - cy, actor.x - cx);
+    crystalApexEnding = {
+        kind, // "prism" | "serpent" | "mantle"
+        actor,
+        t: 0,
+        phase: "rise",
+        overlay: 0.06,
+        fade: 0,
+        bloom: 0,
+        rings: 0,
+        restocked: false,
+        startSize: actor.size || 100,
+        motes: [],
+        shards: [],
+        wake: [],
+        pulse: 0,
+        orbitAng: startAng,
+        orbitRad: Math.max(70, Math.hypot(actor.x - cx, actor.y - cy)),
+        actorAlpha: 1,
+    };
+    actor.leaving = false;
+    actor.target = null;
+    actor.huntTarget = null;
+    actor.prey = null;
+    if (typeof actor.clearApexWrap === "function") actor.clearApexWrap();
+    const pan = Math.max(-1, Math.min(1, ((actor.x || cx) / viewW) * 2 - 1));
+    Audio.predatorEat(pan);
+    if (Audio.rainbowChime) Audio.rainbowChime(pan * 0.5);
+    if (Audio.goldChime) Audio.goldChime(0);
+    water.disturb(actor.x || cx, actor.y || cy, (actor.size || 80) * 0.7, 320);
+    spawnSplash(actor.x || cx, actor.y || cy, 22, 0.7);
+    pushCrystalFinaleMote(crystalApexEnding, actor.x || cx, actor.y || cy, 18);
+    pushFinaleWake(crystalApexEnding.wake, actor.x || cx, actor.y || cy, 10, {
+        hue: kind === "prism" ? 195 : kind === "mantle" ? 290 : 275,
+        spd: 36,
+    });
+    return true;
+}
+
+function updateCrystalApexEnding(dt) {
+    if (!crystalApexEnding) return;
+    const e = crystalApexEnding;
+    if (!crystalMode && e.phase !== "fade") {
+        e.phase = "fade";
+        e.t = Math.max(e.t, 0.5);
+        e.fade = Math.max(e.fade, 0.4);
+    }
+    e.t += dt;
+    e.pulse += dt;
+    const ease = (rate) => finaleEase(rate, dt);
+    const cx = viewW * 0.5;
+    const cy = viewH * 0.46;
+    const actor = e.actor && !e.actor.dead ? e.actor : null;
+
+    let overlayGoal = 0.12;
+    if (e.phase === "bloom") overlayGoal = 0.32;
+    else if (e.phase === "shatter") overlayGoal = 0.46;
+    else if (e.phase === "fade") overlayGoal = e.restocked ? 0.06 : 0.58;
+    e.overlay += (overlayGoal - e.overlay) * ease(1.35);
+
+    const bloomWant = e.phase === "bloom" || e.phase === "shatter"
+        ? Math.min(1, e.t / 1.35)
+        : e.phase === "fade" ? Math.max(0, 1 - e.t * 0.5) : 0;
+    e.bloom += (bloomWant - e.bloom) * ease(2.0);
+
+    const ringWant = e.phase === "bloom" ? Math.min(1, e.t / 0.9)
+        : e.phase === "shatter" ? Math.max(0, 1 - e.t * 0.7)
+        : e.phase === "rise" ? Math.min(0.35, e.t * 0.12) : 0;
+    e.rings += (ringWant - (e.rings || 0)) * ease(2.4);
+
+    if (actor) {
+        if (actor.tailPhase != null) actor.tailPhase += dt * (3.6 + (e.phase === "bloom" ? 1.8 : 0));
+        if (actor.phase != null) actor.phase += dt * 2.1;
+        if (actor.pulse != null) actor.pulse += dt * (2.6 + e.bloom);
+
+        if (e.phase === "rise") {
+            // Spiral inward: bank and swim, never snap to center.
+            e.orbitAng += dt * (e.kind === "serpent" ? 1.35 : e.kind === "mantle" ? 0.85 : 1.1);
+            e.orbitRad += (42 - e.orbitRad) * ease(0.85);
+            const tx = cx + Math.cos(e.orbitAng) * e.orbitRad
+                + (e.kind === "serpent" ? -12 : e.kind === "mantle" ? 8 : 0);
+            const ty = cy + Math.sin(e.orbitAng) * e.orbitRad * 0.68
+                + (e.kind === "prism" ? 8 : 0);
+            easeToward(actor, tx, ty, dt, e.kind === "mantle" ? 36 : 48, 1.25);
+            bankToward(actor, e.orbitAng + Math.PI * 0.5, dt, 1.5);
+            if (e.kind === "mantle" && actor.legs) {
+                for (let i = 0; i < actor.legs.length; i++) {
+                    const leg = actor.legs[i];
+                    leg.grab = null;
+                    leg.phase = (leg.phase || 0) + dt * 1.5;
+                    const ang = actor.dir + Math.PI + (leg.rearOffset || 0) * 0.55
+                        + Math.sin(leg.phase) * 0.4;
+                    const rad = actor.size * (1.0 + 0.28 * Math.sin(leg.phase * 0.8));
+                    easeTipToward(
+                        leg,
+                        actor.x + Math.cos(ang) * rad,
+                        actor.y + Math.sin(ang) * rad * 0.85,
+                        dt,
+                        1.9
+                    );
+                }
+            }
+            if (Math.random() < 0.2) {
+                pushFinaleWake(e.wake, actor.x, actor.y, 1, {
+                    ang: actor.dir + Math.PI,
+                    hue: e.kind === "prism" ? 195 : e.kind === "mantle" ? 290 : 275,
+                    spd: 22,
+                    lift: 4,
+                });
+            }
+            if (e.t >= 2.8 || e.orbitRad < 48) {
+                e.phase = "bloom";
+                e.t = 0;
+                pushCrystalFinaleMote(e, actor.x, actor.y, 26);
+                Audio.predatorEat(0);
+            }
+        } else if (e.phase === "bloom") {
+            // Slow circle while swelling: reaching, not a cutscene pose.
+            const swell = e.startSize * (1 + Math.min(0.55, e.t * 0.16));
+            softSizeToward(actor, swell, dt, 1.55);
+            e.orbitAng += dt * 0.95;
+            const br = 26 + Math.sin(e.t * 1.6) * 8;
+            easeOrbitToward(actor, cx, cy, br, e.orbitAng, dt, 30, 1.05, 0.7);
+            if (Math.random() < 0.4) pushCrystalFinaleMote(e, actor.x, actor.y, 2);
+            if (Math.random() < 0.25) {
+                pushFinaleWake(e.wake, actor.x, actor.y, 2, {
+                    hue: e.kind === "prism" ? 200 : e.kind === "mantle" ? 295 : 280,
+                    spd: 40,
+                    warm: false,
+                });
+            }
+            if (e.kind === "mantle" && actor.legs) {
+                for (let i = 0; i < actor.legs.length; i++) {
+                    const leg = actor.legs[i];
+                    leg.phase = (leg.phase || 0) + dt * 2.0;
+                    const ang = (i / actor.legs.length) * Math.PI * 2 + e.t * 1.15;
+                    const rad = actor.size * (1.35 + 0.4 * Math.sin(leg.phase));
+                    easeTipToward(
+                        leg,
+                        actor.x + Math.cos(ang) * rad,
+                        actor.y + Math.sin(ang) * rad * 0.78,
+                        dt,
+                        2.3
+                    );
+                }
+            }
+            if (e.t >= 2.7) {
+                e.phase = "shatter";
+                e.t = 0;
+                pushCrystalFinaleShard(e, actor.x, actor.y, e.kind === "serpent" ? 32 : 24);
+                pushCrystalFinaleMote(e, actor.x, actor.y, 30);
+                pushFinaleWake(e.wake, actor.x, actor.y, 16, {
+                    hue: e.kind === "prism" ? 190 : e.kind === "mantle" ? 285 : 270,
+                    spd: 90,
+                    lift: 18,
+                    life: 1.4,
+                });
+                if (Audio.rainbowChime) Audio.rainbowChime(0);
+                Audio.sharkStrike(0);
+                water.disturb(actor.x, actor.y, actor.size, 520);
+                spawnSplash(actor.x, actor.y, 30, 0.85);
+            }
+        } else if (e.phase === "shatter") {
+            // Drift outward while shrinking (capped ease), then dissolve.
+            const shrink = Math.max(10, e.startSize * (1 - Math.min(0.92, e.t / 1.7)));
+            softSizeToward(actor, shrink, dt, 2.2);
+            const outAng = e.orbitAng + Math.PI * 0.35 + e.t * 0.8;
+            const outR = 18 + e.t * 55;
+            easeToward(
+                actor,
+                cx + Math.cos(outAng) * outR,
+                cy + Math.sin(outAng) * outR * 0.65,
+                dt,
+                62,
+                1.6
+            );
+            e.actorAlpha = Math.max(0, 1 - e.t / 1.65);
+            if (e.kind === "mantle" && actor.legs) {
+                for (let i = 0; i < actor.legs.length; i++) {
+                    const leg = actor.legs[i];
+                    leg.phase = (leg.phase || 0) + dt * 2.8;
+                    // Tips collapse inward before death.
+                    easeTipToward(leg, actor.x, actor.y, dt, 3.2);
+                }
+            }
+            if (Math.random() < 0.5) pushCrystalFinaleShard(e, actor.x, actor.y, 1);
+            if (e.t >= 1.75) {
+                e.phase = "fade";
+                e.t = 0;
+                actor.dead = true;
+                if (e.kind === "prism" && shark === actor) shark = null;
+                if (e.kind === "serpent" && crystalSerpent === actor) crystalSerpent = null;
+                if (e.kind === "mantle" && crystalMantle === actor) {
+                    if (typeof crystalMantle.clearApexWrap === "function") crystalMantle.clearApexWrap();
+                    crystalMantle = null;
+                }
+                e.actor = null;
+            }
+        }
+    } else if (e.phase !== "fade") {
+        e.phase = "fade";
+        e.t = 0;
+    }
+
+    if (e.phase === "fade") {
+        e.fade = Math.min(1, e.fade + dt * 0.48);
+        if (!e.restocked && e.fade >= 0.86 && e.t >= 1.45) {
+            e.restocked = true;
+            const keep = e;
+            resetPond({ keepCrystalEnding: true, skipRepop: false });
+            crystalApexEnding = keep;
+            if (Audio.goldChime) Audio.goldChime(0);
+        }
+        if (e.restocked && e.t >= 3.4) {
+            crystalApexEnding = null;
+            return;
+        }
+    }
+
+    for (const m of e.motes) {
+        m.age += dt;
+        m.x += m.vx * dt;
+        m.y += m.vy * dt;
+        m.vy += 18 * dt;
+        m.vx *= Math.exp(-0.8 * dt);
+    }
+    e.motes = e.motes.filter((m) => m.age < m.life);
+    for (const s of e.shards) {
+        s.age += dt;
+        s.x += s.vx * dt;
+        s.y += s.vy * dt;
+        s.vy += 40 * dt;
+        s.rot += s.spin * dt;
+        s.vx *= Math.exp(-0.6 * dt);
+    }
+    e.shards = e.shards.filter((s) => s.age < s.life);
+    updateFinaleWake(e.wake, dt, 16);
+}
+
+function drawCrystalApexEnding(ctx) {
+    if (!crystalApexEnding) return;
+    const e = crystalApexEnding;
+    const cx = viewW * 0.5;
+    const cy = viewH * 0.46;
+    const breath = 0.5 + 0.5 * Math.sin(e.pulse * 2.4);
+
+    ctx.save();
+    ctx.globalCompositeOperation = "source-over";
+    const tint = e.kind === "prism" ? { r: 14, g: 24, b: 44 }
+        : e.kind === "mantle" ? { r: 26, g: 10, b: 40 }
+        : { r: 12, g: 6, b: 22 };
+    ctx.fillStyle = `rgba(${tint.r}, ${tint.g}, ${tint.b}, ${e.overlay * 0.9})`;
+    ctx.fillRect(0, 0, viewW, viewH);
+    drawFinaleVignette(ctx, e.overlay * 0.85, tint);
+
+    if (e.bloom > 0.02) {
+        ctx.globalCompositeOperation = "screen";
+        const bloomR = Math.max(viewW, viewH) * (0.42 + breath * 0.06);
+        const bloom = ctx.createRadialGradient(cx, cy, 8, cx, cy, bloomR);
+        if (e.kind === "prism") {
+            bloom.addColorStop(0, `rgba(200, 240, 255, ${0.26 * e.bloom})`);
+            bloom.addColorStop(0.4, `rgba(140, 190, 255, ${0.12 * e.bloom})`);
+            bloom.addColorStop(1, "rgba(80, 40, 160, 0)");
+        } else if (e.kind === "mantle") {
+            bloom.addColorStop(0, `rgba(230, 180, 255, ${0.28 * e.bloom})`);
+            bloom.addColorStop(0.4, `rgba(170, 90, 230, ${0.14 * e.bloom})`);
+            bloom.addColorStop(1, "rgba(60, 10, 90, 0)");
+        } else {
+            bloom.addColorStop(0, `rgba(190, 130, 255, ${0.24 * e.bloom})`);
+            bloom.addColorStop(0.4, `rgba(130, 50, 100, ${0.14 * e.bloom})`);
+            bloom.addColorStop(1, "rgba(20, 0, 30, 0)");
+        }
+        ctx.fillStyle = bloom;
+        ctx.fillRect(0, 0, viewW, viewH);
+    }
+
+    // Soft expanding rings during bloom.
+    if ((e.rings || 0) > 0.04) {
+        ctx.globalCompositeOperation = "screen";
+        for (let i = 0; i < 3; i++) {
+            const u = (e.pulse * 0.55 + i * 0.33) % 1;
+            const rr = 24 + u * (90 + e.bloom * 70);
+            ctx.strokeStyle = e.kind === "prism"
+                ? `rgba(180,220,255,${(1 - u) * e.rings * 0.45})`
+                : e.kind === "mantle"
+                    ? `rgba(220,170,255,${(1 - u) * e.rings * 0.45})`
+                    : `rgba(200,140,255,${(1 - u) * e.rings * 0.4})`;
+            ctx.lineWidth = 1.5 + (1 - u) * 2;
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, rr, rr * 0.62, e.pulse * 0.2, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+    }
+
+    drawFinaleWake(ctx, e.wake, e.phase === "fade" ? 0.45 : 1);
+
+    ctx.globalCompositeOperation = "lighter";
+    for (const m of e.motes) {
+        const a = Math.max(0, 1 - m.age / m.life);
+        ctx.fillStyle = `hsla(${m.hue}, 80%, 70%, ${a * 0.7})`;
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, m.r * a, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    for (const s of e.shards) {
+        const a = Math.max(0, 1 - s.age / s.life);
+        ctx.save();
+        ctx.translate(s.x, s.y);
+        ctx.rotate(s.rot);
+        ctx.fillStyle = `hsla(${s.hue}, 75%, 72%, ${a * 0.85})`;
+        ctx.beginPath();
+        ctx.moveTo(0, -s.len * 0.5);
+        ctx.lineTo(s.len * 0.22, 0);
+        ctx.lineTo(0, s.len * 0.5);
+        ctx.lineTo(-s.len * 0.18, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+    }
+
+    // Kind-specific glyph breathes with the bloom.
+    if (e.bloom > 0.12 && e.phase !== "fade") {
+        ctx.globalCompositeOperation = "screen";
+        ctx.globalAlpha = 0.28 + e.bloom * 0.42 + breath * 0.08;
+        ctx.strokeStyle = e.kind === "prism" ? "rgba(200,240,255,0.9)"
+            : e.kind === "mantle" ? "rgba(230,190,255,0.9)"
+            : "rgba(200,140,255,0.85)";
+        ctx.lineWidth = 1.8 + e.bloom;
+        ctx.beginPath();
+        if (e.kind === "prism") {
+            for (let i = 0; i < 7; i++) {
+                const a = (i / 7) * Math.PI * 2 + e.pulse * 0.35;
+                const r = 30 + e.bloom * 56 + breath * 6;
+                ctx.moveTo(cx + Math.cos(a) * 8, cy + Math.sin(a) * 8);
+                ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+            }
+        } else if (e.kind === "mantle") {
+            for (let i = 0; i < 9; i++) {
+                const a = (i / 9) * Math.PI * 2 + e.pulse * 0.65;
+                const r0 = 16;
+                const r1 = 36 + e.bloom * 44 + breath * 5;
+                ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0);
+                ctx.quadraticCurveTo(
+                    cx + Math.cos(a + 0.45) * (r0 + r1) * 0.48,
+                    cy + Math.sin(a + 0.45) * (r0 + r1) * 0.48,
+                    cx + Math.cos(a) * r1,
+                    cy + Math.sin(a) * r1
+                );
+            }
+        } else {
+            ctx.ellipse(cx, cy, 24 + e.bloom * 40, 15 + e.bloom * 22, e.pulse * 0.45, 0, Math.PI * 2);
+            ctx.ellipse(cx, cy, 13 + e.bloom * 20, 30 + e.bloom * 36, -e.pulse * 0.3, 0, Math.PI * 2);
+            ctx.ellipse(cx, cy, 40 + e.bloom * 28, 10 + e.bloom * 12, e.pulse * 0.2, 0, Math.PI * 2);
+        }
+        ctx.stroke();
+    }
+
+    if (e.fade > 0.01) {
+        ctx.globalCompositeOperation = "source-over";
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = `rgba(8, 4, 16, ${e.fade * 0.68})`;
+        ctx.fillRect(0, 0, viewW, viewH);
+        drawFinaleVignette(ctx, e.fade * 0.5, { r: 6, g: 2, b: 14 });
+    }
+    ctx.restore();
+}
 
 function manageEcosystem(dt) {
     if (povAttack) {
@@ -17584,6 +18505,10 @@ function manageEcosystem(dt) {
         updateOctopusWhaleFight(dt);
         // After soft restock, fall through so the pond can refill under the fade.
         if (!(octopusWhaleFight && octopusWhaleFight.restocked)) return;
+    }
+    if (crystalApexEnding) {
+        updateCrystalApexEnding(dt);
+        if (!(crystalApexEnding && crystalApexEnding.restocked)) return;
     }
 
     // Golden fish rest on the lakebed until refresh; they are not active swimmers.
@@ -17733,7 +18658,8 @@ function manageEcosystem(dt) {
         whale.update(dt);
         if (whale.dead) {
             whale = null;
-            if (countable.length === 0 && !apexDuel && !octopus && !sharkBusyWithGlow) {
+            if (countable.length === 0 && !apexDuel && !sharkBusyWithGlow
+                && !wildApexBlocksEmptyRestock()) {
                 repopulating = true;
                 repopTimer = 0.8;
             }
@@ -17802,7 +18728,8 @@ function manageEcosystem(dt) {
             shark = null;
             if (wasOrca) tryBeginSwordfishSpearFromOrcaLoss();
             if (!rainbowExiting && !hasMonster && countable.length === 0
-                && livingReptiles.length === 0 && !swordfishSpearEnding) {
+                && livingReptiles.length === 0 && !swordfishSpearEnding
+                && !wildApexBlocksEmptyRestock()) {
                 repopulating = true;
                 repopTimer = 0.8;
             }
@@ -17815,14 +18742,18 @@ function manageEcosystem(dt) {
     } else if (!shark && !whale && !repopulating && !rainbowExiting && !pondFinaleActive() && !apexDuel
         && countable.length === 1) {
         // Last countable swimmer: day shark, night orca, crystal prism shark.
-        shark = new Shark(countable[0], {
-            orca: !!nightMode && !crystalMode,
-            crystal: !!crystalMode,
-        });
-    } else if (!repopulating && !shark && !whale && !pondFinaleActive() && !apexDuel && !rainbowExiting
+        // Skip uneatable last fish (rainbow / monster) so the shark cannot respawn-loop.
+        const last = countable[0];
+        if (last && !last.isRainbow && !last.isMonster) {
+            shark = new Shark(last, {
+                orca: !!nightMode && !crystalMode,
+                crystal: !!crystalMode,
+            });
+        }
+    } else if (!repopulating && !pondFinaleActive() && !apexDuel && !rainbowExiting
         && countable.length === 0 && livingReptiles.length === 0 && !sharkBusyWithGlow
-        && !octopus && !swordfish && !crystalSerpent && !crystalMantle) {
-        // Restock when no countable swimmers remain (glow / gold do not block this).
+        && !wildApexBlocksEmptyRestock()) {
+        // Restock when no countable swimmers remain (glow / gold / hero allies do not block).
         repopulating = true;
         repopTimer = 0.8;
     }
@@ -19414,6 +20345,7 @@ function clearPondEntitiesForLoad() {
     orcaFeastEnding = null;
     swordfishSpearEnding = null;
     octopusWhaleFight = null;
+    crystalApexEnding = null;
     apexDuel = null;
     frogFinale = null;
 }
@@ -19919,10 +20851,10 @@ function syncSunPondButtonUI() {
     sunBtn.classList.toggle("on", sunOn);
     sunBtn.setAttribute("aria-pressed", sunOn ? "true" : "false");
     sunBtn.title = crystalMode
-        ? "Sun pond: return to daylight"
+        ? "Sun pond: return to golden hour"
         : nightMode
-            ? "Sun pond: return to daylight"
-            : (scenery.sun ? "Sun pond on: clear daylight" : "Sun pond: clear daylight and floor shadows");
+            ? "Sun pond: return to golden hour"
+            : (scenery.sun ? "Sun pond on: golden hour light" : "Sun pond: golden hour light and floor shadows");
 }
 
 // Soft one-shot flourishes for first discoveries (no quest UI).
@@ -21012,6 +21944,7 @@ function devClearFinales() {
     pirateShipDrop = null;
     apexDuel = null;
     whaleRemorseDone = false;
+    crystalApexEnding = null;
     if (shark) {
         shark.duelMode = false;
         shark.octopusWrap = null;
@@ -22230,6 +23163,7 @@ function buildDevMenu() {
         for (const r of reptiles) r.dead = true;
         reptiles.length = 0;
         octopusWhaleFight = null;
+        crystalApexEnding = null;
         apexDuel = null;
     }, { warn: true });
 
@@ -22932,7 +23866,7 @@ const petMemories = [];
 const whirlpools = [];
 let cometVisitor = null;
 let starWishSparks = [];
-let duskBlend = 0; // unused remnant; day light is clear teal daylight when sun is on
+let duskBlend = 0; // unused remnant; day light is golden hour when sun is on
 let icePatches = [];
 
 function emitBreathBubbles(x, y, n, col) {
@@ -24663,6 +25597,7 @@ function frame(now) {
         if (giantEnding) drawGiantEnding(ctx);
         if (heroRemorseEnding) drawHeroRemorseEnding(ctx);
         if (octopusWhaleFight) drawOctopusWhaleFight(ctx);
+        if (crystalApexEnding) drawCrystalApexEnding(ctx);
         if (rainbowNinjaEnding) drawRainbowNinjaEnding(ctx);
     } else {
         ctx.globalCompositeOperation = "source-over";
