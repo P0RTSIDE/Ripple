@@ -698,13 +698,14 @@ function resize() {
     canvas.style.height = viewH + "px";
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // work in CSS pixel coordinates
 
-    // A soft radial vignette for depth, rebuilt on resize.
+    // Cool teal vignette so the frame feels submerged, not blacked out.
     vignette = ctx.createRadialGradient(
-        viewW / 2, viewH / 2, Math.min(viewW, viewH) * 0.35,
-        viewW / 2, viewH / 2, Math.max(viewW, viewH) * 0.75
+        viewW / 2, viewH / 2, Math.min(viewW, viewH) * 0.32,
+        viewW / 2, viewH / 2, Math.max(viewW, viewH) * 0.78
     );
-    vignette.addColorStop(0, "rgba(0,0,0,0)");
-    vignette.addColorStop(1, "rgba(0,0,0,0.55)");
+    vignette.addColorStop(0, "rgba(6, 28, 32, 0)");
+    vignette.addColorStop(0.62, "rgba(8, 24, 28, 0.08)");
+    vignette.addColorStop(1, "rgba(4, 14, 18, 0.52)");
 
     if (water) water.resize();
     if (typeof rebuildScenery === "function") rebuildScenery();
@@ -2062,18 +2063,18 @@ class WaterSim {
         const sunOn = typeof scenery !== "undefined" && scenery.sun
             && typeof nightMode !== "undefined" && !nightMode
             && typeof crystalMode !== "undefined" && !crystalMode;
-        // Clearer water under sunset so each silhouette cast stays sharp.
-        const alpha = showBed ? (sunOn ? 76 : 132) : 255;
-        const sunWarm = sunOn ? 1 : 0;
-        // Fixed golden-hour caustic pattern (no day light cycle).
-        const causticPhase = 1.7;
+        // Clear teal water with a soft depth falloff so the bed still reads.
+        const alpha = showBed ? (sunOn ? 74 : 132) : 255;
+        const sunClear = sunOn ? 1 : 0;
+        const causticPhase = sunOn && typeof sunPhase === "number" ? sunPhase * 0.42 : 1.7;
         let p = 0;
         for (let y = 0; y < rows; y++) {
-            // Sunset water: peach warmth, restrained blue so shadows contrast.
+            // Cool pond teal; clearer near the lit surface, denser toward the far bed.
             const ty = y / rows;
-            const baseR = (showBed ? 24 : 8) + ty * 6 + sunWarm * 28;
-            const baseG = (showBed ? 30 : 22) + ty * 9 + sunWarm * 10;
-            const baseB = (showBed ? 26 : 26) + ty * 5 + sunWarm * 0;
+            const depth = ty * ty;
+            const baseR = (showBed ? 12 : 8) + ty * 5 + depth * 4 + sunClear * 5;
+            const baseG = (showBed ? 34 : 22) + ty * 14 + depth * 8 + sunClear * 12;
+            const baseB = (showBed ? 40 : 26) + ty * 14 + depth * 10 + sunClear * 14;
             for (let x = 0; x < cols; x++) {
                 const i = y * cols + x;
                 const l = x > 0 ? field[i - 1] : field[i];
@@ -2082,21 +2083,23 @@ class WaterSim {
                 const d = y < rows - 1 ? field[i + cols] : field[i];
                 const sx = l - r;
                 const sy = u - d;
-                const shade = (sx * (0.95 + sunWarm * 0.32) + sy * 0.9) * (0.88 + sunWarm * 0.22);
+                const shade = (sx * (0.95 + sunClear * 0.35) + sy * 0.9) * (0.88 + sunClear * 0.22);
                 let spec = 0;
                 const s = sx * 0.55 + sy;
-                if (s > 5.5) spec = Math.min(70, (s - 5.5) * (s - 5.5) * (0.3 + sunWarm * 0.12));
+                if (s > 5.0) spec = Math.min(88, (s - 5.0) * (s - 5.0) * (0.36 + sunClear * 0.14));
                 let caustic = 0;
-                if (sunOn && gfxQuality >= 2) {
-                    const cx = x * 0.11 + causticPhase + y * 0.03;
-                    const cy = y * 0.09 - causticPhase * 0.55 + x * 0.02;
-                    const n = Math.sin(cx) * Math.sin(cy * 1.1) + Math.sin(cx * 0.37 + cy * 0.6) * 0.45;
-                    caustic = (n + 1.35) * 2.15 * sunWarm;
+                if (sunOn && gfxQuality >= 1) {
+                    const cx = x * 0.12 + causticPhase + y * 0.035;
+                    const cy = y * 0.1 - causticPhase * 0.55 + x * 0.025;
+                    const n = Math.sin(cx) * Math.sin(cy * 1.15)
+                        + Math.sin(cx * 0.4 + cy * 0.65) * 0.5
+                        + Math.sin(cx * 1.7 - cy * 0.9) * 0.25;
+                    caustic = (n + 1.5) * (2.7 + sunClear * 0.4) * sunClear;
                 }
 
-                data[p] = clampByte(baseR + shade + spec * 0.6 + caustic * 1.35);
-                data[p + 1] = clampByte(baseG + shade * 0.88 + spec * 0.55 + caustic * 0.7);
-                data[p + 2] = clampByte(baseB + shade * 0.75 + spec * 0.32 + caustic * 0.15);
+                data[p] = clampByte(baseR + shade + spec * 0.6 + caustic * 0.95);
+                data[p + 1] = clampByte(baseG + shade * 0.95 + spec * 0.8 + caustic * 1.3);
+                data[p + 2] = clampByte(baseB + shade * 1.05 + spec * 0.85 + caustic * 1.4);
                 data[p + 3] = alpha;
                 p += 4;
             }
@@ -2124,7 +2127,7 @@ const scenery = {
     duckweed: true,
     debris: true, // solid movable lake clutter (logs, rocks, driftwood, pots, and more)
     bed: true,    // rocky / sandy pond floor seen through the water
-    sun: true,    // sunset golden-hour light, warm caustics, and hard per-entity floor shadows
+    sun: true,    // clear daylight, cool caustic web, and crisp silhouette floor shadows
     frogs: true,  // underwater frogs swimming with tadpole clusters (background)
 };
 let sceneryItems = {
@@ -2683,11 +2686,21 @@ function drawPondBed(ctx) {
     ctx.imageSmoothingEnabled = true;
     ctx.globalAlpha = 1;
     ctx.drawImage(pondBedCanvas, 0, 0, viewW, viewH);
-    // Thin water-column veil so it still feels submerged, without hiding the floor.
+    // Soft water-column veil: submerged feel without hiding floor silhouettes.
     const daySun = scenery.sun && !nightMode && !crystalMode;
-    ctx.globalAlpha = daySun ? 0.02 : 0.08;
-    ctx.fillStyle = daySun ? "rgba(58, 42, 28, 1)" : "rgba(22, 48, 46, 1)";
+    ctx.globalAlpha = daySun ? 0.045 : 0.08;
+    ctx.fillStyle = daySun ? "rgba(22, 52, 58, 1)" : "rgba(22, 48, 46, 1)";
     ctx.fillRect(0, 0, viewW, viewH);
+    if (daySun) {
+        // Gentle depth gradient toward the lower frame.
+        const depth = ctx.createLinearGradient(0, 0, 0, viewH);
+        depth.addColorStop(0, "rgba(40, 90, 100, 0)");
+        depth.addColorStop(0.55, "rgba(20, 50, 56, 0.03)");
+        depth.addColorStop(1, "rgba(10, 32, 38, 0.1)");
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = depth;
+        ctx.fillRect(0, 0, viewW, viewH);
+    }
     ctx.restore();
 }
 
@@ -2700,8 +2713,8 @@ function skyShadowDir() {
         // Moon sits upper-right; longer cool shadows fall left and a bit down.
         return { x: -0.72, y: 0.48 };
     }
-    // Sunset golden hour: low sun on the right, long hard casts fall left.
-    return { x: -0.88, y: 0.34 };
+    // Reference look: soft upper-right light, shadows fall down-left.
+    return { x: -0.55, y: 0.58 };
 }
 
 function sunShadowDir() {
@@ -2714,20 +2727,19 @@ function lightCastsFloorShadows() {
     return !!scenery.sun;
 }
 
-// Transform to the sky-offset floor contact and squash so the silhouette sits hard on the bed.
+// Offset silhouette on the bed: crisp shape-matched cast like the koi reference.
 function withFloorShadow(ctx, x, y, sizeHint, alpha, rot, drawFn) {
     const d = skyShadowDir();
     const day = !crystalMode && !nightMode;
-    // Sunset casts are longer and flatter so each silhouette stays readable.
-    const stretch = crystalMode ? 1.42 : nightMode ? 1.28 : 1.48;
-    const len = (crystalMode ? 42 : nightMode ? 34 : 40) + Math.max(8, sizeHint) * stretch;
-    const a = Math.min(1, alpha * (crystalMode ? 1.55 : nightMode ? 1.25 : 2.15));
+    // Moderate offset; mild squash so fins and pads stay readable.
+    const stretch = crystalMode ? 1.42 : nightMode ? 1.28 : 1.08;
+    const len = (crystalMode ? 42 : nightMode ? 34 : 22) + Math.max(8, sizeHint) * stretch;
+    const a = Math.min(1, alpha * (crystalMode ? 1.55 : nightMode ? 1.25 : 1.7));
     ctx.save();
     ctx.translate(x + d.x * len, y + d.y * len);
-    ctx.scale(1, crystalMode ? 0.46 : nightMode ? 0.5 : 0.42);
+    ctx.scale(1, crystalMode ? 0.46 : nightMode ? 0.5 : 0.58);
     if (rot != null) ctx.rotate(rot);
     if (!day) {
-        // Soft penumbra only for moon / crystal.
         ctx.save();
         ctx.globalAlpha = Math.min(1, a * (crystalMode ? 0.55 : 0.45));
         ctx.fillStyle = crystalMode ? "rgba(28, 6, 42, 1)" : "rgba(4, 8, 18, 1)";
@@ -2735,13 +2747,13 @@ function withFloorShadow(ctx, x, y, sizeHint, alpha, rot, drawFn) {
         drawFn(ctx);
         ctx.restore();
     }
-    // Hard dark core: crisp per-entity silhouette, no vague haze.
+    // Cool dark teal-grey core (underwater shadow), not warm brown.
     ctx.globalAlpha = Math.min(1, a);
     ctx.fillStyle = crystalMode
         ? `rgba(22, 4, 36, ${Math.min(0.98, a)})`
         : nightMode
             ? `rgba(3, 6, 16, ${Math.min(0.95, a)})`
-            : `rgba(4, 1, 0, ${Math.min(1, a)})`;
+            : `rgba(6, 22, 28, ${Math.min(0.92, a)})`;
     drawFn(ctx);
     ctx.restore();
 }
@@ -3040,34 +3052,34 @@ function drawBedCaustics(ctx) {
     if (gfxQuality <= 0) return;
     ctx.save();
     ctx.globalCompositeOperation = "screen";
-    const poolN = gfxQuality >= 2 ? 18 : 9;
-    const ribbonN = gfxQuality >= 2 ? 9 : 4;
+    const poolN = gfxQuality >= 2 ? 26 : 14;
+    const ribbonN = gfxQuality >= 2 ? 16 : 8;
     const crystal = !!crystalMode;
-    // Crystal keeps a soft prism shimmer; day golden-hour caustics stay fixed (no light cycle).
-    const t = crystal ? sunPhase : 0;
+    // Slow living drift in daylight; crystal keeps a brighter prism shimmer.
+    const t = crystal ? sunPhase : sunPhase * 0.26;
 
     for (let n = 0; n < poolN; n++) {
         const x = ((n * 137.1 + Math.sin(t * 0.35 + n * 1.7) * 55 + Math.cos(t * 0.22 + n) * 30
-            + (!crystal ? Math.sin(n * 2.1) * 40 : 0)) % viewW + viewW) % viewW;
+            + (!crystal ? Math.sin(n * 2.1 + t * 0.15) * 40 : 0)) % viewW + viewW) % viewW;
         const y = ((n * 89.4 + Math.cos(t * 0.28 + n * 1.1) * 48 + Math.sin(t * 0.18 + n * 0.6) * 25
-            + (!crystal ? Math.cos(n * 1.7) * 35 : 0)) % viewH + viewH) % viewH;
+            + (!crystal ? Math.cos(n * 1.7 + t * 0.12) * 35 : 0)) % viewH + viewH) % viewH;
         const tw = crystal
             ? (0.45 + 0.55 * Math.abs(Math.sin(t * 0.9 + n * 1.3)))
-            : (0.62 + 0.28 * Math.abs(Math.sin(n * 1.3)));
-        const rr = 22 + tw * 28 + (n % 5) * 4;
+            : (0.62 + 0.38 * Math.abs(Math.sin(t * 0.55 + n * 1.3)));
+        const rr = 18 + tw * 34 + (n % 5) * 4;
         const g = ctx.createRadialGradient(x, y, 0, x, y, rr);
         if (crystal) {
             g.addColorStop(0, `rgba(220, 160, 255, ${0.07 * tw})`);
             g.addColorStop(0.4, `rgba(160, 90, 230, ${0.038 * tw})`);
             g.addColorStop(1, "rgba(90, 40, 160, 0)");
         } else {
-            g.addColorStop(0, `rgba(255, 200, 120, ${0.1 * tw})`);
-            g.addColorStop(0.4, `rgba(255, 140, 60, ${0.05 * tw})`);
-            g.addColorStop(1, "rgba(200, 80, 40, 0)");
+            g.addColorStop(0, `rgba(230, 252, 255, ${0.12 * tw})`);
+            g.addColorStop(0.35, `rgba(150, 228, 238, ${0.055 * tw})`);
+            g.addColorStop(1, "rgba(90, 180, 190, 0)");
         }
         ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.ellipse(x, y, rr, rr * (0.55 + (n % 3) * 0.12), n * 0.7, 0, Math.PI * 2);
+        ctx.ellipse(x, y, rr, rr * (0.52 + (n % 3) * 0.12), n * 0.7 + t * 0.08, 0, Math.PI * 2);
         ctx.fill();
     }
 
@@ -3075,29 +3087,29 @@ function drawBedCaustics(ctx) {
     ctx.lineJoin = "round";
     for (let n = 0; n < ribbonN; n++) {
         const x0 = ((n * 211.7 + Math.sin(t * 0.4 + n) * 80
-            + (!crystal ? Math.sin(n * 1.9) * 50 : 0)) % viewW + viewW) % viewW;
+            + (!crystal ? Math.sin(n * 1.9 + t * 0.2) * 50 : 0)) % viewW + viewW) % viewW;
         const y0 = ((n * 163.3 + Math.cos(t * 0.33 + n * 1.4) * 70
-            + (!crystal ? Math.cos(n * 2.3) * 45 : 0)) % viewH + viewH) % viewH;
-        const len = 40 + (n % 4) * 28;
-        const ang = n * 0.9 + (crystal ? Math.sin(t * 0.25 + n) * 0.5 : Math.sin(n) * 0.35);
+            + (!crystal ? Math.cos(n * 2.3 + t * 0.16) * 45 : 0)) % viewH + viewH) % viewH;
+        const len = 52 + (n % 4) * 34;
+        const ang = n * 0.9 + (crystal ? Math.sin(t * 0.25 + n) * 0.5 : Math.sin(n + t * 0.18) * 0.4);
         const pulse = crystal
             ? (0.5 + 0.5 * Math.sin(t * 0.75 + n * 1.1))
-            : 0.72;
+            : (0.7 + 0.3 * Math.sin(t * 0.5 + n * 0.9));
         ctx.beginPath();
-        const steps = gfxQuality >= 2 ? 10 : 6;
+        const steps = gfxQuality >= 2 ? 12 : 7;
         for (let i = 0; i <= steps; i++) {
             const u = i / steps;
             const x = x0 + Math.cos(ang) * (u - 0.5) * len
-                + Math.sin(u * 5 + (crystal ? t * 0.8 : n) + n) * 8;
+                + Math.sin(u * 5 + (crystal ? t * 0.8 : t * 0.35 + n) + n) * 8;
             const y = y0 + Math.sin(ang) * (u - 0.5) * len * 0.65
-                + Math.cos(u * 4.2 + (crystal ? t * 0.6 : n * 0.8) + n) * 6;
+                + Math.cos(u * 4.2 + (crystal ? t * 0.6 : t * 0.28 + n * 0.8) + n) * 6;
             if (i === 0) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
         }
         ctx.strokeStyle = crystal
             ? `rgba(200, 150, 255, ${0.045 + pulse * 0.04})`
-            : `rgba(255, 170, 90, ${0.05 + pulse * 0.035})`;
-        ctx.lineWidth = 1.4 + (n % 3) * 0.5;
+            : `rgba(210, 245, 255, ${0.07 + pulse * 0.05})`;
+        ctx.lineWidth = 1.5 + (n % 3) * 0.55;
         ctx.stroke();
     }
     ctx.restore();
@@ -3470,49 +3482,97 @@ function fillFrogShadowPaths(ctx, frog) {
     }
 }
 
-// Clear daylight wash: cool top light, no amber haze, no sun disc or rays.
+// Clear daylight wash: cool top light, living depth, soft surface glare.
 function drawSunAmbience(ctx) {
-    // Day only: low sunset golden hour. Never draws under moon or crystal sky.
+    // Day only. Never draws under moon or crystal sky.
     if (!scenery.sun || nightMode || crystalMode) return;
+
+    const breath = 0.5 + 0.5 * Math.sin(sunPhase * 0.32);
+    const drift = 0.5 + 0.5 * Math.sin(sunPhase * 0.21 + 1.3);
+    const pulse = 0.5 + 0.5 * Math.sin(sunPhase * 0.48 + 0.4);
 
     ctx.save();
 
-    // Sunset band: warm peach to rose across the upper right, cooling into the depths.
+    // Cool sky wash that gently breathes.
     ctx.globalCompositeOperation = "soft-light";
-    const wash = ctx.createLinearGradient(0, 0, viewW * 0.15, viewH);
-    wash.addColorStop(0, "rgba(255, 170, 95, 0.38)");
-    wash.addColorStop(0.28, "rgba(255, 130, 70, 0.2)");
-    wash.addColorStop(0.62, "rgba(200, 90, 70, 0.1)");
-    wash.addColorStop(1, "rgba(55, 28, 36, 0.16)");
+    const wash = ctx.createLinearGradient(0, 0, 0, viewH);
+    wash.addColorStop(0, `rgba(210, 236, 246, ${0.2 + breath * 0.05})`);
+    wash.addColorStop(0.4, `rgba(150, 210, 222, ${0.07 + breath * 0.02})`);
+    wash.addColorStop(1, `rgba(32, 62, 70, ${0.12 + drift * 0.03})`);
     ctx.fillStyle = wash;
     ctx.fillRect(0, 0, viewW, viewH);
 
-    // Low sun bloom near the right horizon (no drawn disc, just heat).
+    // Soft sun pool from upper right.
     ctx.globalCompositeOperation = "screen";
     const hot = ctx.createRadialGradient(
-        viewW * 0.86, viewH * 0.22, 8,
-        viewW * 0.62, viewH * 0.48, Math.max(viewW, viewH) * 0.72
+        viewW * (0.62 + drift * 0.03), viewH * 0.12, 12,
+        viewW * 0.5, viewH * 0.4, Math.max(viewW, viewH) * 0.7
     );
-    hot.addColorStop(0, "rgba(255, 220, 140, 0.22)");
-    hot.addColorStop(0.28, "rgba(255, 150, 70, 0.1)");
-    hot.addColorStop(0.6, "rgba(255, 100, 70, 0.035)");
-    hot.addColorStop(1, "rgba(120, 40, 30, 0)");
+    hot.addColorStop(0, `rgba(240, 250, 255, ${0.12 + breath * 0.04})`);
+    hot.addColorStop(0.4, `rgba(170, 224, 232, ${0.04 + pulse * 0.015})`);
+    hot.addColorStop(1, "rgba(90, 150, 160, 0)");
     ctx.fillStyle = hot;
     ctx.fillRect(0, 0, viewW, viewH);
 
-    // Long multiply shade so sunset casts stay dark and shapely.
-    ctx.globalCompositeOperation = "multiply";
-    ctx.globalAlpha = 0.48;
-    const shade = ctx.createRadialGradient(
-        viewW * 0.78, viewH * 0.2, viewH * 0.08,
-        viewW * 0.4, viewH * 0.58, Math.max(viewW, viewH) * 0.82
+    // Subsurface teal scatter under the lit water.
+    ctx.globalCompositeOperation = "screen";
+    const scatter = ctx.createRadialGradient(
+        viewW * 0.48, viewH * 0.38, 20,
+        viewW * 0.48, viewH * 0.48, Math.max(viewW, viewH) * 0.55
     );
-    shade.addColorStop(0, "rgba(255, 236, 200, 1)");
-    shade.addColorStop(0.4, "rgba(245, 175, 120, 1)");
-    shade.addColorStop(0.75, "rgba(120, 70, 55, 1)");
-    shade.addColorStop(1, "rgba(36, 18, 20, 1)");
+    scatter.addColorStop(0, `rgba(140, 210, 220, ${0.045 + breath * 0.02})`);
+    scatter.addColorStop(0.55, "rgba(90, 160, 170, 0.015)");
+    scatter.addColorStop(1, "rgba(50, 100, 110, 0)");
+    ctx.fillStyle = scatter;
+    ctx.fillRect(0, 0, viewW, viewH);
+
+    // Depth falloff toward the shores and lower water.
+    ctx.globalCompositeOperation = "multiply";
+    ctx.globalAlpha = 0.34 + breath * 0.04;
+    const shade = ctx.createRadialGradient(
+        viewW * (0.54 + drift * 0.02), viewH * 0.26, viewH * 0.14,
+        viewW * 0.5, viewH * 0.55, Math.max(viewW, viewH) * 0.8
+    );
+    shade.addColorStop(0, "rgba(248, 252, 255, 1)");
+    shade.addColorStop(0.5, "rgba(190, 224, 230, 1)");
+    shade.addColorStop(1, "rgba(28, 48, 54, 1)");
     ctx.fillStyle = shade;
     ctx.fillRect(0, 0, viewW, viewH);
+
+    // Cool shore darkening so the pond feels enclosed.
+    ctx.globalAlpha = 0.28 + drift * 0.04;
+    const edge = ctx.createRadialGradient(
+        viewW * 0.5, viewH * 0.45, Math.min(viewW, viewH) * 0.28,
+        viewW * 0.5, viewH * 0.5, Math.max(viewW, viewH) * 0.72
+    );
+    edge.addColorStop(0, "rgba(255, 255, 255, 1)");
+    edge.addColorStop(0.7, "rgba(170, 210, 215, 1)");
+    edge.addColorStop(1, "rgba(22, 40, 46, 1)");
+    ctx.fillStyle = edge;
+    ctx.fillRect(0, 0, viewW, viewH);
+
+    // Slow surface glare streaks, like bright water skin in the reference.
+    if (gfxQuality >= 1) {
+        ctx.globalCompositeOperation = "screen";
+        ctx.globalAlpha = 1;
+        const streakN = gfxQuality >= 2 ? 7 : 4;
+        for (let i = 0; i < streakN; i++) {
+            const px = ((i * 163.7 + sunPhase * (9 + i * 1.4)) % (viewW + 120)) - 60;
+            const py = viewH * (0.14 + (i % 5) * 0.11)
+                + Math.sin(sunPhase * 0.3 + i) * 10;
+            const rw = 48 + (i % 3) * 28;
+            const rh = 5 + (i % 2) * 3;
+            const g = ctx.createRadialGradient(px, py, 0, px, py, rw);
+            const a = 0.04 + pulse * 0.025 + (i % 3) * 0.008;
+            g.addColorStop(0, `rgba(245, 252, 255, ${a})`);
+            g.addColorStop(0.45, `rgba(190, 230, 240, ${a * 0.35})`);
+            g.addColorStop(1, "rgba(120, 190, 200, 0)");
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.ellipse(px, py, rw, rh, (i * 0.35) + Math.sin(sunPhase * 0.2 + i) * 0.12, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
 
     ctx.restore();
 }
@@ -3521,38 +3581,58 @@ function drawSunAmbience(ctx) {
 function drawMoonAmbience(ctx) {
     if (!nightMode) return;
     const shimmer = 0.5 + 0.5 * Math.sin(sunPhase * 0.4);
+    const drift = 0.5 + 0.5 * Math.sin(sunPhase * 0.23 + 0.8);
 
     ctx.save();
     ctx.globalCompositeOperation = "soft-light";
     const wash = ctx.createLinearGradient(0, 0, 0, viewH);
-    wash.addColorStop(0, `rgba(160, 190, 230, ${0.2 + shimmer * 0.04})`);
-    wash.addColorStop(0.45, "rgba(80, 110, 160, 0.12)");
-    wash.addColorStop(1, "rgba(20, 30, 50, 0.22)");
+    wash.addColorStop(0, `rgba(160, 190, 230, ${0.22 + shimmer * 0.05})`);
+    wash.addColorStop(0.45, "rgba(80, 110, 160, 0.14)");
+    wash.addColorStop(1, `rgba(16, 24, 42, ${0.24 + drift * 0.04})`);
     ctx.fillStyle = wash;
     ctx.fillRect(0, 0, viewW, viewH);
 
     ctx.globalCompositeOperation = "screen";
     const moon = ctx.createRadialGradient(
-        viewW * 0.72, viewH * 0.14, 10,
-        viewW * 0.55, viewH * 0.4, Math.max(viewW, viewH) * 0.72
+        viewW * (0.7 + drift * 0.02), viewH * 0.12, 10,
+        viewW * 0.55, viewH * 0.4, Math.max(viewW, viewH) * 0.74
     );
-    moon.addColorStop(0, `rgba(220, 235, 255, ${0.12 + shimmer * 0.03})`);
-    moon.addColorStop(0.4, "rgba(140, 170, 220, 0.04)");
+    moon.addColorStop(0, `rgba(220, 235, 255, ${0.14 + shimmer * 0.04})`);
+    moon.addColorStop(0.4, "rgba(140, 170, 220, 0.05)");
     moon.addColorStop(1, "rgba(40, 60, 100, 0)");
     ctx.fillStyle = moon;
     ctx.fillRect(0, 0, viewW, viewH);
 
     ctx.globalCompositeOperation = "multiply";
-    ctx.globalAlpha = 0.5;
+    ctx.globalAlpha = 0.54 + shimmer * 0.04;
     const shade = ctx.createRadialGradient(
-        viewW * 0.55, viewH * 0.28, viewH * 0.12,
-        viewW * 0.5, viewH * 0.55, Math.max(viewW, viewH) * 0.78
+        viewW * 0.55, viewH * 0.26, viewH * 0.12,
+        viewW * 0.5, viewH * 0.55, Math.max(viewW, viewH) * 0.8
     );
     shade.addColorStop(0, "rgba(210, 225, 245, 1)");
     shade.addColorStop(0.55, "rgba(90, 110, 145, 1)");
-    shade.addColorStop(1, "rgba(12, 18, 32, 1)");
+    shade.addColorStop(1, "rgba(10, 14, 26, 1)");
     ctx.fillStyle = shade;
     ctx.fillRect(0, 0, viewW, viewH);
+
+    // Soft moonlit surface flecks.
+    if (gfxQuality >= 1) {
+        ctx.globalCompositeOperation = "screen";
+        ctx.globalAlpha = 1;
+        for (let i = 0; i < 5; i++) {
+            const px = ((i * 181 + sunPhase * 7) % viewW);
+            const py = viewH * (0.16 + (i % 4) * 0.14) + Math.sin(sunPhase * 0.25 + i) * 8;
+            const rr = 22 + (i % 3) * 12;
+            const g = ctx.createRadialGradient(px, py, 0, px, py, rr);
+            const a = 0.03 + shimmer * 0.02;
+            g.addColorStop(0, `rgba(210, 230, 255, ${a})`);
+            g.addColorStop(1, "rgba(90, 120, 180, 0)");
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.ellipse(px, py, rr, rr * 0.28, i * 0.4, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
     ctx.restore();
 }
 
@@ -19563,10 +19643,10 @@ function syncSunPondButtonUI() {
     sunBtn.classList.toggle("on", sunOn);
     sunBtn.setAttribute("aria-pressed", sunOn ? "true" : "false");
     sunBtn.title = crystalMode
-        ? "Sun pond: return to golden hour"
+        ? "Sun pond: return to daylight"
         : nightMode
-            ? "Sun pond: return to golden hour"
-            : (scenery.sun ? "Sun pond on: golden hour light" : "Sun pond: golden hour light and floor shadows");
+            ? "Sun pond: return to daylight"
+            : (scenery.sun ? "Sun pond on: clear daylight" : "Sun pond: clear daylight and floor shadows");
 }
 
 // Soft one-shot flourishes for first discoveries (no quest UI).
@@ -22532,7 +22612,7 @@ const petMemories = [];
 const whirlpools = [];
 let cometVisitor = null;
 let starWishSparks = [];
-let duskBlend = 0; // unused remnant; day light is fixed golden hour when sun is on
+let duskBlend = 0; // unused remnant; day light is clear teal daylight when sun is on
 let icePatches = [];
 
 function emitBreathBubbles(x, y, n, col) {
