@@ -76,12 +76,15 @@ const CONFIG = {
     whaleInterval: 10,      // seconds between whale chance rolls
     petsToRedeem: 5,        // discrete pets that help soothe an evil fish
     evilSootheTime: 2.6,    // seconds of continuous petting to fully redeem an evil fish
+    petsForWhaleBarrel: 25, // whale pets before a full barrel roll
     petsForWhaleMariachi: 50, // whale pets before the pond mariachi fiesta
-    petsToTame: 30,         // discrete pets to tame a crocodile/alligator
+    petsToTame: 30,         // day biome: crocodile/alligator
     petsToTameMonster: 30,  // discrete pets to tame a monster fish into a white hero
-    petsToTameNight: 40,    // discrete pets to tame swordfish / octopus
-    reptileSootheTime: 12,  // seconds of continuous petting that also helps tame
-    nightPredatorSootheTime: 14, // continuous stroke time that also tames night predators
+    petsToTameNight: 42,    // night biome: swordfish / octopus (harder than day)
+    petsToTameCrystal: 55,  // crystal biome: mantle / prism shark cousins (hardest)
+    reptileSootheTime: 12,  // day continuous petting that also helps tame
+    nightPredatorSootheTime: 14, // night continuous stroke time
+    crystalPredatorSootheTime: 18, // crystal continuous stroke time
     reptileInterval: 60,    // seconds between crocodile/alligator chance rolls
     reptileChance: 0.18,    // chance a reptile arrives on each roll
     reptileSize: [88, 112], // croc/alligator body length range
@@ -120,10 +123,18 @@ const CONFIG = {
     pacifistInterval: 52,   // seconds between pacifist encounter rolls
     pacifistChance: 0.28,   // chance a helper arrives on each roll
     pacifistMax: 2,         // max living pacifist visitors at once
-    petsToTamePacifist: 16, // discrete pets to befriend a pacifist visitor
-    pacifistSootheTime: 7,  // continuous stroke time that also tames
-    petsToTameSerpent: 28,  // discrete pets to befriend the crystal serpent
-    serpentSootheTime: 9,   // continuous stroke time that also tames
+    petsToTamePacifist: 16, // day pacifist helpers
+    petsToTamePacifistNight: 26, // night pacifist helpers
+    petsToTamePacifistCrystal: 38, // crystal pacifist helpers
+    pacifistSootheTime: 7,  // day continuous stroke time that also tames
+    pacifistSootheTimeNight: 11,
+    pacifistSootheTimeCrystal: 15,
+    petsToTameSerpent: 55,  // crystal serpent (matches crystal apex progression)
+    serpentSootheTime: 18,  // continuous stroke time that also tames
+    // Biome guardians: rare protectors that hunt aggressive fish, then leave unless tamed.
+    biomeGuardianInterval: 70, // seconds between guardian spawn rolls
+    biomeGuardianChance: 0.11, // rare chance a guardian arrives
+    biomeGuardianMax: 1,       // at most one living guardian
 };
 
 
@@ -2152,7 +2163,15 @@ function seeded(n) {
     return x - Math.floor(x);
 }
 
+function sceneryThemeKey() {
+    if (crystalMode) return "crystal";
+    if (nightMode) return "night";
+    return "day";
+}
+
 function rebuildScenery() {
+    const theme = sceneryThemeKey();
+    const seedOff = theme === "crystal" ? 7100 : theme === "night" ? 3600 : 0;
     const stones = [];
     const sticks = [];
     const reeds = [];
@@ -2161,101 +2180,132 @@ function rebuildScenery() {
     const duckweed = [];
     const leaves = [];
     const margin = Math.min(viewW, viewH) * 0.08;
+    const S = (n) => seeded(n + seedOff);
 
-    for (let i = 0; i < 14; i++) {
-        const side = Math.floor(seeded(i + 1) * 4);
+    const stoneN = theme === "crystal" ? 11 : theme === "night" ? 12 : 14;
+    for (let i = 0; i < stoneN; i++) {
+        const side = Math.floor(S(i + 1) * 4);
         let x, y;
-        if (side === 0) { x = seeded(i + 10) * viewW; y = seeded(i + 20) * margin; }
-        else if (side === 1) { x = seeded(i + 10) * viewW; y = viewH - seeded(i + 20) * margin; }
-        else if (side === 2) { x = seeded(i + 10) * margin; y = seeded(i + 20) * viewH; }
-        else { x = viewW - seeded(i + 10) * margin; y = seeded(i + 20) * viewH; }
+        if (side === 0) { x = S(i + 10) * viewW; y = S(i + 20) * margin; }
+        else if (side === 1) { x = S(i + 10) * viewW; y = viewH - S(i + 20) * margin; }
+        else if (side === 2) { x = S(i + 10) * margin; y = S(i + 20) * viewH; }
+        else { x = viewW - S(i + 10) * margin; y = S(i + 20) * viewH; }
         stones.push({
             x, y,
-            rx: 10 + seeded(i + 30) * 22,
-            ry: 7 + seeded(i + 40) * 12,
-            rot: seeded(i + 50) * Math.PI,
-            tone: 0.35 + seeded(i + 60) * 0.35,
+            rx: (theme === "crystal" ? 9 : 10) + S(i + 30) * (theme === "crystal" ? 18 : 22),
+            ry: (theme === "crystal" ? 7 : 7) + S(i + 40) * (theme === "crystal" ? 14 : 12),
+            rot: S(i + 50) * Math.PI,
+            tone: theme === "crystal"
+                ? 0.45 + S(i + 60) * 0.4
+                : theme === "night"
+                    ? 0.25 + S(i + 60) * 0.3
+                    : 0.35 + S(i + 60) * 0.35,
+            facets: theme === "crystal" ? 6 + Math.floor(S(i + 65) * 4) : 0,
         });
     }
 
-    for (let i = 0; i < 8; i++) {
+    const stickN = theme === "crystal" ? 5 : theme === "night" ? 7 : 8;
+    for (let i = 0; i < stickN; i++) {
         sticks.push({
-            x: margin + seeded(i + 100) * (viewW - margin * 2),
-            y: margin + seeded(i + 110) * (viewH - margin * 2),
-            len: 28 + seeded(i + 120) * 50,
-            rot: seeded(i + 130) * Math.PI,
-            thick: 1.4 + seeded(i + 140) * 1.8,
-            wet: seeded(i + 150) > 0.45,
+            x: margin + S(i + 100) * (viewW - margin * 2),
+            y: margin + S(i + 110) * (viewH - margin * 2),
+            len: (theme === "crystal" ? 20 : 28) + S(i + 120) * (theme === "crystal" ? 36 : 50),
+            rot: S(i + 130) * Math.PI,
+            thick: (theme === "crystal" ? 1.1 : 1.4) + S(i + 140) * (theme === "crystal" ? 1.4 : 1.8),
+            wet: theme === "day" ? S(i + 150) > 0.45 : S(i + 150) > 0.7,
         });
     }
 
-    for (let i = 0; i < 18; i++) {
-        const side = Math.floor(seeded(i + 200) * 4);
+    const reedN = theme === "crystal" ? 14 : theme === "night" ? 16 : 18;
+    for (let i = 0; i < reedN; i++) {
+        const side = Math.floor(S(i + 200) * 4);
         let x, y, ang;
-        if (side === 0) { x = seeded(i + 210) * viewW; y = 4 + seeded(i + 220) * 18; ang = -0.2 + seeded(i + 230) * 0.4; }
-        else if (side === 1) { x = seeded(i + 210) * viewW; y = viewH - 4 - seeded(i + 220) * 18; ang = Math.PI - 0.2 + seeded(i + 230) * 0.4; }
-        else if (side === 2) { x = 4 + seeded(i + 220) * 18; y = seeded(i + 210) * viewH; ang = Math.PI * 0.5 - 0.25 + seeded(i + 230) * 0.5; }
-        else { x = viewW - 4 - seeded(i + 220) * 18; y = seeded(i + 210) * viewH; ang = -Math.PI * 0.5 - 0.25 + seeded(i + 230) * 0.5; }
+        if (side === 0) { x = S(i + 210) * viewW; y = 4 + S(i + 220) * 18; ang = -0.2 + S(i + 230) * 0.4; }
+        else if (side === 1) { x = S(i + 210) * viewW; y = viewH - 4 - S(i + 220) * 18; ang = Math.PI - 0.2 + S(i + 230) * 0.4; }
+        else if (side === 2) { x = 4 + S(i + 220) * 18; y = S(i + 210) * viewH; ang = Math.PI * 0.5 - 0.25 + S(i + 230) * 0.5; }
+        else { x = viewW - 4 - S(i + 220) * 18; y = S(i + 210) * viewH; ang = -Math.PI * 0.5 - 0.25 + S(i + 230) * 0.5; }
         reeds.push({
             x, y, ang,
-            h: 22 + seeded(i + 240) * 38,
-            sway: seeded(i + 250) * Math.PI * 2,
-            green: 0.45 + seeded(i + 260) * 0.35,
+            h: (theme === "crystal" ? 28 : theme === "night" ? 20 : 22)
+                + S(i + 240) * (theme === "crystal" ? 48 : theme === "night" ? 34 : 38),
+            sway: S(i + 250) * Math.PI * 2,
+            green: theme === "crystal"
+                ? 0.55 + S(i + 260) * 0.35
+                : theme === "night"
+                    ? 0.3 + S(i + 260) * 0.35
+                    : 0.45 + S(i + 260) * 0.35,
         });
     }
 
-    for (let i = 0; i < 7; i++) {
+    const lilyN = theme === "crystal" ? 5 : theme === "night" ? 6 : 7;
+    for (let i = 0; i < lilyN; i++) {
         lilies.push({
             soft: "lily",
-            x: margin * 1.4 + seeded(i + 300) * (viewW - margin * 2.8),
-            y: margin * 1.4 + seeded(i + 310) * (viewH - margin * 2.8),
-            r: 12 + seeded(i + 320) * 18,
-            rot: seeded(i + 330) * Math.PI * 2,
-            bob: seeded(i + 340) * Math.PI * 2,
+            x: margin * 1.4 + S(i + 300) * (viewW - margin * 2.8),
+            y: margin * 1.4 + S(i + 310) * (viewH - margin * 2.8),
+            r: (theme === "crystal" ? 14 : 12) + S(i + 320) * (theme === "crystal" ? 20 : 18),
+            rot: S(i + 330) * Math.PI * 2,
+            bob: S(i + 340) * Math.PI * 2,
             vx: 0,
             vy: 0,
             spin: 0,
         });
     }
 
-    for (let i = 0; i < 10; i++) {
-        const side = Math.floor(seeded(i + 400) * 4);
+    const cattailN = theme === "crystal" ? 8 : theme === "night" ? 9 : 10;
+    for (let i = 0; i < cattailN; i++) {
+        const side = Math.floor(S(i + 400) * 4);
         let x, y, ang;
-        if (side === 0) { x = seeded(i + 410) * viewW; y = 6 + seeded(i + 420) * 22; ang = -0.15 + seeded(i + 430) * 0.3; }
-        else if (side === 1) { x = seeded(i + 410) * viewW; y = viewH - 6 - seeded(i + 420) * 22; ang = Math.PI + (-0.15 + seeded(i + 430) * 0.3); }
-        else if (side === 2) { x = 6 + seeded(i + 420) * 22; y = seeded(i + 410) * viewH; ang = Math.PI * 0.5 + (-0.2 + seeded(i + 430) * 0.4); }
-        else { x = viewW - 6 - seeded(i + 420) * 22; y = seeded(i + 410) * viewH; ang = -Math.PI * 0.5 + (-0.2 + seeded(i + 430) * 0.4); }
+        if (side === 0) { x = S(i + 410) * viewW; y = 6 + S(i + 420) * 22; ang = -0.15 + S(i + 430) * 0.3; }
+        else if (side === 1) { x = S(i + 410) * viewW; y = viewH - 6 - S(i + 420) * 22; ang = Math.PI + (-0.15 + S(i + 430) * 0.3); }
+        else if (side === 2) { x = 6 + S(i + 420) * 22; y = S(i + 410) * viewH; ang = Math.PI * 0.5 + (-0.2 + S(i + 430) * 0.4); }
+        else { x = viewW - 6 - S(i + 420) * 22; y = S(i + 410) * viewH; ang = -Math.PI * 0.5 + (-0.2 + S(i + 430) * 0.4); }
         cattails.push({
             x, y, ang,
-            h: 34 + seeded(i + 440) * 46,
-            sway: seeded(i + 450) * Math.PI * 2,
-            green: 0.4 + seeded(i + 460) * 0.4,
+            h: (theme === "crystal" ? 30 : theme === "night" ? 28 : 34)
+                + S(i + 440) * (theme === "crystal" ? 40 : theme === "night" ? 38 : 46),
+            sway: S(i + 450) * Math.PI * 2,
+            green: theme === "crystal"
+                ? 0.5 + S(i + 460) * 0.4
+                : theme === "night"
+                    ? 0.28 + S(i + 460) * 0.35
+                    : 0.4 + S(i + 460) * 0.4,
         });
     }
 
-    for (let i = 0; i < 12; i++) {
+    const weedN = theme === "crystal" ? 9 : theme === "night" ? 8 : 12;
+    for (let i = 0; i < weedN; i++) {
         duckweed.push({
-            x: margin * 1.2 + seeded(i + 500) * (viewW - margin * 2.4),
-            y: margin * 1.2 + seeded(i + 510) * (viewH - margin * 2.4),
-            r: 16 + seeded(i + 520) * 28,
-            rot: seeded(i + 530) * Math.PI * 2,
-            bob: seeded(i + 540) * Math.PI * 2,
-            density: 5 + Math.floor(seeded(i + 550) * 7),
+            x: margin * 1.2 + S(i + 500) * (viewW - margin * 2.4),
+            y: margin * 1.2 + S(i + 510) * (viewH - margin * 2.4),
+            r: (theme === "crystal" ? 12 : 16) + S(i + 520) * (theme === "crystal" ? 22 : 28),
+            rot: S(i + 530) * Math.PI * 2,
+            bob: S(i + 540) * Math.PI * 2,
+            density: theme === "crystal"
+                ? 4 + Math.floor(S(i + 550) * 5)
+                : theme === "night"
+                    ? 3 + Math.floor(S(i + 550) * 5)
+                    : 5 + Math.floor(S(i + 550) * 7),
         });
     }
 
-    for (let i = 0; i < 9; i++) {
+    const leafN = theme === "crystal" ? 7 : theme === "night" ? 8 : 9;
+    for (let i = 0; i < leafN; i++) {
         leaves.push({
-            x: margin + seeded(i + 600) * (viewW - margin * 2),
-            y: margin + seeded(i + 610) * (viewH - margin * 2),
-            len: 8 + seeded(i + 620) * 12,
-            rot: seeded(i + 630) * Math.PI * 2,
-            bob: seeded(i + 640) * Math.PI * 2,
-            tone: 0.35 + seeded(i + 650) * 0.4,
+            x: margin + S(i + 600) * (viewW - margin * 2),
+            y: margin + S(i + 610) * (viewH - margin * 2),
+            len: (theme === "crystal" ? 7 : 8) + S(i + 620) * (theme === "crystal" ? 11 : 12),
+            rot: S(i + 630) * Math.PI * 2,
+            bob: S(i + 640) * Math.PI * 2,
+            tone: theme === "crystal"
+                ? 0.5 + S(i + 650) * 0.4
+                : theme === "night"
+                    ? 0.2 + S(i + 650) * 0.35
+                    : 0.35 + S(i + 650) * 0.4,
         });
     }
 
-    sceneryItems = { stones, sticks, reeds, lilies, cattails, duckweed, leaves };
+    sceneryItems = { stones, sticks, reeds, lilies, cattails, duckweed, leaves, theme };
     grabbedSoft = null;
     rebuildObstacles();
     rebuildPondBed();
@@ -2689,18 +2739,17 @@ function drawPondBed(ctx) {
     ctx.imageSmoothingEnabled = true;
     ctx.globalAlpha = 1;
     ctx.drawImage(pondBedCanvas, 0, 0, viewW, viewH);
-    // Soft water-column veil: submerged feel without hiding floor silhouettes.
+    // Soft water-column veil: light submerged tint only.
     const daySun = scenery.sun && !nightMode && !crystalMode;
-    ctx.globalAlpha = daySun ? 0.05 : 0.08;
+    ctx.globalAlpha = daySun ? 0.04 : 0.06;
     ctx.fillStyle = daySun ? "rgba(42, 36, 20, 1)" : "rgba(22, 48, 46, 1)";
     ctx.fillRect(0, 0, viewW, viewH);
     if (daySun) {
-        // Soft yellow depth falloff toward the lower frame.
+        // Soft depth falloff toward the lower frame (no bright haze).
         const depth = ctx.createLinearGradient(0, 0, 0, viewH);
         depth.addColorStop(0, "rgba(255, 220, 120, 0)");
-        depth.addColorStop(0.5, "rgba(255, 200, 90, 0.03)");
-        depth.addColorStop(0.78, "rgba(70, 52, 22, 0.06)");
-        depth.addColorStop(1, "rgba(28, 20, 10, 0.12)");
+        depth.addColorStop(0.55, "rgba(70, 52, 22, 0.03)");
+        depth.addColorStop(1, "rgba(28, 20, 10, 0.1)");
         ctx.globalAlpha = 1;
         ctx.fillStyle = depth;
         ctx.fillRect(0, 0, viewW, viewH);
@@ -2710,15 +2759,15 @@ function drawPondBed(ctx) {
 
 function skyShadowDir() {
     if (crystalMode) {
-        // Violet sun high and slightly right; long purple shadows fall down-left.
-        return { x: -0.68, y: 0.58 };
+        // High violet light slightly right; purple casts fall down-left.
+        return { x: -0.62, y: 0.62 };
     }
     if (nightMode) {
-        // Moon sits upper-right; longer cool shadows fall left and a bit down.
-        return { x: -0.72, y: 0.48 };
+        // High moon upper-right; longer cool casts stretch left and gently down.
+        return { x: -0.78, y: 0.42 };
     }
-    // Reference look: soft upper-right light, shadows fall down-left.
-    return { x: -0.55, y: 0.58 };
+    // Yellow-gold sun upper-right; short warm casts fall down-left.
+    return { x: -0.52, y: 0.6 };
 }
 
 function sunShadowDir() {
@@ -2731,33 +2780,69 @@ function lightCastsFloorShadows() {
     return !!scenery.sun;
 }
 
-// Offset silhouette on the bed: crisp shape-matched cast, close and lightly warped.
+function floorShadowParams() {
+    if (crystalMode) {
+        return {
+            stretch: 1.08,
+            baseLen: 16,
+            squashY: 0.7,
+            alphaMul: 0.92,
+            contactMul: 0.68,
+            bloomAlpha: 0,
+            bloomScaleX: 1,
+            bloomScaleY: 1,
+            bloomFill: "rgba(42, 10, 68, 1)",
+            core: (a) => `rgba(30, 6, 48, ${Math.min(0.7, a * 0.88)})`,
+        };
+    }
+    if (nightMode) {
+        return {
+            stretch: 1.32,
+            baseLen: 26,
+            squashY: 0.72,
+            alphaMul: 0.82,
+            contactMul: 0.58,
+            bloomAlpha: 0,
+            bloomScaleX: 1,
+            bloomScaleY: 1,
+            bloomFill: "rgba(4, 10, 28, 1)",
+            core: (a) => `rgba(2, 6, 18, ${Math.min(0.64, a * 0.8)})`,
+        };
+    }
+    return {
+        stretch: 0.76,
+        baseLen: 10,
+        squashY: 0.84,
+        alphaMul: 1.12,
+        contactMul: 0.9,
+        bloomAlpha: 0,
+        bloomScaleX: 1,
+        bloomScaleY: 1,
+        bloomFill: "rgba(0,0,0,1)",
+        core: (a) => `rgba(24, 18, 10, ${Math.min(0.66, a * 0.9)})`,
+    };
+}
+
+// Offset silhouette on the bed: shape-matched cast tuned per sky light.
 function withFloorShadow(ctx, x, y, sizeHint, alpha, rot, drawFn) {
     const d = skyShadowDir();
-    const day = !crystalMode && !nightMode;
-    // Short cast; gentle squash so shapes stay close to the real silhouette.
-    const stretch = crystalMode ? 1.12 : nightMode ? 1.05 : 0.82;
-    const len = (crystalMode ? 22 : nightMode ? 18 : 12) + Math.max(6, sizeHint) * stretch;
-    const a = Math.min(1, alpha * (crystalMode ? 1.2 : nightMode ? 1.05 : 1.25));
+    const p = floorShadowParams();
+    const len = p.baseLen + Math.max(6, sizeHint) * p.stretch;
+    const a = Math.min(1, alpha * p.alphaMul);
     ctx.save();
     ctx.translate(x + d.x * len, y + d.y * len);
-    ctx.scale(1, crystalMode ? 0.72 : nightMode ? 0.76 : 0.82);
+    ctx.scale(1, p.squashY);
     if (rot != null) ctx.rotate(rot);
-    if (!day) {
+    if (p.bloomAlpha > 0.01) {
         ctx.save();
-        ctx.globalAlpha = Math.min(1, a * (crystalMode ? 0.4 : 0.32));
-        ctx.fillStyle = crystalMode ? "rgba(28, 6, 42, 1)" : "rgba(4, 8, 18, 1)";
-        ctx.scale(crystalMode ? 1.1 : 1.06, crystalMode ? 1.14 : 1.08);
+        ctx.globalAlpha = Math.min(1, a * p.bloomAlpha);
+        ctx.fillStyle = p.bloomFill;
+        ctx.scale(p.bloomScaleX, p.bloomScaleY);
         drawFn(ctx);
         ctx.restore();
     }
-    // Cool dark teal-grey core at night / crystal; warm dusk umber in day.
     ctx.globalAlpha = Math.min(1, a);
-    ctx.fillStyle = crystalMode
-        ? `rgba(22, 4, 36, ${Math.min(0.82, a)})`
-        : nightMode
-            ? `rgba(3, 6, 16, ${Math.min(0.78, a)})`
-            : `rgba(22, 18, 10, ${Math.min(0.7, a)})`;
+    ctx.fillStyle = p.core(a);
     drawFn(ctx);
     ctx.restore();
 }
@@ -3121,9 +3206,10 @@ function drawBedCaustics(ctx) {
 
 function drawSunContactShadows(ctx) {
     if (!lightCastsFloorShadows()) return;
+    const p = floorShadowParams();
     ctx.save();
     ctx.globalCompositeOperation = "multiply";
-    ctx.globalAlpha = crystalMode ? 0.82 : nightMode ? 0.78 : 0.88;
+    ctx.globalAlpha = p.contactMul;
 
     if (scenery.debris) {
         for (const o of obstacles) {
@@ -3151,7 +3237,11 @@ function drawSunContactShadows(ctx) {
         for (const s of sceneryItems.stones) {
             if (!s.profile) s.profile = makeObstacleDetail(Math.floor(s.x + s.y), 9, 5);
             withFloorShadow(ctx, s.x, s.y, Math.max(s.rx, s.ry), 0.72, s.rot, (c) => {
-                pathOrganicOval(c, s.rx * 1.05, s.ry * 0.95, 9, s.profile, 0.2);
+                if (crystalMode && s.facets) {
+                    pathFacetRockOutline(c, { r: Math.max(s.rx, s.ry), facets: s.facets, profile: s.profile });
+                } else {
+                    pathOrganicOval(c, s.rx * 1.05, s.ry * 0.95, 9, s.profile, 0.2);
+                }
                 c.fill();
             });
         }
@@ -3167,12 +3257,21 @@ function drawSunContactShadows(ctx) {
     if (scenery.sticks) {
         for (const s of sceneryItems.sticks) {
             withFloorShadow(ctx, s.x, s.y, s.len * 0.4, 0.62, s.rot, (c) => {
-                c.beginPath();
-                c.moveTo(-s.len * 0.5, -s.thick * 0.35);
-                c.quadraticCurveTo(0, -s.thick * 0.5, s.len * 0.48, -s.thick * 0.15);
-                c.lineTo(s.len * 0.52, s.thick * 0.2);
-                c.quadraticCurveTo(0, s.thick * 0.55, -s.len * 0.5, s.thick * 0.45);
-                c.closePath();
+                if (crystalMode) {
+                    c.beginPath();
+                    c.moveTo(-s.len * 0.5, 0);
+                    c.lineTo(-s.len * 0.1, -s.thick * 0.9);
+                    c.lineTo(s.len * 0.5, 0);
+                    c.lineTo(-s.len * 0.1, s.thick * 0.9);
+                    c.closePath();
+                } else {
+                    c.beginPath();
+                    c.moveTo(-s.len * 0.5, -s.thick * 0.35);
+                    c.quadraticCurveTo(0, -s.thick * 0.5, s.len * 0.48, -s.thick * 0.15);
+                    c.lineTo(s.len * 0.52, s.thick * 0.2);
+                    c.quadraticCurveTo(0, s.thick * 0.55, -s.len * 0.5, s.thick * 0.45);
+                    c.closePath();
+                }
                 c.fill();
             });
         }
@@ -3180,12 +3279,20 @@ function drawSunContactShadows(ctx) {
     if (scenery.reeds) {
         for (const r of sceneryItems.reeds) {
             withFloorShadow(ctx, r.x, r.y, (r.h || 40) * 0.35, 0.48, r.ang, (c) => {
-                c.beginPath();
-                c.moveTo(-1.2, 0);
-                c.quadraticCurveTo(4, -(r.h || 40) * 0.5, 1.5, -(r.h || 40));
-                c.lineTo(-1.5, -(r.h || 40));
-                c.quadraticCurveTo(-4, -(r.h || 40) * 0.5, 1.2, 0);
-                c.closePath();
+                if (crystalMode) {
+                    c.beginPath();
+                    c.moveTo(-2.2, 0);
+                    c.lineTo(0.4, -(r.h || 40));
+                    c.lineTo(2.2, 0);
+                    c.closePath();
+                } else {
+                    c.beginPath();
+                    c.moveTo(-1.2, 0);
+                    c.quadraticCurveTo(4, -(r.h || 40) * 0.5, 1.5, -(r.h || 40));
+                    c.lineTo(-1.5, -(r.h || 40));
+                    c.quadraticCurveTo(-4, -(r.h || 40) * 0.5, 1.2, 0);
+                    c.closePath();
+                }
                 c.fill();
             });
         }
@@ -3193,24 +3300,37 @@ function drawSunContactShadows(ctx) {
     if (scenery.cattails) {
         for (const ct of sceneryItems.cattails) {
             withFloorShadow(ctx, ct.x, ct.y, (ct.h || 50) * 0.35, 0.52, ct.ang, (c) => {
-                c.beginPath();
-                c.moveTo(-1.6, 0);
-                c.quadraticCurveTo(5, -(ct.h || 50) * 0.5, 2, -(ct.h || 50));
-                c.lineTo(-2, -(ct.h || 50));
-                c.quadraticCurveTo(-5, -(ct.h || 50) * 0.5, 1.6, 0);
-                c.closePath();
-                c.fill();
-                c.beginPath();
-                c.ellipse(0, -(ct.h || 50) * 0.82, 4.2, 11, 0, 0, Math.PI * 2);
+                if (crystalMode) {
+                    c.beginPath();
+                    c.moveTo(-2.4, 0);
+                    c.lineTo(0.2, -(ct.h || 50) * 0.92);
+                    c.lineTo(2.6, 0);
+                    c.closePath();
+                    c.beginPath();
+                    c.moveTo(-3.5, -(ct.h || 50) * 0.7);
+                    c.lineTo(0.2, -(ct.h || 50));
+                    c.lineTo(3.8, -(ct.h || 50) * 0.62);
+                    c.closePath();
+                } else {
+                    c.beginPath();
+                    c.moveTo(-1.6, 0);
+                    c.quadraticCurveTo(5, -(ct.h || 50) * 0.5, 2, -(ct.h || 50));
+                    c.lineTo(-2, -(ct.h || 50));
+                    c.quadraticCurveTo(-5, -(ct.h || 50) * 0.5, 1.6, 0);
+                    c.closePath();
+                    c.fill();
+                    c.beginPath();
+                    c.ellipse(0, -(ct.h || 50) * 0.82, nightMode ? 3.4 : 4.2, nightMode ? 9 : 11, 0, 0, Math.PI * 2);
+                }
                 c.fill();
             });
         }
     }
     // Grown ornaments / plants: cast their own silhouette, not a round blob.
-    for (const p of pondPlants) {
-        const hint = softPropRadius(p);
-        withFloorShadow(ctx, p.x, p.y, hint, 0.68, p.rot || 0, (c) => {
-            pathPondPlantShadow(c, p);
+    for (const plant of pondPlants) {
+        const hint = softPropRadius(plant);
+        withFloorShadow(ctx, plant.x, plant.y, hint, 0.68, plant.rot || 0, (c) => {
+            pathPondPlantShadow(c, plant);
             c.fill();
         });
     }
@@ -3225,7 +3345,15 @@ function drawSunContactShadows(ctx) {
                     const px = Math.cos(a) * d.r * 0.45;
                     const py = Math.sin(a) * d.r * 0.35;
                     c.beginPath();
-                    c.ellipse(px, py, rr * 0.55, rr * 0.38, a, 0, Math.PI * 2);
+                    if (crystalMode) {
+                        c.moveTo(px, py - rr * 0.55);
+                        c.lineTo(px + rr * 0.45, py);
+                        c.lineTo(px, py + rr * 0.55);
+                        c.lineTo(px - rr * 0.45, py);
+                        c.closePath();
+                    } else {
+                        c.ellipse(px, py, rr * 0.55, rr * 0.38, a, 0, Math.PI * 2);
+                    }
                     c.fill();
                 }
             });
@@ -3233,11 +3361,19 @@ function drawSunContactShadows(ctx) {
         for (const L of sceneryItems.leaves) {
             withFloorShadow(ctx, L.x, L.y, L.len * 0.55, 0.55, L.rot || 0, (c) => {
                 c.beginPath();
-                c.moveTo(-L.len * 0.85, 0);
-                c.quadraticCurveTo(-L.len * 0.2, -L.len * 0.55, L.len * 0.75, -L.len * 0.08);
-                c.quadraticCurveTo(L.len * 0.95, 0, L.len * 0.75, L.len * 0.1);
-                c.quadraticCurveTo(-L.len * 0.15, L.len * 0.5, -L.len * 0.85, 0);
-                c.closePath();
+                if (crystalMode) {
+                    c.moveTo(-L.len * 0.7, 0);
+                    c.lineTo(0, -L.len * 0.45);
+                    c.lineTo(L.len * 0.75, 0);
+                    c.lineTo(0, L.len * 0.4);
+                    c.closePath();
+                } else {
+                    c.moveTo(-L.len * 0.85, 0);
+                    c.quadraticCurveTo(-L.len * 0.2, -L.len * 0.55, L.len * 0.75, -L.len * 0.08);
+                    c.quadraticCurveTo(L.len * 0.95, 0, L.len * 0.75, L.len * 0.1);
+                    c.quadraticCurveTo(-L.len * 0.15, L.len * 0.5, -L.len * 0.85, 0);
+                    c.closePath();
+                }
                 c.fill();
             });
         }
@@ -3325,9 +3461,10 @@ function pathPondPlantShadow(ctx, p) {
 
 function drawSunCreatureShadows(ctx) {
     if (!lightCastsFloorShadows()) return;
+    const p = floorShadowParams();
     ctx.save();
     ctx.globalCompositeOperation = "multiply";
-    ctx.globalAlpha = crystalMode ? 0.84 : nightMode ? 0.8 : 0.9;
+    ctx.globalAlpha = Math.min(1, p.contactMul + 0.04);
     for (const f of fishes) {
         if (f.dead) continue;
         const { L, W, shape } = fishShadowDims(f);
@@ -3436,12 +3573,22 @@ function drawSunCreatureShadows(ctx) {
                 c.ellipse(0, 0, p.size * 0.42, p.size * 0.4, 0, 0, Math.PI * 2);
                 c.fill();
             } else if (p.kind === "axolotl") {
+                // Frog-cousin salamander shadow.
                 c.beginPath();
-                c.ellipse(0, 0, p.size * 0.48, p.size * 0.28, 0, 0, Math.PI * 2);
+                c.ellipse(0, 0, p.size * 0.55, p.size * 0.26, 0, 0, Math.PI * 2);
+                c.fill();
+                c.beginPath();
+                c.ellipse(-p.size * 0.55, 0, p.size * 0.28, p.size * 0.12, 0, 0, Math.PI * 2);
                 c.fill();
             } else {
                 fillWhaleShadowPaths(c, p.size, p.size * 0.32);
             }
+        });
+    }
+    for (const g of biomeGuardians || []) {
+        if (!g || g.dead) continue;
+        withFloorShadow(ctx, g.x, g.y, g.size, 0.74, g.dir, (c) => {
+            fillFishShadowPaths(c, g.size, g.size * 0.34, "oval");
         });
     }
     if (scenery.frogs) {
@@ -3507,100 +3654,49 @@ function fillFrogShadowPaths(ctx, frog) {
     }
 }
 
-// Golden hour wash: yellow-gold top light, living depth, soft surface glare.
+// Daylight ambience: warm depth and a soft sun pool, without white haze.
 function drawSunAmbience(ctx) {
     // Day only. Never draws under moon or crystal sky.
     if (!scenery.sun || nightMode || crystalMode) return;
 
     const breath = 0.5 + 0.5 * Math.sin(sunPhase * 0.32);
     const drift = 0.5 + 0.5 * Math.sin(sunPhase * 0.21 + 1.3);
-    const pulse = 0.5 + 0.5 * Math.sin(sunPhase * 0.48 + 0.4);
 
     ctx.save();
 
-    // Yellow-gold sky wash that gently breathes.
+    // Gentle warm top light (no screen wash that blows the pond white).
     ctx.globalCompositeOperation = "soft-light";
     const wash = ctx.createLinearGradient(0, 0, 0, viewH);
-    wash.addColorStop(0, `rgba(255, 220, 130, ${0.32 + breath * 0.06})`);
-    wash.addColorStop(0.32, `rgba(255, 200, 100, ${0.16 + breath * 0.04})`);
-    wash.addColorStop(0.65, `rgba(220, 170, 70, ${0.09 + breath * 0.025})`);
-    wash.addColorStop(1, `rgba(60, 42, 18, ${0.15 + drift * 0.03})`);
+    wash.addColorStop(0, `rgba(240, 200, 110, ${0.14 + breath * 0.03})`);
+    wash.addColorStop(0.4, `rgba(210, 165, 80, ${0.07 + breath * 0.02})`);
+    wash.addColorStop(1, `rgba(50, 36, 16, ${0.12 + drift * 0.02})`);
     ctx.fillStyle = wash;
     ctx.fillRect(0, 0, viewW, viewH);
 
-    // Soft sun pool from upper right.
-    ctx.globalCompositeOperation = "screen";
+    // Soft sun pool from upper right (kept low so colors stay readable).
+    ctx.globalCompositeOperation = "soft-light";
     const hot = ctx.createRadialGradient(
         viewW * (0.68 + drift * 0.03), viewH * 0.1, 12,
-        viewW * 0.54, viewH * 0.4, Math.max(viewW, viewH) * 0.72
+        viewW * 0.54, viewH * 0.42, Math.max(viewW, viewH) * 0.7
     );
-    hot.addColorStop(0, `rgba(255, 240, 180, ${0.2 + breath * 0.05})`);
-    hot.addColorStop(0.32, `rgba(255, 215, 120, ${0.09 + pulse * 0.03})`);
-    hot.addColorStop(0.7, `rgba(230, 180, 70, ${0.03 + pulse * 0.015})`);
-    hot.addColorStop(1, "rgba(170, 120, 40, 0)");
+    hot.addColorStop(0, `rgba(255, 220, 140, ${0.1 + breath * 0.03})`);
+    hot.addColorStop(0.45, `rgba(230, 180, 80, ${0.04 + breath * 0.015})`);
+    hot.addColorStop(1, "rgba(140, 100, 40, 0)");
     ctx.fillStyle = hot;
     ctx.fillRect(0, 0, viewW, viewH);
 
-    // Warm yellow subsurface scatter under the lit water.
-    ctx.globalCompositeOperation = "screen";
-    const scatter = ctx.createRadialGradient(
-        viewW * 0.5, viewH * 0.38, 18,
-        viewW * 0.5, viewH * 0.48, Math.max(viewW, viewH) * 0.56
-    );
-    scatter.addColorStop(0, `rgba(255, 220, 120, ${0.07 + breath * 0.025})`);
-    scatter.addColorStop(0.55, "rgba(230, 180, 80, 0.025)");
-    scatter.addColorStop(1, "rgba(140, 100, 40, 0)");
-    ctx.fillStyle = scatter;
-    ctx.fillRect(0, 0, viewW, viewH);
-
-    // Depth falloff toward the shores and lower water.
+    // Shore darkening only (no white multiply center).
     ctx.globalCompositeOperation = "multiply";
-    ctx.globalAlpha = 0.36 + breath * 0.04;
-    const shade = ctx.createRadialGradient(
-        viewW * (0.58 + drift * 0.02), viewH * 0.24, viewH * 0.13,
-        viewW * 0.5, viewH * 0.56, Math.max(viewW, viewH) * 0.8
-    );
-    shade.addColorStop(0, "rgba(255, 248, 220, 1)");
-    shade.addColorStop(0.45, "rgba(250, 220, 150, 1)");
-    shade.addColorStop(0.8, "rgba(160, 120, 55, 1)");
-    shade.addColorStop(1, "rgba(40, 28, 12, 1)");
-    ctx.fillStyle = shade;
-    ctx.fillRect(0, 0, viewW, viewH);
-
-    // Warm shore darkening so the pond feels enclosed at dusk.
-    ctx.globalAlpha = 0.3 + drift * 0.04;
+    ctx.globalAlpha = 0.22 + breath * 0.03;
     const edge = ctx.createRadialGradient(
-        viewW * 0.5, viewH * 0.44, Math.min(viewW, viewH) * 0.26,
-        viewW * 0.5, viewH * 0.5, Math.max(viewW, viewH) * 0.73
+        viewW * 0.5, viewH * 0.44, Math.min(viewW, viewH) * 0.34,
+        viewW * 0.5, viewH * 0.5, Math.max(viewW, viewH) * 0.78
     );
-    edge.addColorStop(0, "rgba(255, 255, 255, 1)");
-    edge.addColorStop(0.65, "rgba(250, 225, 170, 1)");
-    edge.addColorStop(1, "rgba(30, 22, 10, 1)");
+    edge.addColorStop(0, "rgba(255, 248, 230, 1)");
+    edge.addColorStop(0.55, "rgba(230, 200, 140, 1)");
+    edge.addColorStop(1, "rgba(36, 26, 12, 1)");
     ctx.fillStyle = edge;
     ctx.fillRect(0, 0, viewW, viewH);
-
-    // Slow yellow-gold surface glare streaks.
-    if (gfxQuality >= 1) {
-        ctx.globalCompositeOperation = "screen";
-        ctx.globalAlpha = 1;
-        const streakN = gfxQuality >= 2 ? 7 : 4;
-        for (let i = 0; i < streakN; i++) {
-            const px = ((i * 163.7 + sunPhase * (9 + i * 1.4)) % (viewW + 120)) - 60;
-            const py = viewH * (0.13 + (i % 5) * 0.11)
-                + Math.sin(sunPhase * 0.3 + i) * 10;
-            const rw = 50 + (i % 3) * 28;
-            const rh = 5 + (i % 2) * 3;
-            const g = ctx.createRadialGradient(px, py, 0, px, py, rw);
-            const a = 0.055 + pulse * 0.035 + (i % 3) * 0.009;
-            g.addColorStop(0, `rgba(255, 245, 190, ${a})`);
-            g.addColorStop(0.42, `rgba(255, 215, 120, ${a * 0.45})`);
-            g.addColorStop(1, "rgba(220, 160, 50, 0)");
-            ctx.fillStyle = g;
-            ctx.beginPath();
-            ctx.ellipse(px, py, rw, rh, (i * 0.35) + Math.sin(sunPhase * 0.2 + i) * 0.12, 0, Math.PI * 2);
-            ctx.fill();
-        }
-    }
 
     ctx.restore();
 }
@@ -4149,18 +4245,61 @@ function drawCattails(ctx, t, dt) {
         ctx.save();
         ctx.translate(c.x, c.y);
         ctx.rotate(c.ang + sway);
-        const g = Math.floor(65 + c.green * 85);
-        ctx.strokeStyle = `rgba(${35 + g * 0.15},${g},${50 + g * 0.1},0.78)`;
-        ctx.lineWidth = 2.2;
-        ctx.lineCap = "round";
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.quadraticCurveTo(5 + sway * 12, -c.h * 0.5, sway * 14, -c.h);
-        ctx.stroke();
-        ctx.fillStyle = "rgba(105,75,38,0.82)";
-        ctx.beginPath();
-        ctx.ellipse(sway * 14, -c.h * 0.82, 3.8, 11, sway, 0, Math.PI * 2);
-        ctx.fill();
+        if (crystalMode) {
+            const tipX = sway * 10;
+            const tipY = -c.h;
+            const g = ctx.createLinearGradient(0, 0, tipX, tipY);
+            g.addColorStop(0, "rgba(70,90,170,0.5)");
+            g.addColorStop(0.55, "rgba(150,120,220,0.8)");
+            g.addColorStop(1, "rgba(200,240,255,0.92)");
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.moveTo(-2.6, 0);
+            ctx.lineTo(tipX * 0.15, tipY * 0.92);
+            ctx.lineTo(2.8, 0);
+            ctx.closePath();
+            ctx.fill();
+            ctx.fillStyle = "rgba(210,180,255,0.7)";
+            ctx.beginPath();
+            ctx.moveTo(tipX * 0.05, tipY * 0.62);
+            ctx.lineTo(tipX * 0.15, tipY * 0.92);
+            ctx.lineTo(tipX * 0.7, tipY * 0.68);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = "rgba(230,220,255,0.35)";
+            ctx.lineWidth = 0.8;
+            ctx.stroke();
+        } else if (nightMode) {
+            const g = Math.floor(50 + c.green * 70);
+            ctx.strokeStyle = `rgba(${28 + g * 0.12},${48 + g * 0.3},${68 + g * 0.45},0.8)`;
+            ctx.lineWidth = 1.9;
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.quadraticCurveTo(4 + sway * 10, -c.h * 0.5, sway * 11, -c.h);
+            ctx.stroke();
+            ctx.fillStyle = "rgba(90,100,120,0.78)";
+            ctx.beginPath();
+            ctx.ellipse(sway * 11, -c.h * 0.82, 3.2, 9, sway, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "rgba(180,200,230,0.18)";
+            ctx.beginPath();
+            ctx.ellipse(sway * 11, -c.h * 0.82, 1.6, 4, sway, 0, Math.PI * 2);
+            ctx.fill();
+        } else {
+            const g = Math.floor(65 + c.green * 85);
+            ctx.strokeStyle = `rgba(${35 + g * 0.15},${g},${50 + g * 0.1},0.78)`;
+            ctx.lineWidth = 2.2;
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.quadraticCurveTo(5 + sway * 12, -c.h * 0.5, sway * 14, -c.h);
+            ctx.stroke();
+            ctx.fillStyle = "rgba(105,75,38,0.82)";
+            ctx.beginPath();
+            ctx.ellipse(sway * 14, -c.h * 0.82, 3.8, 11, sway, 0, Math.PI * 2);
+            ctx.fill();
+        }
         ctx.restore();
     }
 }
@@ -4174,18 +4313,37 @@ function drawDuckweed(ctx, t, dt) {
         ctx.save();
         ctx.translate(d.x, d.y + bob);
         ctx.rotate(d.rot);
-        ctx.globalAlpha = 0.58;
+        ctx.globalAlpha = crystalMode ? 0.7 : nightMode ? 0.52 : 0.58;
         for (let i = 0; i < d.density; i++) {
             const a = (i / d.density) * Math.PI * 2 + d.bob;
             const rr = d.r * (0.25 + (i % 3) * 0.12);
             const px = Math.cos(a) * d.r * 0.45;
             const py = Math.sin(a) * d.r * 0.35;
-            ctx.fillStyle = i % 2 ? "rgba(90,140,70,0.78)" : "rgba(60,110,55,0.72)";
             ctx.save();
             ctx.translate(px, py);
             ctx.rotate(a);
-            pathOrganicOval(ctx, rr * 0.55, rr * 0.38, 7, null, 0.22);
-            ctx.fill();
+            if (crystalMode) {
+                ctx.fillStyle = i % 2 ? "rgba(180,140,255,0.75)" : "rgba(110,190,230,0.7)";
+                ctx.beginPath();
+                ctx.moveTo(0, -rr * 0.55);
+                ctx.lineTo(rr * 0.45, 0);
+                ctx.lineTo(0, rr * 0.55);
+                ctx.lineTo(-rr * 0.45, 0);
+                ctx.closePath();
+                ctx.fill();
+            } else if (nightMode) {
+                ctx.fillStyle = i % 2 ? "rgba(120,150,170,0.7)" : "rgba(80,110,130,0.65)";
+                pathOrganicOval(ctx, rr * 0.5, rr * 0.34, 7, null, 0.22);
+                ctx.fill();
+                ctx.fillStyle = "rgba(200,230,255,0.16)";
+                ctx.beginPath();
+                ctx.ellipse(0, 0, rr * 0.22, rr * 0.14, 0, 0, Math.PI * 2);
+                ctx.fill();
+            } else {
+                ctx.fillStyle = i % 2 ? "rgba(90,140,70,0.78)" : "rgba(60,110,55,0.72)";
+                pathOrganicOval(ctx, rr * 0.55, rr * 0.38, 7, null, 0.22);
+                ctx.fill();
+            }
             ctx.restore();
         }
         ctx.restore();
@@ -4202,23 +4360,57 @@ function drawLeaves(ctx, t, dt) {
         ctx.translate(L.x, L.y + bob);
         ctx.rotate(L.rot + lift * 0.06);
         ctx.globalAlpha = 0.72;
-        const c = Math.floor(90 + L.tone * 70);
-        ctx.fillStyle = `rgba(${c},${Math.floor(c * 0.7)},${Math.floor(c * 0.25)},0.8)`;
-        ctx.beginPath();
-        ctx.moveTo(-L.len * 0.85, 0);
-        ctx.quadraticCurveTo(-L.len * 0.2, -L.len * 0.55, L.len * 0.75, -L.len * 0.08);
-        ctx.quadraticCurveTo(L.len * 0.95, 0, L.len * 0.75, L.len * 0.1);
-        ctx.quadraticCurveTo(-L.len * 0.15, L.len * 0.5, -L.len * 0.85, 0);
-        ctx.closePath();
-        ctx.fill();
-        ctx.strokeStyle = `rgba(${c - 30},${Math.floor(c * 0.5)},20,0.5)`;
-        ctx.lineWidth = 0.8;
-        ctx.beginPath();
-        ctx.moveTo(-L.len * 0.7, 0);
-        ctx.quadraticCurveTo(0, L.len * 0.04, L.len * 0.7, 0);
-        ctx.moveTo(-L.len * 0.15, -L.len * 0.15);
-        ctx.quadraticCurveTo(L.len * 0.1, 0, L.len * 0.35, L.len * 0.12);
-        ctx.stroke();
+        if (crystalMode) {
+            const g = ctx.createLinearGradient(-L.len, 0, L.len, 0);
+            g.addColorStop(0, "rgba(140,100,220,0.7)");
+            g.addColorStop(0.5, "rgba(210,190,255,0.85)");
+            g.addColorStop(1, "rgba(90,170,220,0.7)");
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.moveTo(-L.len * 0.7, 0);
+            ctx.lineTo(0, -L.len * 0.45);
+            ctx.lineTo(L.len * 0.75, 0);
+            ctx.lineTo(0, L.len * 0.4);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = "rgba(240,230,255,0.4)";
+            ctx.lineWidth = 0.8;
+            ctx.stroke();
+        } else if (nightMode) {
+            const c = Math.floor(70 + L.tone * 60);
+            ctx.fillStyle = `rgba(${c * 0.7},${c * 0.85},${c + 20},0.78)`;
+            ctx.beginPath();
+            ctx.moveTo(-L.len * 0.85, 0);
+            ctx.quadraticCurveTo(-L.len * 0.2, -L.len * 0.55, L.len * 0.75, -L.len * 0.08);
+            ctx.quadraticCurveTo(L.len * 0.95, 0, L.len * 0.75, L.len * 0.1);
+            ctx.quadraticCurveTo(-L.len * 0.15, L.len * 0.5, -L.len * 0.85, 0);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = `rgba(${c - 20},${c},${c + 30},0.4)`;
+            ctx.lineWidth = 0.8;
+            ctx.beginPath();
+            ctx.moveTo(-L.len * 0.7, 0);
+            ctx.quadraticCurveTo(0, L.len * 0.04, L.len * 0.7, 0);
+            ctx.stroke();
+        } else {
+            const c = Math.floor(90 + L.tone * 70);
+            ctx.fillStyle = `rgba(${c},${Math.floor(c * 0.7)},${Math.floor(c * 0.25)},0.8)`;
+            ctx.beginPath();
+            ctx.moveTo(-L.len * 0.85, 0);
+            ctx.quadraticCurveTo(-L.len * 0.2, -L.len * 0.55, L.len * 0.75, -L.len * 0.08);
+            ctx.quadraticCurveTo(L.len * 0.95, 0, L.len * 0.75, L.len * 0.1);
+            ctx.quadraticCurveTo(-L.len * 0.15, L.len * 0.5, -L.len * 0.85, 0);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = `rgba(${c - 30},${Math.floor(c * 0.5)},20,0.5)`;
+            ctx.lineWidth = 0.8;
+            ctx.beginPath();
+            ctx.moveTo(-L.len * 0.7, 0);
+            ctx.quadraticCurveTo(0, L.len * 0.04, L.len * 0.7, 0);
+            ctx.moveTo(-L.len * 0.15, -L.len * 0.15);
+            ctx.quadraticCurveTo(L.len * 0.1, 0, L.len * 0.35, L.len * 0.12);
+            ctx.stroke();
+        }
         ctx.restore();
     }
 }
@@ -5014,6 +5206,750 @@ function drawFrogModel(ctx, frog, alpha) {
     ctx.restore();
 }
 
+// Pond axolotl: frog-cousin silhouette (not a recycled fish oval).
+// Soft salamander body, feathery external gills, diagonal paddle gait, flat tail.
+function drawPacifistAxolotlModel(ctx, p, alpha) {
+    const S = p.size;
+    const limb = p.limbPhase || 0;
+    const gill = p.gillPhase || 0;
+    const breath = 1 + Math.sin(p.breath || 0) * 0.045;
+    const petting = (p.petTimer || 0) > 0;
+    const tamed = !!p.tamed;
+    // Diagonal walk: front-left with hind-right, opposite pair out of phase.
+    const gaitA = 0.5 + 0.5 * Math.sin(limb);
+    const gaitB = 0.5 + 0.5 * Math.sin(limb + Math.PI);
+    const bodyWiggle = Math.sin(limb * 0.85) * 0.08;
+
+    const r = tamed ? 248 : 232;
+    const g = tamed ? 170 : 130;
+    const b = tamed ? 190 : 160;
+    const bellyR = 255;
+    const bellyG = 230;
+    const bellyB = 235;
+
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.dir + bodyWiggle);
+    ctx.globalAlpha = (alpha == null ? 0.94 : alpha);
+    if (p.rainbowMood > 0) {
+        const hue = (performance.now() * 0.18) % 360;
+        ctx.shadowColor = `hsla(${hue}, 90%, 65%, 0.8)`;
+        ctx.shadowBlur = gfxQuality <= 0 ? 0 : 16;
+    } else if (p.isPink) {
+        ctx.shadowColor = "rgba(255,140,190,0.7)";
+        ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
+    } else if (tamed) {
+        ctx.shadowColor = "rgba(255,180,210,0.55)";
+        ctx.shadowBlur = gfxQuality <= 0 ? 0 : 12;
+    }
+
+    // Soft underwater shadow.
+    ctx.fillStyle = "rgba(40,20,30,0.18)";
+    ctx.beginPath();
+    ctx.ellipse(-S * 0.05, S * 0.42, S * 1.05, S * 0.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Flat paddle tail (undulates opposite the limbs).
+    const tw = Math.sin(limb * 1.1 + 0.4) * 0.35;
+    ctx.fillStyle = `rgba(${r - 20},${g - 30},${b - 20},0.88)`;
+    ctx.beginPath();
+    ctx.moveTo(-S * 0.42, 0);
+    ctx.bezierCurveTo(
+        -S * 0.62, -S * (0.22 + tw * 0.15),
+        -S * 0.88, -S * (0.38 + tw * 0.35),
+        -S * 1.12, -S * (0.08 + tw * 0.2)
+    );
+    ctx.quadraticCurveTo(-S * 0.95, 0, -S * 1.12, S * (0.08 - tw * 0.2));
+    ctx.bezierCurveTo(
+        -S * 0.88, S * (0.38 - tw * 0.35),
+        -S * 0.62, S * (0.22 - tw * 0.15),
+        -S * 0.42, 0
+    );
+    ctx.fill();
+    // Tail fin membrane.
+    ctx.fillStyle = `rgba(${bellyR},${bellyG - 20},${bellyB},0.35)`;
+    ctx.beginPath();
+    ctx.moveTo(-S * 0.5, 0);
+    ctx.quadraticCurveTo(-S * 0.85, -S * (0.28 + tw * 0.2), -S * 1.05, 0);
+    ctx.quadraticCurveTo(-S * 0.85, S * (0.28 - tw * 0.2), -S * 0.5, 0);
+    ctx.fill();
+
+    // Hind limbs (frog-cousin paddles, diagonal timing).
+    const drawLimb = (side, along, gait, isHind) => {
+        const reach = isHind ? (0.15 + gait * 0.55) : (0.1 + gait * 0.4);
+        const tuck = isHind ? (-0.28 - gait * 0.35) : (0.12 - gait * 0.2);
+        const spread = side * S * (0.22 + gait * 0.35);
+        const baseX = S * along;
+        const baseY = side * S * (isHind ? 0.12 : 0.1);
+        const tipX = S * tuck;
+        const tipY = spread;
+        ctx.fillStyle = `rgba(${r - 15},${g - 25},${b - 15},0.9)`;
+        ctx.beginPath();
+        ctx.moveTo(baseX, baseY * 0.4);
+        ctx.quadraticCurveTo(
+            (baseX + tipX) * 0.5,
+            side * S * (0.28 + gait * 0.12),
+            tipX,
+            tipY
+        );
+        ctx.quadraticCurveTo(
+            tipX + S * 0.08,
+            tipY * 0.35,
+            baseX - S * 0.05,
+            0
+        );
+        ctx.closePath();
+        ctx.fill();
+        // Tiny digit flare (not frog webbing copy).
+        ctx.strokeStyle = `rgba(${r - 40},${g - 50},${b - 30},0.55)`;
+        ctx.lineWidth = Math.max(1, S * 0.025);
+        ctx.lineCap = "round";
+        for (let d = -1; d <= 1; d++) {
+            ctx.beginPath();
+            ctx.moveTo(tipX, tipY * 0.9);
+            ctx.lineTo(
+                tipX - S * (0.12 + reach * 0.12),
+                tipY + d * S * 0.1 * side
+            );
+            ctx.stroke();
+        }
+    };
+    drawLimb(1, -0.15, gaitA, true);
+    drawLimb(-1, -0.15, gaitB, true);
+    drawLimb(1, 0.18, gaitB, false);
+    drawLimb(-1, 0.18, gaitA, false);
+
+    // Soft fusiform body (wider than frog, flatter belly).
+    const bodyG = ctx.createLinearGradient(0, -S * 0.32, 0, S * 0.32);
+    bodyG.addColorStop(0, `rgba(${Math.min(255, r + 18)},${Math.min(255, g + 25)},${Math.min(255, b + 20)},0.96)`);
+    bodyG.addColorStop(0.45, `rgba(${r},${g},${b},0.94)`);
+    bodyG.addColorStop(1, `rgba(${bellyR},${bellyG},${bellyB},0.92)`);
+    ctx.fillStyle = bodyG;
+    ctx.beginPath();
+    ctx.moveTo(S * 0.62, 0);
+    ctx.bezierCurveTo(S * 0.42, -S * 0.34 * breath, -S * 0.05, -S * 0.38 * breath, -S * 0.48, -S * 0.14);
+    ctx.bezierCurveTo(-S * 0.62, 0, -S * 0.48, S * 0.16, -S * 0.12, S * 0.3);
+    ctx.bezierCurveTo(S * 0.22, S * 0.36, S * 0.48, S * 0.26, S * 0.62, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Soft mottling.
+    ctx.fillStyle = `rgba(${r - 35},${g - 45},${b - 25},0.22)`;
+    for (const [sx, sy, sr] of [[0.12, -0.1, 0.09], [-0.18, 0.08, 0.07], [0.32, 0.06, 0.055], [-0.32, -0.04, 0.06]]) {
+        ctx.beginPath();
+        ctx.ellipse(S * sx, S * sy, S * sr, S * sr * 0.7, 0.15, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Broad axolotl head (blunter than a frog snout).
+    ctx.fillStyle = `rgba(${Math.min(255, r + 12)},${Math.min(255, g + 18)},${Math.min(255, b + 14)},0.96)`;
+    ctx.beginPath();
+    ctx.ellipse(S * 0.48, -S * 0.02, S * 0.28, S * 0.24 * breath, -0.08, 0, Math.PI * 2);
+    ctx.fill();
+    // Soft smile line.
+    ctx.strokeStyle = `rgba(${r - 60},${g - 70},${b - 40},0.35)`;
+    ctx.lineWidth = Math.max(1, S * 0.02);
+    ctx.beginPath();
+    ctx.arc(S * 0.52, S * 0.02, S * 0.1, 0.15, Math.PI - 0.15);
+    ctx.stroke();
+
+    // External gill stalks: oversized feathery crowns (the axolotl tell).
+    for (const side of [-1, 1]) {
+        for (let i = 0; i < 3; i++) {
+            const sway = Math.sin(gill * 1.4 + i * 0.9 + side) * 0.28;
+            const baseX = S * (0.28 + i * 0.03);
+            const baseY = side * S * 0.1;
+            const midX = S * (0.42 + i * 0.08 + sway * 0.1);
+            const midY = side * S * (0.7 + i * 0.22 + Math.abs(sway) * 0.15);
+            const tipX = S * (0.22 + i * 0.05);
+            const tipY = side * S * (1.25 + i * 0.28 + sway * 0.25);
+            ctx.strokeStyle = tamed
+                ? `rgba(255,120,165,${0.9 - i * 0.08})`
+                : `rgba(220,80,120,${0.88 - i * 0.08})`;
+            ctx.lineWidth = Math.max(2.2, S * (0.065 - i * 0.008));
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            ctx.moveTo(baseX, baseY);
+            ctx.quadraticCurveTo(midX, midY, tipX, tipY);
+            ctx.stroke();
+            // Dense feather filaments.
+            ctx.lineWidth = Math.max(1, S * 0.022);
+            for (let f = 0; f < 6; f++) {
+                const t = (f + 1) / 7;
+                const fx = baseX + (tipX - baseX) * t;
+                const fy = baseY + (tipY - baseY) * t;
+                const flap = Math.sin(gill * 2.4 + f + i) * S * 0.08;
+                ctx.beginPath();
+                ctx.moveTo(fx, fy);
+                ctx.lineTo(fx - S * 0.06, fy + side * (S * 0.12 + flap));
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(fx, fy);
+                ctx.lineTo(fx + S * 0.03, fy + side * (S * 0.1 + flap * 0.7));
+                ctx.stroke();
+            }
+        }
+    }
+
+    // Lidless eye on the upper head.
+    const ex = S * 0.52;
+    const ey = -S * 0.16;
+    ctx.fillStyle = `rgba(${Math.min(255, r + 20)},${Math.min(255, g + 30)},${Math.min(255, b + 20)},0.95)`;
+    ctx.beginPath();
+    ctx.ellipse(ex, ey, S * 0.09, S * 0.085, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if ((p.blink || 0) > 0.02 || petting) {
+        ctx.strokeStyle = "rgba(60,30,40,0.85)";
+        ctx.lineWidth = Math.max(1.1, S * 0.045);
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(ex - S * 0.06, ey);
+        ctx.quadraticCurveTo(ex, ey + S * 0.025, ex + S * 0.06, ey);
+        ctx.stroke();
+    } else {
+        ctx.fillStyle = "rgba(250,245,248,0.95)";
+        ctx.beginPath();
+        ctx.ellipse(ex, ey, S * 0.055, S * 0.05, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = tamed ? "rgba(50,80,110,0.95)" : "rgba(30,25,35,0.95)";
+        ctx.beginPath();
+        ctx.arc(ex + S * 0.01, ey, S * 0.028, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.7)";
+        ctx.beginPath();
+        ctx.arc(ex, ey - S * 0.015, S * 0.012, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    if (tamed) {
+        ctx.globalCompositeOperation = "lighter";
+        ctx.fillStyle = "rgba(255,200,220,0.16)";
+        ctx.beginPath();
+        ctx.ellipse(-S * 0.05, 0, S * 0.9, S * 0.4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalCompositeOperation = "source-over";
+    }
+    ctx.restore();
+}
+
+// Garden / lumen: side-swim octopus. Round mantle forward, thick arms trailing back.
+function drawPacifistOctopusHelper(ctx, p, alpha) {
+    const S = p.size;
+    const pulse = 1 + Math.sin(p.mantlePulse || 0) * 0.06;
+    const crystal = p.kind === "lumen";
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.dir);
+    ctx.globalAlpha = alpha == null ? 0.94 : alpha;
+    if (p.tamed) {
+        ctx.shadowColor = crystal ? "rgba(180,140,255,0.7)" : "rgba(90,180,160,0.55)";
+        ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
+    }
+
+    const armFill = crystal
+        ? (p.tamed ? "#a070d8" : "#7048b0")
+        : (p.tamed ? "#48a888" : "#2f6a58");
+    const mantleA = crystal ? "#f0e8ff" : "#80c8b0";
+    const mantleB = crystal ? "#a070d8" : "#388870";
+    const mantleC = crystal ? "#503088" : "#1a5040";
+
+    // Hard local-space trailing tentacles (never a radial urchin or tadpole cone).
+    for (let i = 0; i < 8; i++) {
+        const t = (i - 3.5) / 3.5;
+        const phase = (p.legs && p.legs[i] && p.legs[i].phase) || (p.mantlePulse || 0) + i;
+        const wave = Math.sin(phase) * 0.3;
+        const rootY = t * S * 0.38;
+        const midX = -S * (0.35 + Math.abs(t) * 0.05);
+        const midY = rootY * 1.15 + wave * S * 0.45;
+        const tipX = -S * (0.95 + Math.abs(t) * 0.2);
+        const tipY = rootY * 1.35 + Math.sin(phase * 1.4) * S * 0.4;
+        // Filled tapered arm so each tentacle reads as its own limb.
+        ctx.fillStyle = armFill;
+        ctx.beginPath();
+        ctx.moveTo(S * 0.05, rootY - S * 0.04);
+        ctx.quadraticCurveTo(midX, midY - S * 0.05, tipX, tipY);
+        ctx.quadraticCurveTo(midX, midY + S * 0.05, S * 0.05, rootY + S * 0.04);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = crystal ? "rgba(240,220,255,0.6)" : "rgba(230,210,190,0.6)";
+        for (let s = 1; s <= 3; s++) {
+            const u = s / 4;
+            const sx = midX * (1 - u) + tipX * u;
+            const sy = midY * (1 - u) + tipY * u;
+            ctx.beginPath();
+            ctx.arc(sx, sy + S * 0.02, Math.max(1.6, S * 0.032), 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    // Mantle bulb sits clearly in FRONT of the arm cluster.
+    const g = ctx.createLinearGradient(0, -S * 0.45, 0, S * 0.4);
+    g.addColorStop(0, mantleA);
+    g.addColorStop(0.55, mantleB);
+    g.addColorStop(1, mantleC);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(S * 0.28, 0, S * 0.42 * pulse, S * 0.36 * pulse, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Siphon under mantle.
+    ctx.beginPath();
+    ctx.ellipse(S * 0.05, S * 0.24, S * 0.1, S * 0.15, 0.45, 0, Math.PI * 2);
+    ctx.fill();
+    // Eye with horizontal pupil.
+    ctx.fillStyle = "rgba(250,252,255,0.95)";
+    ctx.beginPath();
+    ctx.ellipse(S * 0.38, -S * 0.08, S * 0.08, S * 0.09, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if ((p.petTimer || 0) > 0 || (p.blink || 0) > 0.02) {
+        ctx.strokeStyle = "rgba(20,30,40,0.8)";
+        ctx.lineWidth = Math.max(1.4, S * 0.03);
+        ctx.beginPath();
+        ctx.moveTo(S * 0.32, -S * 0.08);
+        ctx.quadraticCurveTo(S * 0.38, -S * 0.03, S * 0.44, -S * 0.08);
+        ctx.stroke();
+    } else {
+        ctx.fillStyle = "rgba(20,30,40,0.92)";
+        ctx.beginPath();
+        ctx.arc(S * 0.4, -S * 0.08, S * 0.04, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(250,252,255,0.9)";
+        ctx.fillRect(S * 0.35, -S * 0.085, S * 0.085, S * 0.015);
+    }
+    if (crystal) {
+        ctx.strokeStyle = "rgba(255,255,255,0.4)";
+        ctx.lineWidth = 1.2;
+        for (let i = 0; i < 3; i++) {
+            ctx.beginPath();
+            ctx.moveTo(S * (0.12 + i * 0.12), -S * 0.26 * pulse);
+            ctx.lineTo(S * (0.08 + i * 0.12), S * 0.22 * pulse);
+            ctx.stroke();
+        }
+    }
+    ctx.restore();
+}
+
+// Beluga: white melon head, chubby body, NO dorsal fin, paddle flipper, fluke.
+function drawPacifistBelugaHelper(ctx, p, alpha) {
+    const L = p.size;
+    const W = L * 0.36;
+    const limb = p.limbPhase || 0;
+    const fluke = Math.sin(limb) * 0.28;
+    const breath = 1 + Math.sin(p.breath || 0) * 0.03;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.dir);
+    ctx.globalAlpha = alpha == null ? 0.94 : alpha;
+    if (p.tamed) {
+        ctx.shadowColor = "rgba(200,230,255,0.7)";
+        ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
+    }
+    const g = ctx.createLinearGradient(0, -W, 0, W);
+    g.addColorStop(0, "#ffffff");
+    g.addColorStop(0.5, p.tamed ? "#eef6ff" : "#f7fafc");
+    g.addColorStop(1, "#c5d0dc");
+    ctx.fillStyle = g;
+    // One continuous white body into melon (not stacked blobs).
+    ctx.beginPath();
+    ctx.moveTo(L * 0.55, W * 0.05);
+    ctx.bezierCurveTo(L * 0.45, -W * 0.95 * breath, L * 0.05, -W * 1.15 * breath, -L * 0.35, -W * 0.45);
+    ctx.quadraticCurveTo(-L * 0.48, 0, -L * 0.35, W * 0.4);
+    ctx.bezierCurveTo(L * 0.0, W * 0.95, L * 0.28, W * 0.7, L * 0.55, W * 0.15);
+    ctx.closePath();
+    ctx.fill();
+    // Horizontal whale fluke (critical beluga/whale cue).
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.32, 0);
+    ctx.quadraticCurveTo(-L * 0.65, -W * (1.35 + fluke), -L * 1.08, -W * 0.08);
+    ctx.lineTo(-L * 0.7, 0);
+    ctx.lineTo(-L * 1.08, W * 0.08);
+    ctx.quadraticCurveTo(-L * 0.65, W * (1.35 - fluke), -L * 0.32, 0);
+    ctx.fill();
+    // Melon bump on the forehead only.
+    ctx.beginPath();
+    ctx.ellipse(L * 0.28, -W * 0.35, L * 0.22, W * 0.55, -0.2, 0, Math.PI);
+    ctx.fill();
+    // Tiny snout under melon.
+    ctx.beginPath();
+    ctx.ellipse(L * 0.48, W * 0.12, L * 0.12, W * 0.28, 0.15, 0, Math.PI * 2);
+    ctx.fill();
+    // Paddle flipper (no dorsal anywhere).
+    ctx.beginPath();
+    ctx.ellipse(L * 0.0, W * 0.8, L * 0.2, W * 0.4, 0.55, 0, Math.PI * 2);
+    ctx.fill();
+    // Low dark eye.
+    ctx.fillStyle = "rgba(35,45,55,0.92)";
+    ctx.beginPath();
+    ctx.arc(L * 0.36, W * 0.02, Math.max(2.2, L * 0.03), 0, Math.PI * 2);
+    ctx.fill();
+    if ((p.petTimer || 0) > 0) {
+        ctx.strokeStyle = "rgba(40,50,60,0.75)";
+        ctx.lineWidth = Math.max(1.2, L * 0.02);
+        ctx.beginPath();
+        ctx.moveTo(L * 0.3, W * 0.02);
+        ctx.quadraticCurveTo(L * 0.36, W * 0.07, L * 0.42, W * 0.02);
+        ctx.stroke();
+    }
+    ctx.restore();
+}
+
+// Song whale: dark bulk, tall dorsal, throat grooves, wide fluke.
+function drawPacifistWhaleHelper(ctx, p, alpha) {
+    const L = p.size;
+    const W = L * 0.34;
+    const limb = p.limbPhase || 0;
+    const pulse = p.mantlePulse || 0;
+    const fluke = Math.sin(limb) * 0.3;
+    const breath = 1 + Math.sin(p.breath || 0) * 0.03;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.dir);
+    ctx.globalAlpha = alpha == null ? 0.94 : alpha;
+    if (p.tamed) {
+        ctx.shadowColor = "rgba(120,180,220,0.65)";
+        ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
+    }
+    const g = ctx.createLinearGradient(0, -W, 0, W);
+    g.addColorStop(0, "#7a9aac");
+    g.addColorStop(0.45, p.tamed ? "#4a7088" : "#2f4a5c");
+    g.addColorStop(1, "#d8e4ec");
+    ctx.fillStyle = g;
+    // Wide horizontal fluke.
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.4, 0);
+    ctx.quadraticCurveTo(-L * 0.72, -W * (1.35 + fluke), -L * 1.1, -W * 0.12);
+    ctx.lineTo(-L * 0.75, 0);
+    ctx.lineTo(-L * 1.1, W * 0.12);
+    ctx.quadraticCurveTo(-L * 0.72, W * (1.35 - fluke), -L * 0.4, 0);
+    ctx.fill();
+    // Massive body.
+    ctx.beginPath();
+    ctx.moveTo(L * 0.45, 0);
+    ctx.bezierCurveTo(L * 0.2, -W * 1.05 * breath, -L * 0.15, -W * 1.1 * breath, -L * 0.4, -W * 0.4);
+    ctx.quadraticCurveTo(-L * 0.48, 0, -L * 0.4, W * 0.4);
+    ctx.bezierCurveTo(-L * 0.15, W * 1.05, L * 0.2, W * 0.95, L * 0.45, 0);
+    ctx.fill();
+    // Tall dorsal fin.
+    const dH = 1.7 + Math.sin(pulse) * 0.1;
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.02, -W * 0.7);
+    ctx.quadraticCurveTo(L * 0.08, -W * dH, L * 0.28, -W * 0.75);
+    ctx.quadraticCurveTo(L * 0.1, -W * 0.95, -L * 0.02, -W * 0.7);
+    ctx.fill();
+    // Throat grooves: short belly lines only (never forward whiskers).
+    ctx.strokeStyle = "rgba(220,230,240,0.35)";
+    ctx.lineWidth = 1.2;
+    const open = 0.08 + Math.sin(pulse) * 0.04;
+    for (let i = 0; i < 4; i++) {
+        ctx.beginPath();
+        ctx.moveTo(-L * 0.05, W * (0.25 + i * 0.14));
+        ctx.quadraticCurveTo(L * 0.12, W * (0.28 + i * 0.14 + open), L * 0.28, W * (0.22 + i * 0.12));
+        ctx.stroke();
+    }
+    // Pec fin.
+    ctx.beginPath();
+    ctx.ellipse(L * 0.05, W * 0.85, L * 0.22, W * 0.45, 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    // Blowhole on top.
+    ctx.fillStyle = "rgba(20,30,40,0.45)";
+    ctx.beginPath();
+    ctx.ellipse(L * 0.15, -W * 0.6, L * 0.05, L * 0.025, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Eye.
+    ctx.fillStyle = "rgba(250,252,255,0.95)";
+    ctx.beginPath();
+    ctx.ellipse(L * 0.28, -W * 0.15, Math.max(2.2, L * 0.035), Math.max(2.4, L * 0.04), 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(20,30,40,0.92)";
+    ctx.beginPath();
+    ctx.arc(L * 0.29, -W * 0.15, Math.max(1.1, L * 0.018), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+}
+
+// Softshell turtle: domed shell, long neck, clear flippers.
+function drawPacifistTurtleHelper(ctx, p, alpha) {
+    const L = p.size;
+    const W = L * 0.4;
+    const kick = p.kick || 0.4;
+    const neck = p.neckReach || 0.4;
+    const crystal = p.kind === "prism";
+    const breath = 1 + Math.sin(p.breath || 0) * 0.03;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.dir);
+    ctx.globalAlpha = alpha == null ? 0.94 : alpha;
+    if (p.tamed) {
+        ctx.shadowColor = crystal ? "rgba(160,200,255,0.65)" : "rgba(140,200,120,0.55)";
+        ctx.shadowBlur = gfxQuality <= 0 ? 0 : 12;
+    }
+    const g = ctx.createLinearGradient(0, -W, 0, W);
+    if (crystal) {
+        g.addColorStop(0, "#d0e8ff");
+        g.addColorStop(0.5, p.tamed ? "#90c0e8" : "#70a0d0");
+        g.addColorStop(1, "#4060a0");
+    } else {
+        g.addColorStop(0, "#c8d8a8");
+        g.addColorStop(0.5, p.tamed ? "#88a868" : "#6a8850");
+        g.addColorStop(1, "#3a5028");
+    }
+    ctx.fillStyle = g;
+
+    // Four flippers (turtle cue).
+    const flipA = kick;
+    const flipB = 1 - kick;
+    for (const [along, side, f] of [
+        [0.05, 1, flipA], [-0.05, -1, flipB], [-0.28, 1, flipB], [-0.28, -1, flipA],
+    ]) {
+        ctx.beginPath();
+        ctx.ellipse(
+            L * (along - f * 0.12),
+            side * W * (0.95 + f * 0.1),
+            L * (0.2 + f * 0.06),
+            W * 0.38,
+            side * (0.55 + f * 0.2),
+            0, Math.PI * 2
+        );
+        ctx.fill();
+    }
+
+    // Domed carapace.
+    ctx.beginPath();
+    ctx.moveTo(L * 0.32, 0);
+    ctx.bezierCurveTo(L * 0.15, -W * 1.35 * breath, -L * 0.2, -W * 1.4 * breath, -L * 0.42, -W * 0.25);
+    ctx.quadraticCurveTo(-L * 0.5, 0, -L * 0.42, W * 0.25);
+    ctx.bezierCurveTo(-L * 0.2, W * 1.15, L * 0.15, W * 1.1, L * 0.32, 0);
+    ctx.fill();
+    // Plastron hint under shell.
+    ctx.fillStyle = crystal ? "rgba(220,235,255,0.35)" : "rgba(200,210,160,0.35)";
+    ctx.beginPath();
+    ctx.ellipse(0, W * 0.15, L * 0.32, W * 0.55, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = g;
+    // Scutes.
+    ctx.strokeStyle = crystal ? "rgba(255,255,255,0.4)" : "rgba(40,60,30,0.4)";
+    ctx.lineWidth = 1.3;
+    for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 - Math.PI * 0.5;
+        ctx.beginPath();
+        ctx.moveTo(0, -W * 0.05);
+        ctx.lineTo(Math.cos(a) * L * 0.3, Math.sin(a) * W * 0.95);
+        ctx.stroke();
+    }
+    // Thick continuous neck (never a floating head).
+    const neckLen = L * (0.42 + neck * 0.35);
+    ctx.beginPath();
+    ctx.moveTo(L * 0.22, -W * 0.12);
+    ctx.quadraticCurveTo(L * 0.4, -W * 0.18, L * 0.28 + neckLen * 0.55, -W * 0.06);
+    ctx.lineTo(L * 0.28 + neckLen, 0);
+    ctx.lineTo(L * 0.28 + neckLen * 0.55, W * 0.1);
+    ctx.quadraticCurveTo(L * 0.4, W * 0.16, L * 0.22, W * 0.14);
+    ctx.closePath();
+    ctx.fill();
+    // Softshell snorkel snout.
+    ctx.beginPath();
+    ctx.ellipse(L * 0.28 + neckLen, 0, L * 0.14, W * 0.32, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(L * 0.28 + neckLen + L * 0.1, 0, L * 0.08, W * 0.16, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Eye on head.
+    ctx.fillStyle = "rgba(250,252,255,0.95)";
+    const ex = L * 0.28 + neckLen - L * 0.02;
+    const ey = -W * 0.12;
+    ctx.beginPath();
+    ctx.ellipse(ex, ey, Math.max(2, L * 0.04), Math.max(2.2, L * 0.045), 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(20,30,40,0.92)";
+    ctx.beginPath();
+    ctx.arc(ex + L * 0.01, ey, Math.max(1.1, L * 0.02), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+}
+
+// Nurse shark: broad flat head, barbels, spots, two dorsal fins.
+function drawPacifistNurseHelper(ctx, p, alpha) {
+    const L = p.size;
+    const W = L * 0.36;
+    const limb = p.limbPhase || 0;
+    const tw = Math.sin(limb) * 0.25;
+    const pec = Math.sin(limb * 0.9) * 0.12;
+    const crystal = p.kind === "shard";
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.dir);
+    ctx.globalAlpha = alpha == null ? 0.94 : alpha;
+    if (p.tamed) {
+        ctx.shadowColor = crystal ? "rgba(180,140,255,0.65)" : "rgba(200,170,100,0.5)";
+        ctx.shadowBlur = gfxQuality <= 0 ? 0 : 12;
+    }
+    const g = ctx.createLinearGradient(0, -W, 0, W);
+    if (crystal) {
+        g.addColorStop(0, "#e8d8ff");
+        g.addColorStop(0.55, p.tamed ? "#9060c8" : "#6848a0");
+        g.addColorStop(1, "#40a0b8");
+    } else {
+        g.addColorStop(0, "#d8c49a");
+        g.addColorStop(0.55, p.tamed ? "#a88858" : "#8a6a40");
+        g.addColorStop(1, "#5a4830");
+    }
+    ctx.fillStyle = g;
+    // Heterocercal caudal.
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.4, 0);
+    ctx.bezierCurveTo(-L * 0.55, -W * 0.45, -L * 0.8, -W * (1.2 + tw), -L * 1.0, -W * (0.9 + tw));
+    ctx.quadraticCurveTo(-L * 0.7, -W * 0.15, -L * 0.55, 0);
+    ctx.quadraticCurveTo(-L * 0.7, W * 0.2, -L * 0.88, W * (0.6 + tw * 0.3));
+    ctx.bezierCurveTo(-L * 0.72, W * 0.35, -L * 0.52, W * 0.2, -L * 0.4, 0);
+    ctx.fill();
+    // Torpedo body.
+    ctx.beginPath();
+    ctx.moveTo(L * 0.35, 0);
+    ctx.bezierCurveTo(L * 0.15, -W * 0.95, -L * 0.1, -W * 1.05, -L * 0.4, -W * 0.4);
+    ctx.quadraticCurveTo(-L * 0.48, 0, -L * 0.4, W * 0.4);
+    ctx.bezierCurveTo(-L * 0.1, W * 1.0, L * 0.15, W * 0.9, L * 0.35, 0);
+    ctx.fill();
+    // Broad flat nurse head (or shard point).
+    if (crystal) {
+        ctx.beginPath();
+        ctx.moveTo(L * 0.28, -W * 0.35);
+        ctx.lineTo(L * 0.7, 0);
+        ctx.lineTo(L * 0.28, W * 0.35);
+        ctx.fill();
+    } else {
+        ctx.beginPath();
+        ctx.ellipse(L * 0.42, W * 0.06, L * 0.28, W * 0.62, 0.08, 0, Math.PI * 2);
+        ctx.fill();
+        // Barbels under snout.
+        ctx.strokeStyle = "rgba(50,40,25,0.65)";
+        ctx.lineWidth = Math.max(1.4, L * 0.025);
+        ctx.lineCap = "round";
+        for (const side of [-1, 1]) {
+            ctx.beginPath();
+            ctx.moveTo(L * 0.52, side * W * 0.18);
+            ctx.quadraticCurveTo(L * 0.62, side * W * 0.4, L * 0.58, side * W * 0.62);
+            ctx.stroke();
+        }
+    }
+    // Two dorsal fins (nurse shark cue).
+    ctx.beginPath();
+    ctx.moveTo(L * 0.05, -W * 0.7);
+    ctx.lineTo(-L * 0.02, -W * 1.45);
+    ctx.lineTo(-L * 0.18, -W * 0.65);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.22, -W * 0.5);
+    ctx.lineTo(-L * 0.28, -W * 0.95);
+    ctx.lineTo(-L * 0.38, -W * 0.45);
+    ctx.closePath();
+    ctx.fill();
+    // Pectorals.
+    ctx.beginPath();
+    ctx.ellipse(L * 0.02, W * (0.9 + pec), L * 0.26, W * 0.55, 0.45, 0, Math.PI * 2);
+    ctx.ellipse(L * 0.02, -W * (0.75 + pec * 0.4), L * 0.18, W * 0.35, -0.35, 0, Math.PI * 2);
+    ctx.fill();
+    if (!crystal) {
+        ctx.fillStyle = "rgba(40,30,18,0.4)";
+        for (let i = 0; i < 9; i++) {
+            ctx.beginPath();
+            ctx.ellipse((i / 8 - 0.5) * L * 0.7, Math.sin(i * 1.6 + limb) * W * 0.28, L * 0.04, L * 0.03, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    } else {
+        ctx.strokeStyle = "rgba(255,255,255,0.45)";
+        ctx.lineWidth = 1.3;
+        for (let i = 0; i < 4; i++) {
+            ctx.beginPath();
+            ctx.moveTo(L * (0.15 - i * 0.08), -W * 0.5);
+            ctx.lineTo(L * (0.08 - i * 0.08), W * 0.45);
+            ctx.stroke();
+        }
+    }
+    // Eye.
+    ctx.fillStyle = "rgba(250,252,255,0.95)";
+    ctx.beginPath();
+    ctx.ellipse(L * 0.28, -W * 0.22, Math.max(2.2, L * 0.04), Math.max(2.4, L * 0.045), 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(20,30,40,0.92)";
+    ctx.beginPath();
+    ctx.arc(L * 0.29, -W * 0.22, Math.max(1.1, L * 0.02), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+}
+
+// Ribbon sail: long bill + enormous sail = unmistakable sailfish.
+function drawPacifistSailHelper(ctx, p, alpha) {
+    const L = p.size;
+    const W = L * 0.24;
+    const sailT = p.sailWave || p.tailPhase || 0;
+    const sailH = 3.1 + Math.sin(sailT) * 0.45;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.dir);
+    ctx.globalAlpha = alpha == null ? 0.94 : alpha;
+    if (p.tamed || p.rainbowMood > 0) {
+        ctx.shadowColor = "rgba(100,200,255,0.7)";
+        ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
+    }
+    const g = ctx.createLinearGradient(0, -W, 0, W);
+    g.addColorStop(0, "#70c8e8");
+    g.addColorStop(0.45, p.tamed ? "#40a0d0" : "#2a88b8");
+    g.addColorStop(1, "#184868");
+    ctx.fillStyle = g;
+    // Slim body.
+    ctx.beginPath();
+    ctx.moveTo(L * 0.45, 0);
+    ctx.bezierCurveTo(L * 0.2, -W * 1.0, -L * 0.1, -W * 1.1, -L * 0.42, -W * 0.35);
+    ctx.bezierCurveTo(-L * 0.5, 0, -L * 0.42, W * 0.35, -L * 0.05, W * 0.85);
+    ctx.bezierCurveTo(L * 0.25, W * 0.65, L * 0.4, W * 0.25, L * 0.45, 0);
+    ctx.fill();
+    // Long spear bill.
+    ctx.beginPath();
+    ctx.moveTo(L * 0.4, -W * 0.08);
+    ctx.lineTo(L * 1.35, 0);
+    ctx.lineTo(L * 0.4, W * 0.08);
+    ctx.fill();
+    // Giant sail.
+    const sail = ctx.createLinearGradient(0, -W * sailH, 0, -W);
+    sail.addColorStop(0, "rgba(160,235,255,0.7)");
+    sail.addColorStop(1, "rgba(30,100,170,0.4)");
+    ctx.fillStyle = sail;
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.15, -W * 0.5);
+    ctx.quadraticCurveTo(L * 0.1, -W * sailH, L * 0.45, -W * 0.4);
+    ctx.quadraticCurveTo(L * 0.15, -W * (1.2 + Math.sin(sailT * 1.2) * 0.2), -L * 0.15, -W * 0.5);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(220,245,255,0.4)";
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 5; i++) {
+        const t = i / 4;
+        ctx.beginPath();
+        ctx.moveTo(L * (-0.1 + t * 0.45), -W * 0.5);
+        ctx.lineTo(L * (-0.02 + t * 0.4), -W * (sailH * (0.45 + t * 0.4)));
+        ctx.stroke();
+    }
+    // Crescent caudal.
+    ctx.fillStyle = g;
+    const tw = Math.sin(sailT) * 0.2;
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.38, 0);
+    ctx.lineTo(-L * 0.95, -W * (1.2 + tw));
+    ctx.lineTo(-L * 0.65, 0);
+    ctx.lineTo(-L * 0.95, W * (1.2 - tw));
+    ctx.closePath();
+    ctx.fill();
+    // Eye.
+    ctx.fillStyle = "rgba(250,252,255,0.95)";
+    ctx.beginPath();
+    ctx.ellipse(L * 0.22, -W * 0.2, Math.max(2, L * 0.04), Math.max(2.2, L * 0.045), 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(20,30,40,0.92)";
+    ctx.beginPath();
+    ctx.arc(L * 0.23, -W * 0.2, Math.max(1.1, L * 0.02), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+}
+
 function drawFrogGroups(ctx) {
     if (scenery.frogs) {
         for (const g of frogGroups) {
@@ -5792,25 +6728,60 @@ function drawShoreStones(ctx, dt) {
         ctx.save();
         ctx.translate(s.x, s.y - lift);
         ctx.rotate(s.rot);
-        const g = ctx.createRadialGradient(-s.rx * 0.2, -s.ry * 0.3, 1, 0, 0, s.rx);
-        const c = Math.floor(70 + s.tone * 50);
-        g.addColorStop(0, `rgb(${c + 20},${c + 18},${c + 12})`);
-        g.addColorStop(1, `rgb(${c - 25},${c - 20},${c - 18})`);
-        ctx.fillStyle = g;
-        ctx.globalAlpha = 0.78;
         if (!s.profile) {
             s.profile = makeObstacleDetail(Math.floor(s.x + s.y), 9, 5);
         }
-        pathOrganicOval(ctx, s.rx, s.ry, 9, s.profile, 0.2);
-        ctx.fill();
-        ctx.strokeStyle = "rgba(140,170,160,0.28)";
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        ctx.strokeStyle = `rgba(${c - 30},${c - 25},${c - 22},0.35)`;
-        ctx.beginPath();
-        ctx.moveTo(-s.rx * 0.35, -s.ry * 0.1);
-        ctx.quadraticCurveTo(0, s.ry * 0.1, s.rx * 0.3, -s.ry * 0.15);
-        ctx.stroke();
+        if (crystalMode) {
+            const facets = s.facets || 7;
+            const g = ctx.createRadialGradient(-s.rx * 0.25, -s.ry * 0.3, 1, 0, 0, s.rx * 1.1);
+            g.addColorStop(0, `rgba(${160 + s.tone * 60},${120 + s.tone * 50},${210 + s.tone * 40},0.9)`);
+            g.addColorStop(0.55, `rgba(${90 + s.tone * 40},${70 + s.tone * 30},${140 + s.tone * 40},0.88)`);
+            g.addColorStop(1, `rgba(${40 + s.tone * 20},${28 + s.tone * 18},${70 + s.tone * 30},0.92)`);
+            ctx.fillStyle = g;
+            ctx.globalAlpha = 0.86;
+            pathFacetRockOutline(ctx, { r: Math.max(s.rx, s.ry), facets, profile: s.profile });
+            ctx.fill();
+            ctx.strokeStyle = "rgba(210,180,255,0.35)";
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            ctx.fillStyle = "rgba(230,210,255,0.28)";
+            ctx.beginPath();
+            ctx.ellipse(-s.rx * 0.2, -s.ry * 0.25, s.rx * 0.22, s.ry * 0.16, 0, 0, Math.PI * 2);
+            ctx.fill();
+        } else if (nightMode) {
+            const c0 = Math.floor(48 + s.tone * 42);
+            const g = ctx.createRadialGradient(-s.rx * 0.2, -s.ry * 0.3, 1, 0, 0, s.rx);
+            g.addColorStop(0, `rgb(${c0 + 18},${c0 + 24},${c0 + 34})`);
+            g.addColorStop(1, `rgb(${c0 - 14},${c0 - 10},${c0 + 4})`);
+            ctx.fillStyle = g;
+            ctx.globalAlpha = 0.8;
+            pathOrganicOval(ctx, s.rx, s.ry, 9, s.profile, 0.2);
+            ctx.fill();
+            ctx.strokeStyle = "rgba(140,170,210,0.22)";
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            ctx.fillStyle = "rgba(180,210,255,0.12)";
+            ctx.beginPath();
+            ctx.ellipse(-s.rx * 0.15, -s.ry * 0.2, s.rx * 0.28, s.ry * 0.18, 0, 0, Math.PI * 2);
+            ctx.fill();
+        } else {
+            const g = ctx.createRadialGradient(-s.rx * 0.2, -s.ry * 0.3, 1, 0, 0, s.rx);
+            const c = Math.floor(70 + s.tone * 50);
+            g.addColorStop(0, `rgb(${c + 20},${c + 18},${c + 12})`);
+            g.addColorStop(1, `rgb(${c - 25},${c - 20},${c - 18})`);
+            ctx.fillStyle = g;
+            ctx.globalAlpha = 0.78;
+            pathOrganicOval(ctx, s.rx, s.ry, 9, s.profile, 0.2);
+            ctx.fill();
+            ctx.strokeStyle = "rgba(140,170,160,0.28)";
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            ctx.strokeStyle = `rgba(${c - 30},${c - 25},${c - 22},0.35)`;
+            ctx.beginPath();
+            ctx.moveTo(-s.rx * 0.35, -s.ry * 0.1);
+            ctx.quadraticCurveTo(0, s.ry * 0.1, s.rx * 0.3, -s.ry * 0.15);
+            ctx.stroke();
+        }
         ctx.restore();
     }
 }
@@ -5825,19 +6796,50 @@ function drawSticks(ctx, dt) {
         ctx.save();
         ctx.translate(s.x, s.y - lift);
         ctx.rotate(s.rot + tip);
-        const bend = (s.wet ? 2.5 : 0.5) + lift * 0.25;
-        ctx.fillStyle = s.wet ? "rgba(90,70,45,0.58)" : "rgba(110,85,55,0.68)";
-        ctx.beginPath();
-        ctx.moveTo(-s.len * 0.5, -s.thick * 0.35);
-        ctx.quadraticCurveTo(0, bend - s.thick * 0.5, s.len * 0.48, -s.thick * 0.15);
-        ctx.lineTo(s.len * 0.52, s.thick * 0.2);
-        ctx.quadraticCurveTo(0, bend + s.thick * 0.55, -s.len * 0.5, s.thick * 0.45);
-        ctx.closePath();
-        ctx.fill();
-        if (s.wet) {
-            ctx.strokeStyle = "rgba(160,200,190,0.18)";
-            ctx.lineWidth = Math.max(0.8, s.thick * 0.3);
+        if (crystalMode) {
+            const g = ctx.createLinearGradient(-s.len * 0.5, 0, s.len * 0.5, 0);
+            g.addColorStop(0, "rgba(140,110,210,0.55)");
+            g.addColorStop(0.5, "rgba(200,180,255,0.72)");
+            g.addColorStop(1, "rgba(90,160,210,0.55)");
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.moveTo(-s.len * 0.5, 0);
+            ctx.lineTo(-s.len * 0.08, -s.thick * 1.1);
+            ctx.lineTo(s.len * 0.5, 0);
+            ctx.lineTo(-s.len * 0.08, s.thick * 1.1);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = "rgba(230,220,255,0.35)";
+            ctx.lineWidth = 0.8;
             ctx.stroke();
+        } else if (nightMode) {
+            const bend = 0.8 + lift * 0.2;
+            ctx.fillStyle = s.wet ? "rgba(55,62,78,0.62)" : "rgba(70,78,92,0.7)";
+            ctx.beginPath();
+            ctx.moveTo(-s.len * 0.5, -s.thick * 0.35);
+            ctx.quadraticCurveTo(0, bend - s.thick * 0.5, s.len * 0.48, -s.thick * 0.15);
+            ctx.lineTo(s.len * 0.52, s.thick * 0.2);
+            ctx.quadraticCurveTo(0, bend + s.thick * 0.55, -s.len * 0.5, s.thick * 0.45);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = "rgba(150,180,220,0.16)";
+            ctx.lineWidth = Math.max(0.8, s.thick * 0.28);
+            ctx.stroke();
+        } else {
+            const bend = (s.wet ? 2.5 : 0.5) + lift * 0.25;
+            ctx.fillStyle = s.wet ? "rgba(90,70,45,0.58)" : "rgba(110,85,55,0.68)";
+            ctx.beginPath();
+            ctx.moveTo(-s.len * 0.5, -s.thick * 0.35);
+            ctx.quadraticCurveTo(0, bend - s.thick * 0.5, s.len * 0.48, -s.thick * 0.15);
+            ctx.lineTo(s.len * 0.52, s.thick * 0.2);
+            ctx.quadraticCurveTo(0, bend + s.thick * 0.55, -s.len * 0.5, s.thick * 0.45);
+            ctx.closePath();
+            ctx.fill();
+            if (s.wet) {
+                ctx.strokeStyle = "rgba(160,200,190,0.18)";
+                ctx.lineWidth = Math.max(0.8, s.thick * 0.3);
+                ctx.stroke();
+            }
         }
         ctx.restore();
     }
@@ -5852,18 +6854,57 @@ function drawReeds(ctx, t, dt) {
         ctx.save();
         ctx.translate(r.x, r.y);
         ctx.rotate(r.ang + sway);
-        const g = Math.floor(70 + r.green * 90);
-        ctx.strokeStyle = `rgba(${40 + g * 0.2},${g},${60 + g * 0.15},0.72)`;
-        ctx.lineWidth = 1.6;
-        ctx.lineCap = "round";
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.quadraticCurveTo(4 + sway * 10, -r.h * 0.5, sway * 16, -r.h);
-        ctx.stroke();
-        ctx.fillStyle = `rgba(${50 + g * 0.15},${g - 10},55,0.55)`;
-        ctx.beginPath();
-        ctx.ellipse(sway * 16, -r.h, 2.2, 4.5, sway, 0, Math.PI * 2);
-        ctx.fill();
+        if (crystalMode) {
+            const tipX = sway * 10;
+            const tipY = -r.h;
+            const g = ctx.createLinearGradient(0, 0, tipX, tipY);
+            g.addColorStop(0, "rgba(90,70,160,0.55)");
+            g.addColorStop(0.6, "rgba(170,140,230,0.82)");
+            g.addColorStop(1, "rgba(210,240,255,0.9)");
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.moveTo(-2.4, 0);
+            ctx.lineTo(tipX * 0.2, tipY);
+            ctx.lineTo(2.4, 0);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = "rgba(230,210,255,0.4)";
+            ctx.lineWidth = 0.8;
+            ctx.stroke();
+            ctx.fillStyle = "rgba(220,200,255,0.55)";
+            ctx.beginPath();
+            ctx.moveTo(tipX * 0.15, tipY * 0.82);
+            ctx.lineTo(tipX * 0.2, tipY);
+            ctx.lineTo(tipX * 0.55, tipY * 0.88);
+            ctx.closePath();
+            ctx.fill();
+        } else if (nightMode) {
+            const g = Math.floor(55 + r.green * 70);
+            ctx.strokeStyle = `rgba(${30 + g * 0.15},${50 + g * 0.35},${70 + g * 0.55},0.78)`;
+            ctx.lineWidth = 1.45;
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.quadraticCurveTo(3 + sway * 8, -r.h * 0.5, sway * 12, -r.h);
+            ctx.stroke();
+            ctx.fillStyle = `rgba(${80 + g * 0.2},${110 + g * 0.25},${140 + g * 0.3},0.5)`;
+            ctx.beginPath();
+            ctx.ellipse(sway * 12, -r.h, 1.8, 3.6, sway, 0, Math.PI * 2);
+            ctx.fill();
+        } else {
+            const g = Math.floor(70 + r.green * 90);
+            ctx.strokeStyle = `rgba(${40 + g * 0.2},${g},${60 + g * 0.15},0.72)`;
+            ctx.lineWidth = 1.6;
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.quadraticCurveTo(4 + sway * 10, -r.h * 0.5, sway * 16, -r.h);
+            ctx.stroke();
+            ctx.fillStyle = `rgba(${50 + g * 0.15},${g - 10},55,0.55)`;
+            ctx.beginPath();
+            ctx.ellipse(sway * 16, -r.h, 2.2, 4.5, sway, 0, Math.PI * 2);
+            ctx.fill();
+        }
         ctx.restore();
     }
 }
@@ -5880,33 +6921,64 @@ function drawLilies(ctx, t, dt) {
         ctx.translate(L.x, L.y + bob);
         ctx.rotate(L.rot + tip);
         ctx.globalAlpha = 0.82;
-        ctx.fillStyle = "rgba(0,0,0,0.18)";
+        ctx.fillStyle = crystalMode
+            ? "rgba(40,10,70,0.22)"
+            : nightMode
+                ? "rgba(0,8,24,0.22)"
+                : "rgba(0,0,0,0.18)";
         ctx.save();
         ctx.translate(1.5, 2.5);
         pathOrganicOval(ctx, L.r * 1.05, L.r * 0.82, 10, null, 0.12);
         ctx.fill();
         ctx.restore();
         const g = ctx.createRadialGradient(-L.r * 0.2, -L.r * 0.2, 2, 0, 0, L.r);
-        g.addColorStop(0, "#6f9a5a");
-        g.addColorStop(0.55, "#4a7a42");
-        g.addColorStop(1, "#2a4a2c");
+        if (crystalMode) {
+            g.addColorStop(0, "#d8c0ff");
+            g.addColorStop(0.45, "#8a70d0");
+            g.addColorStop(1, "#3a2868");
+        } else if (nightMode) {
+            g.addColorStop(0, "#8aa8b8");
+            g.addColorStop(0.55, "#4a6878");
+            g.addColorStop(1, "#1a2838");
+        } else {
+            g.addColorStop(0, "#6f9a5a");
+            g.addColorStop(0.55, "#4a7a42");
+            g.addColorStop(1, "#2a4a2c");
+        }
         ctx.fillStyle = g;
-        // Lobed pad with a V-notch slit.
         pathLilyPad(ctx, L.r);
         ctx.fill();
-        ctx.strokeStyle = "rgba(30, 60, 35, 0.35)";
-        ctx.lineWidth = 0.8;
-        for (let i = 0; i < 5; i++) {
-            const a = 0.5 + i * 0.9;
-            ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.quadraticCurveTo(
-                Math.cos(a) * L.r * 0.35,
-                Math.sin(a) * L.r * 0.3,
-                Math.cos(a) * L.r * 0.85,
-                Math.sin(a) * L.r * 0.75
-            );
+        if (crystalMode) {
+            ctx.strokeStyle = "rgba(220,200,255,0.45)";
+            ctx.lineWidth = 1;
             ctx.stroke();
+            ctx.fillStyle = "rgba(240,230,255,0.35)";
+            ctx.beginPath();
+            ctx.ellipse(-L.r * 0.15, -L.r * 0.1, L.r * 0.22, L.r * 0.14, 0.4, 0, Math.PI * 2);
+            ctx.fill();
+        } else if (nightMode) {
+            ctx.strokeStyle = "rgba(160,200,230,0.28)";
+            ctx.lineWidth = 0.8;
+            ctx.stroke();
+            ctx.fillStyle = "rgba(200,230,255,0.14)";
+            ctx.beginPath();
+            ctx.ellipse(-L.r * 0.12, -L.r * 0.08, L.r * 0.28, L.r * 0.16, 0.2, 0, Math.PI * 2);
+            ctx.fill();
+        } else {
+            ctx.strokeStyle = "rgba(30, 60, 35, 0.35)";
+            ctx.lineWidth = 0.8;
+            for (let i = 0; i < 5; i++) {
+                const a = 0.5 + i * 0.9;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.quadraticCurveTo(
+                    Math.cos(a) * L.r * 0.35,
+                    Math.sin(a) * L.r * 0.3,
+                    Math.cos(a) * L.r * 0.85,
+                    Math.sin(a) * L.r * 0.75
+                );
+                ctx.stroke();
+            }
         }
         ctx.restore();
     }
@@ -10896,6 +11968,8 @@ let reptileCheckTimer = 0;
 let exoticCheckTimer = 0;
 let pacifistCheckTimer = 0;
 let pacifistVisitors = []; // helpful apex counterparts (nurse, beluga, singer, ...)
+let biomeGuardianCheckTimer = 0;
+let biomeGuardians = []; // rare biome protectors that eat aggressive fish
 
 function pondFinaleActive() {
     // Soft return fades are not hard lockouts: life can swim under the curtain.
@@ -11818,15 +12892,52 @@ class Reptile {
         ctx.bezierCurveTo(-L * 0.15, W * 1.05, L * 0.1, W * 1.05, L * 0.28, 0);
         ctx.fill();
 
-        // Limb paddles (subtle).
-        ctx.globalAlpha *= 0.55;
+        // Limb paddles: stroke with the swim cycle (not static ovals).
+        const limbBeat = this.golden ? 0 : (0.5 + 0.5 * Math.sin(this.tailPhase * 0.85));
+        const limbBeatB = this.golden ? 0 : (0.5 + 0.5 * Math.sin(this.tailPhase * 0.85 + Math.PI));
+        ctx.globalAlpha *= 0.7;
         ctx.beginPath();
-        ctx.ellipse(L * 0.02, W * 0.75, L * 0.12, W * 0.35, 0.4, 0, Math.PI * 2);
+        ctx.ellipse(
+            L * (0.05 - limbBeat * 0.12),
+            W * (0.72 + limbBeat * 0.12),
+            L * (0.13 + limbBeat * 0.04),
+            W * (0.38 + limbBeat * 0.1),
+            0.35 + limbBeat * 0.25,
+            0, Math.PI * 2
+        );
         ctx.fill();
         ctx.beginPath();
-        ctx.ellipse(-L * 0.18, W * 0.65, L * 0.1, W * 0.28, 0.35, 0, Math.PI * 2);
+        ctx.ellipse(
+            L * (-0.16 - limbBeatB * 0.1),
+            W * (0.62 + limbBeatB * 0.1),
+            L * (0.11 + limbBeatB * 0.03),
+            W * (0.3 + limbBeatB * 0.08),
+            0.3 + limbBeatB * 0.2,
+            0, Math.PI * 2
+        );
         ctx.fill();
-        ctx.globalAlpha /= 0.55;
+        // Opposite-side limbs for a crawling swim read.
+        ctx.beginPath();
+        ctx.ellipse(
+            L * (0.05 - limbBeatB * 0.12),
+            -W * (0.7 + limbBeatB * 0.1),
+            L * 0.12,
+            W * 0.32,
+            -0.35 - limbBeatB * 0.2,
+            0, Math.PI * 2
+        );
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(
+            L * (-0.16 - limbBeat * 0.1),
+            -W * (0.58 + limbBeat * 0.08),
+            L * 0.1,
+            W * 0.26,
+            -0.28 - limbBeat * 0.15,
+            0, Math.PI * 2
+        );
+        ctx.fill();
+        ctx.globalAlpha /= 0.7;
 
         // Snout with jaw line.
         ctx.beginPath();
@@ -12095,6 +13206,18 @@ function initNightPredatorSocial(ent) {
     ent.breedCooldown = 0;
 }
 
+function nightPredatorPetsNeeded(ent) {
+    if (ent && ent.isCrystal) return CONFIG.petsToTameCrystal || CONFIG.petsToTameNight;
+    return CONFIG.petsToTameNight;
+}
+
+function nightPredatorSootheNeeded(ent) {
+    if (ent && ent.isCrystal) {
+        return CONFIG.crystalPredatorSootheTime || CONFIG.nightPredatorSootheTime;
+    }
+    return CONFIG.nightPredatorSootheTime;
+}
+
 function nightPredatorPet(ent, quiet) {
     if (!ent || ent.dead || ent.golden || ent.plantMorph) return;
     if (quiet && ent.petTimer > 0.55) {
@@ -12115,8 +13238,8 @@ function nightPredatorPet(ent, quiet) {
     water.disturb(ent.x, ent.y, ent.size * 0.35, 55);
     if (ent.tamed || ent.isHero) return;
     ent.petCount++;
-    if (ent.petCount >= CONFIG.petsToTameNight
-        || ent.petProgress >= CONFIG.nightPredatorSootheTime) {
+    if (ent.petCount >= nightPredatorPetsNeeded(ent)
+        || ent.petProgress >= nightPredatorSootheNeeded(ent)) {
         nightPredatorTame(ent);
     }
 }
@@ -12489,8 +13612,8 @@ class Swordfish {
         if (this.petTimer > 0) this.petTimer = Math.max(0, this.petTimer - dt);
         if (this.petTimer > 0 && !this.tamed && !this.isHero && !this.golden) {
             this.petProgress += dt;
-            if (this.petCount >= CONFIG.petsToTameNight
-                || this.petProgress >= CONFIG.nightPredatorSootheTime) {
+            if (this.petCount >= nightPredatorPetsNeeded(this)
+                || this.petProgress >= nightPredatorSootheNeeded(this)) {
                 nightPredatorTame(this);
             }
         }
@@ -13217,8 +14340,8 @@ class Octopus {
         if (this.petTimer > 0) this.petTimer = Math.max(0, this.petTimer - dt);
         if (this.petTimer > 0 && !this.tamed && !this.isHero && !this.golden) {
             this.petProgress += dt;
-            if (this.petCount >= CONFIG.petsToTameNight
-                || this.petProgress >= CONFIG.nightPredatorSootheTime) {
+            if (this.petCount >= nightPredatorPetsNeeded(this)
+                || this.petProgress >= nightPredatorSootheNeeded(this)) {
                 nightPredatorTame(this);
             }
         }
@@ -15862,6 +16985,8 @@ function resetPond(opts) {
     crystalSerpent = null;
     pacifistVisitors.length = 0;
     pacifistCheckTimer = 0;
+    biomeGuardians.length = 0;
+    biomeGuardianCheckTimer = 0;
     reptiles.length = 0;
     frogGroups.length = 0;
     hungryTadpoles.length = 0;
@@ -15889,6 +17014,16 @@ function resetPond(opts) {
     }
     // Soft surface settle.
     if (water) water.disturb(viewW * 0.5, viewH * 0.5, 80, 200);
+    // Pond props must match the active biome after a reset.
+    if (typeof rebuildScenery === "function" && typeof sceneryThemeKey === "function") {
+        const want = sceneryThemeKey();
+        if (!sceneryItems || sceneryItems.theme !== want) {
+            if (typeof pondPlants !== "undefined" && pondPlants && pondPlants.length) {
+                pondPlants.length = 0;
+            }
+            rebuildScenery();
+        }
+    }
 }
 
 class Shark {
@@ -16477,9 +17612,12 @@ class Whale {
         this.isHero = false; // remorse guardian: never swallows fish
         this.petTimer = 0;
         this.petDur = 2.6;
+        this.rollTimer = 0;
+        this.rollDur = 2.35;
         this.isPink = false;
         this.breedCooldown = 0;
         this.petCount = 0;
+        this.barrelTriggered = false;
         this.mariachiTriggered = false;
         // Enter from left or right, swim across.
         this.fromLeft = Math.random() < 0.5;
@@ -16493,23 +17631,43 @@ class Whale {
         if (typeof noteRegistryEncounter === "function") noteRegistryEncounter("apex:whale");
     }
 
+    beginBarrelRoll() {
+        if (this.dead || this.rollTimer > 0) return;
+        this.rollTimer = this.rollDur;
+        this.petTimer = 0;
+        const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+        if (Audio.sharkRoll) Audio.sharkRoll(pan);
+        if (Audio.whalePurr) Audio.whalePurr(pan);
+        water.disturb(this.x, this.y, this.size * 0.7, 520);
+        spawnSplash(this.x, this.y - this.size * 0.1, 28, 1.0);
+        spawnSplash(this.x + Math.cos(this.dir) * this.size * 0.2, this.y, 16, 0.7);
+    }
+
     pet(quiet) {
         if (this.dead) return;
+        // Barrel roll owns the motion; consecutive pets cannot restart or cancel it.
+        if (this.rollTimer > 0) return;
         if (quiet && this.petTimer > this.petDur * 0.45) {
             this.petTimer = this.petDur;
             return;
         }
-        this.petTimer = this.petDur;
         const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
-        Audio.whalePurr(pan);
-        water.disturb(this.x, this.y, this.size * 0.45, 420);
-        spawnSplash(this.x, this.y - this.size * 0.15, 22, 0.85);
 
         this.petCount = (this.petCount || 0) + 1;
         if (!this.mariachiTriggered && this.petCount >= CONFIG.petsForWhaleMariachi) {
             this.mariachiTriggered = true;
             beginMariachiFiesta();
         }
+        if (!this.barrelTriggered && this.petCount >= CONFIG.petsForWhaleBarrel) {
+            this.barrelTriggered = true;
+            this.beginBarrelRoll();
+            return;
+        }
+
+        this.petTimer = this.petDur;
+        Audio.whalePurr(pan);
+        water.disturb(this.x, this.y, this.size * 0.45, 420);
+        spawnSplash(this.x, this.y - this.size * 0.15, 22, 0.85);
     }
 
     update(dt) {
@@ -16519,15 +17677,22 @@ class Whale {
             return;
         }
         this.age += dt;
-        this.tailPhase += dt * 2.6;
+        this.tailPhase += dt * (this.rollTimer > 0 ? 4.4 : 2.6);
         this.eatPulse -= dt;
-        if (this.petTimer > 0) this.petTimer = Math.max(0, this.petTimer - dt);
+        if (this.rollTimer > 0) this.rollTimer = Math.max(0, this.rollTimer - dt);
+        if (this.petTimer > 0 && this.rollTimer <= 0) {
+            this.petTimer = Math.max(0, this.petTimer - dt);
+        }
 
-        const petT = this.petTimer > 0 ? 1 - this.petTimer / this.petDur : 0;
-        let spd = this.petTimer > 0
-            ? this.speed * (0.35 + 0.4 * Math.sin(petT * Math.PI))
-            : (this.isHero ? this.speed * 0.85 : this.speed);
-        if (this.isHero && this.petTimer <= 0) {
+        const rolling = this.rollTimer > 0;
+        const rollT = rolling ? 1 - this.rollTimer / this.rollDur : 0;
+        const petT = (!rolling && this.petTimer > 0) ? 1 - this.petTimer / this.petDur : 0;
+        let spd = rolling
+            ? this.speed * (0.55 + 0.55 * Math.sin(rollT * Math.PI))
+            : this.petTimer > 0
+                ? this.speed * (0.35 + 0.4 * Math.sin(petT * Math.PI))
+                : (this.isHero ? this.speed * 0.85 : this.speed);
+        if (this.isHero && this.petTimer <= 0 && !rolling) {
             const breedSteer = apexBreedSteer(this, dt, this.speed * 0.8);
             if (breedSteer && breedSteer.desired != null) {
                 const turn = 1.1 * dt;
@@ -16537,16 +17702,26 @@ class Whale {
             }
         }
         this.x += Math.cos(this.dir) * spd * dt;
-        // Slow, buoyant drift; pet adds a gentle breech arc.
+        // Slow, buoyant drift; soft pet adds a breech, barrel roll a bigger rise.
         let bob = Math.sin(this.tailPhase * 0.28) * 10;
-        if (this.petTimer > 0) bob += Math.sin(petT * Math.PI) * 28;
+        if (rolling) bob += Math.sin(rollT * Math.PI) * 42;
+        else if (this.petTimer > 0) bob += Math.sin(petT * Math.PI) * 28;
         this.y += bob * dt;
         if (this.isHero) {
             this.y = Math.max(viewH * 0.22, Math.min(viewH * 0.78, this.y));
         }
 
-        // Swallow fish only when not mid pet animation (heroes never swallow).
-        if (!this.isHero && this.petTimer <= 0) {
+        if (rolling && Math.random() < 0.55) {
+            water.disturb(
+                this.x - Math.cos(this.dir) * this.size * 0.2,
+                this.y,
+                16 + 10 * Math.sin(rollT * Math.PI),
+                70
+            );
+        }
+
+        // Swallow fish only when not mid pet / roll animation (heroes never swallow).
+        if (!this.isHero && this.petTimer <= 0 && !rolling) {
             const mouth = this.size * 0.5;
             for (const f of fishes) {
                 if (f.dead || f.isPlatinum || f.insideShark) continue;
@@ -16589,17 +17764,26 @@ class Whale {
         const L = this.size;
         const W = this.size * 0.3;
         const wig = Math.sin(this.tailPhase) * 0.28;
-        const petT = this.petTimer > 0 ? 1 - this.petTimer / this.petDur : 0;
-        const breech = this.petTimer > 0 ? Math.sin(petT * Math.PI) : 0;
-        const roll = breech * 0.55;
+        const rolling = this.rollTimer > 0;
+        const rollT = rolling ? 1 - this.rollTimer / this.rollDur : 0;
+        const petT = (!rolling && this.petTimer > 0) ? 1 - this.petTimer / this.petDur : 0;
+        const breech = rolling
+            ? Math.sin(rollT * Math.PI)
+            : (this.petTimer > 0 ? Math.sin(petT * Math.PI) : 0);
+        // Full 360 barrel when rolling; soft tip lean on normal pets.
+        const roll = rolling ? rollT * Math.PI * 2 : breech * 0.35;
+        const flatten = rolling
+            ? Math.max(0.2, Math.abs(Math.cos(roll)))
+            : Math.max(0.55, 1 - breech * 0.28);
+        const lift = rolling ? breech * 34 : breech * 18;
         ctx.save();
-        ctx.translate(this.x, this.y - breech * 18);
+        ctx.translate(this.x, this.y - lift);
         ctx.rotate(this.dir);
-        ctx.rotate(roll);
-        ctx.scale(1, Math.max(0.55, 1 - breech * 0.35));
+        ctx.rotate(rolling ? 0 : roll);
+        ctx.scale(1, flatten);
         ctx.globalAlpha = 0.86;
         ctx.shadowColor = this.isHero ? "rgba(70,160,220,0.65)" : "rgba(30,55,50,0.4)";
-        ctx.shadowBlur = 24 + breech * 16 + (this.isHero ? 6 : 0);
+        ctx.shadowBlur = 24 + breech * 18 + (this.isHero ? 6 : 0) + (rolling ? 10 : 0);
 
         // Soft fluke with center notch.
         ctx.fillStyle = this.isHero ? "#3d6f7a" : "#4a655c";
@@ -16611,12 +17795,23 @@ class Whale {
         ctx.bezierCurveTo(-L * 0.72, W * (1.15 + wig * 0.25), -L * 0.55, W * 0.65, -L * 0.42, 0);
         ctx.fill();
 
-        // Broad spindle body with pale ventral plane.
+        // Broad spindle body with pale ventral plane (swaps when belly rolls up).
+        const bellyUp = rolling && Math.cos(roll) < 0;
         const g = ctx.createLinearGradient(0, -W, 0, W);
         if (this.isHero) {
-            g.addColorStop(0, "#6ea8b8");
-            g.addColorStop(0.5, "#3d6f7e");
-            g.addColorStop(1, "#c5e0ea");
+            if (bellyUp) {
+                g.addColorStop(0, "#c5e0ea");
+                g.addColorStop(0.5, "#3d6f7e");
+                g.addColorStop(1, "#6ea8b8");
+            } else {
+                g.addColorStop(0, "#6ea8b8");
+                g.addColorStop(0.5, "#3d6f7e");
+                g.addColorStop(1, "#c5e0ea");
+            }
+        } else if (bellyUp) {
+            g.addColorStop(0, "#c2d8ce");
+            g.addColorStop(0.5, "#3f5c54");
+            g.addColorStop(1, "#5f8478");
         } else {
             g.addColorStop(0, "#5f8478");
             g.addColorStop(0.45, "#3f5c54");
@@ -16665,8 +17860,8 @@ class Whale {
         ctx.globalAlpha /= 0.75;
 
         ctx.shadowBlur = 0;
-        // Closed happy eye while petted; open otherwise.
-        if (this.petTimer > 0) {
+        // Closed happy eye while petted or rolling; open otherwise.
+        if (this.petTimer > 0 || rolling) {
             ctx.strokeStyle = "rgba(25,40,35,0.85)";
             ctx.lineWidth = Math.max(1.5, L * 0.012);
             ctx.lineCap = "round";
@@ -16684,7 +17879,7 @@ class Whale {
             ctx.arc(L * 0.27, -W * 0.2, Math.max(1.4, L * 0.016), 0, Math.PI * 2);
             ctx.fill();
         }
-        // Soft breath marks; stronger spout while petted.
+        // Soft breath marks; stronger spout while petted or rolling.
         if (breech > 0.35 || Math.sin(this.age * 1.3) > 0.85) {
             const puff = 0.25 + breech * 0.45;
             ctx.fillStyle = `rgba(190,220,210,${puff})`;
@@ -16846,6 +18041,14 @@ class PacifistVisitor {
         this.breedCooldown = 0;
         this.rainbowMood = 0; // seconds of role-boosted rainbow state
         this.legs = [];
+        this.limbPhase = Math.random() * Math.PI * 2;
+        this.gillPhase = Math.random() * Math.PI * 2;
+        this.breath = Math.random() * Math.PI * 2;
+        this.blink = 0;
+        this.kick = 0;
+        this.neckReach = 0;
+        this.mantlePulse = Math.random() * Math.PI * 2;
+        this.sailWave = Math.random() * Math.PI * 2;
         const side = Math.floor(Math.random() * 4);
         if (side === 0) { this.x = -this.size; this.y = Math.random() * viewH; }
         else if (side === 1) { this.x = viewW + this.size; this.y = Math.random() * viewH; }
@@ -16857,23 +18060,53 @@ class PacifistVisitor {
         if (kind === "ribbon") this.speed *= 1.15;
         if (kind === "axolotl") this.speed *= 0.85;
         if (kind === "garden" || kind === "lumen") {
+            // Trailing octopus arms (rear fan), not a radial urchin.
             for (let i = 0; i < 8; i++) {
-                const ang = (i / 8) * Math.PI * 2;
-                const len = this.size * (0.9 + Math.random() * 0.4);
-                const baseAng = ang;
-                const tipAng = this.dir + Math.PI + baseAng * 0.55;
+                const t = i / 7;
+                const rearOffset = -Math.PI * 0.9 + t * Math.PI * 1.8;
+                const len = this.size * (1.15 + Math.random() * 0.35);
+                const tipAng = this.dir + Math.PI + rearOffset * 0.55;
                 this.legs.push({
                     phase: Math.random() * Math.PI * 2,
-                    tipX: this.x + Math.cos(tipAng) * len * 0.8,
+                    tipX: this.x + Math.cos(tipAng) * len * 0.85,
                     tipY: this.y + Math.sin(tipAng) * len * 0.7,
                     len,
-                    baseAng,
+                    baseAng: rearOffset,
                 });
             }
         }
         if (typeof noteRegistryEncounter === "function") {
             noteRegistryEncounter("pac:" + (this.kind || "nurse"));
         }
+    }
+
+    petsNeeded() {
+        const m = this.meta || {};
+        const mode = typeof environmentModeKey === "function" ? environmentModeKey() : "day";
+        // Single-biome helpers use their home tier; multi-biome use the current sky.
+        const homeCrystal = m.crystal && !m.day && !m.night;
+        const homeNight = m.night && !m.day && !m.crystal;
+        if (homeCrystal || (m.crystal && mode === "crystal")) {
+            return CONFIG.petsToTamePacifistCrystal || CONFIG.petsToTamePacifist;
+        }
+        if (homeNight || (m.night && mode === "night")) {
+            return CONFIG.petsToTamePacifistNight || CONFIG.petsToTamePacifist;
+        }
+        return CONFIG.petsToTamePacifist;
+    }
+
+    sootheNeeded() {
+        const m = this.meta || {};
+        const mode = typeof environmentModeKey === "function" ? environmentModeKey() : "day";
+        const homeCrystal = m.crystal && !m.day && !m.night;
+        const homeNight = m.night && !m.day && !m.crystal;
+        if (homeCrystal || (m.crystal && mode === "crystal")) {
+            return CONFIG.pacifistSootheTimeCrystal || CONFIG.pacifistSootheTime;
+        }
+        if (homeNight || (m.night && mode === "night")) {
+            return CONFIG.pacifistSootheTimeNight || CONFIG.pacifistSootheTime;
+        }
+        return CONFIG.pacifistSootheTime;
     }
 
     pet(quiet) {
@@ -16900,8 +18133,8 @@ class PacifistVisitor {
             return;
         }
         this.petCount++;
-        if (this.petCount >= CONFIG.petsToTamePacifist
-            || this.petProgress >= CONFIG.pacifistSootheTime) {
+        if (this.petCount >= this.petsNeeded()
+            || this.petProgress >= this.sootheNeeded()) {
             this.tame();
         }
     }
@@ -17113,10 +18346,38 @@ class PacifistVisitor {
         this.age += dt;
         this.phase += dt * 1.4;
         this.tailPhase += dt * (3.2 + (this.tamed ? 0.8 : 0));
+        this.breath += dt * (this.kind === "axolotl" ? 2.15 : 1.6);
+        this.blink = Math.max(0, this.blink - dt);
+        if (Math.random() < (this.kind === "axolotl" ? 0.01 : 0.004)) this.blink = 0.12;
+
+        // Kind-specific animation clocks (not shared fish wiggle recycle).
+        if (this.kind === "axolotl") {
+            const pace = this.petTimer > 0 ? 2.4 : (this.leaving ? 5.2 : 4.2);
+            this.limbPhase += dt * pace;
+            this.gillPhase += dt * 3.8;
+            this.kick = 0.35 + 0.4 * Math.abs(Math.sin(this.limbPhase));
+        } else if (this.kind === "lotus" || this.kind === "prism") {
+            this.limbPhase += dt * (this.petTimer > 0 ? 1.6 : 2.8);
+            this.neckReach += ((this.foodTarget ? 1 : 0.25) - this.neckReach) * (1 - Math.exp(-2.4 * dt));
+            this.kick = 0.2 + 0.55 * Math.abs(Math.sin(this.limbPhase * 0.7));
+        } else if (this.kind === "garden" || this.kind === "lumen") {
+            this.mantlePulse += dt * (this.kind === "lumen" ? 2.6 : 1.9);
+        } else if (this.kind === "ribbon") {
+            this.sailWave += dt * (4.5 + (this.rainbowMood > 0 ? 2.2 : 0));
+        } else if (this.kind === "nurse" || this.kind === "shard") {
+            this.limbPhase += dt * 3.6;
+        } else if (this.kind === "beluga" || this.kind === "singer") {
+            this.limbPhase += dt * (this.kind === "singer" ? 1.8 : 2.4);
+            this.mantlePulse += dt * 1.4;
+        }
+
         if (this.petTimer > 0) this.petTimer = Math.max(0, this.petTimer - dt);
         if (this.petTimer > 0 && !this.tamed) {
             this.petProgress += dt;
-            if (this.petProgress >= CONFIG.pacifistSootheTime) this.tame();
+            if (this.petProgress >= this.sootheNeeded()
+                || this.petCount >= this.petsNeeded()) {
+                this.tame();
+            }
         }
 
         // Untamed visitors eventually leave; tamed ones stay much longer.
@@ -17143,6 +18404,13 @@ class PacifistVisitor {
         const moodBoost = this.rainbowMood > 0 ? 1.35 : 1;
         let spd = this.speed * (this.petTimer > 0 ? 0.35 : 1) * moodBoost;
         if (this.kind === "ribbon" && this.rainbowMood > 0) spd *= 1.25;
+        if (this.kind === "axolotl") {
+            // Burst then glide with each diagonal paddle stroke.
+            spd *= 0.72 + 0.38 * Math.abs(Math.sin(this.limbPhase));
+        }
+        if (this.kind === "lotus" || this.kind === "prism") {
+            spd *= 0.8 + 0.28 * Math.abs(Math.sin(this.limbPhase * 0.7));
+        }
 
         if (this.leaving) {
             const edgeX = this.x < viewW * 0.5 ? -this.size : viewW + this.size;
@@ -17208,6 +18476,13 @@ class PacifistVisitor {
             desired = this.dir + Math.sin(this.phase * 0.7) * 0.55;
             if (this.kind === "ribbon") desired += Math.sin(this.phase * 2.2) * 0.35;
             if (this.kind === "garden" || this.kind === "lumen") desired += Math.sin(this.phase * 0.4) * 0.25;
+            if (this.kind === "axolotl") {
+                // Soft salamander weave, not fish yaw recycle.
+                desired += Math.sin(this.limbPhase * 0.55) * 0.4;
+            }
+            if (this.kind === "lotus" || this.kind === "prism") {
+                desired += Math.sin(this.limbPhase * 0.35) * 0.22;
+            }
             if (this.rainbowMood > 0 && this.kind === "ribbon") {
                 desired += Math.sin(this.phase * 3.4) * 0.55;
             }
@@ -17227,13 +18502,14 @@ class PacifistVisitor {
         if (this.kind === "garden" || this.kind === "lumen") {
             for (let i = 0; i < this.legs.length; i++) {
                 const leg = this.legs[i];
-                leg.phase += dt * (1.2 + i * 0.05);
-                const sway = this.kind === "lumen" ? 0.35 : 0.25;
+                leg.phase += dt * (1.35 + i * 0.04);
+                const sway = this.kind === "lumen" ? 0.4 : 0.32;
+                // Arms trail behind the mantle and curl while jetting.
                 const ang = this.dir + Math.PI + leg.baseAng * 0.55 + Math.sin(leg.phase) * sway;
-                const rad = leg.len * (0.75 + 0.15 * Math.sin(leg.phase * 0.8));
+                const rad = leg.len * (0.82 + 0.12 * Math.sin(leg.phase * 0.9 + this.mantlePulse));
                 const gx = this.x + Math.cos(ang) * rad;
-                const gy = this.y + Math.sin(ang) * rad * 0.85;
-                const k = 1 - Math.exp(-2.2 * dt);
+                const gy = this.y + Math.sin(ang) * rad * 0.78;
+                const k = 1 - Math.exp(-2.4 * dt);
                 leg.tipX += (gx - leg.tipX) * k;
                 leg.tipY += (gy - leg.tipY) * k;
             }
@@ -17471,315 +18747,540 @@ class PacifistVisitor {
 
     draw(ctx) {
         if (this.dead) return;
+        const a = this.leaving ? 0.55 : 0.94;
+        if (this.kind === "axolotl") { drawPacifistAxolotlModel(ctx, this, a); return; }
+        if (this.kind === "garden" || this.kind === "lumen") { drawPacifistOctopusHelper(ctx, this, a); return; }
+        if (this.kind === "beluga") { drawPacifistBelugaHelper(ctx, this, a); return; }
+        if (this.kind === "singer") { drawPacifistWhaleHelper(ctx, this, a); return; }
+        if (this.kind === "lotus" || this.kind === "prism") { drawPacifistTurtleHelper(ctx, this, a); return; }
+        if (this.kind === "nurse" || this.kind === "shard") { drawPacifistNurseHelper(ctx, this, a); return; }
+        if (this.kind === "ribbon") { drawPacifistSailHelper(ctx, this, a); return; }
+        drawPacifistNurseHelper(ctx, this, a);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Biome guardians: rare protectors per day / night / crystal pond.
+// Patrol until aggressive fish appear, hunt them, then leave unless tamed.
+// Later biomes need more pets so befriending feels like progression.
+// ---------------------------------------------------------------------------
+const BIOME_GUARDIAN_META = {
+    warden: {
+        biome: "day",
+        label: "sun warden",
+        size: [58, 78],
+        pets: 20,
+        soothe: 8,
+        body: "#d8a048",
+        belly: "#fff0c8",
+        accent: "#f0c060",
+    },
+    vigil: {
+        biome: "night",
+        label: "moon vigil",
+        size: [68, 92],
+        pets: 32,
+        soothe: 12,
+        body: "#6a88b0",
+        belly: "#d8e8f8",
+        accent: "#a8c8e8",
+    },
+    aegis: {
+        biome: "crystal",
+        label: "prism aegis",
+        size: [78, 108],
+        pets: 48,
+        soothe: 16,
+        body: "#9060c8",
+        belly: "#e8d8ff",
+        accent: "#70d0e8",
+    },
+};
+
+function biomeGuardianKindForMode() {
+    const mode = environmentModeKey();
+    if (mode === "crystal") return "aegis";
+    if (mode === "night") return "vigil";
+    return "warden";
+}
+
+function isAggressivePondFish(f) {
+    if (!f || f.dead || f.golden || f.isPlatinum || f.rainbowLeaving || f.insideShark) return false;
+    if (f.isHero || f.redeemed || f.tamedMonster) return false;
+    return !!(f.isPredator || f.isMonster);
+}
+
+function countAggressivePondFish() {
+    let n = 0;
+    for (const f of fishes) {
+        if (isAggressivePondFish(f)) n++;
+    }
+    return n;
+}
+
+function spawnBiomeGuardian(forceKind) {
+    if (biomeGuardians.filter((g) => g && !g.dead).length >= CONFIG.biomeGuardianMax) return null;
+    const kind = forceKind || biomeGuardianKindForMode();
+    const meta = BIOME_GUARDIAN_META[kind];
+    if (!meta) return null;
+    // Only spawn the matching biome helper (unless forced for tools).
+    if (!forceKind && meta.biome !== environmentModeKey()) return null;
+    const g = new BiomeGuardian(kind);
+    biomeGuardians.push(g);
+    water.disturb(g.x, g.y, g.size * 0.4, 130);
+    spawnSplash(g.x, g.y, g.size * 0.22, 0.35);
+    if (Audio.fishNote) {
+        Audio.fishNote({
+            freq: kind === "aegis" ? 340 : kind === "vigil" ? 280 : 300,
+            wave: "triangle",
+            pan: Math.max(-1, Math.min(1, (g.x / viewW) * 2 - 1)),
+            dur: 0.45,
+            level: 0.08,
+            partialAmt: 0.28,
+            bright: 1.2,
+        });
+    }
+    return g;
+}
+
+function updateBiomeGuardians(dt) {
+    for (const g of biomeGuardians) {
+        if (g && !g.dead) g.update(dt);
+    }
+    for (let i = biomeGuardians.length - 1; i >= 0; i--) {
+        if (!biomeGuardians[i] || biomeGuardians[i].dead) biomeGuardians.splice(i, 1);
+    }
+}
+
+function drawBiomeGuardians(ctx) {
+    for (const g of biomeGuardians) {
+        if (g && !g.dead) g.draw(ctx);
+    }
+}
+
+function biomeGuardianAt(x, y) {
+    let best = null;
+    let bestD = Infinity;
+    for (const g of biomeGuardians) {
+        if (!g || g.dead) continue;
+        const d = Math.hypot(x - g.x, y - g.y);
+        if (d < g.size * 0.55 && d < bestD) { bestD = d; best = g; }
+    }
+    return best;
+}
+
+class BiomeGuardian {
+    constructor(kind) {
+        const meta = BIOME_GUARDIAN_META[kind] || BIOME_GUARDIAN_META.warden;
+        this.kind = kind;
+        this.meta = meta;
+        this.biome = meta.biome;
+        this.size = rand(meta.size[0], meta.size[1]);
+        this.dead = false;
+        this.leaving = false;
+        this.tamed = false;
+        this.isHero = false;
+        this.isBiomeGuardian = true;
+        this.petCount = 0;
+        this.petProgress = 0;
+        this.petTimer = 0;
+        this.prey = null;
+        this.meals = 0;
+        this.leaveSoon = 0;
+        this.wanderTimer = 0;
+        this._wanderDir = 0;
+        this.age = 0;
+        this.tailPhase = Math.random() * Math.PI * 2;
+        this.eatPulse = 0;
+        this.limbPhase = Math.random() * Math.PI * 2;
+        this.finWave = Math.random() * Math.PI * 2;
+        this.breath = Math.random() * Math.PI * 2;
+        const side = Math.floor(Math.random() * 4);
+        if (side === 0) { this.x = -this.size; this.y = Math.random() * viewH; }
+        else if (side === 1) { this.x = viewW + this.size; this.y = Math.random() * viewH; }
+        else if (side === 2) { this.x = Math.random() * viewW; this.y = -this.size; }
+        else { this.x = Math.random() * viewW; this.y = viewH + this.size; }
+        this.dir = Math.atan2(viewH * 0.5 - this.y, viewW * 0.5 - this.x);
+        this.speed = 36 + Math.random() * 12;
+        if (kind === "vigil") this.speed *= 1.05;
+        if (kind === "aegis") this.speed *= 1.1;
+        if (typeof noteRegistryEncounter === "function") {
+            noteRegistryEncounter("guard:" + this.kind);
+        }
+    }
+
+    petsNeeded() {
+        return (this.meta && this.meta.pets) || CONFIG.petsToTamePacifist;
+    }
+
+    sootheNeeded() {
+        return (this.meta && this.meta.soothe) || CONFIG.pacifistSootheTime;
+    }
+
+    pet(quiet) {
+        if (this.dead || this.leaving) return;
+        if (quiet && this.petTimer > 0.55) {
+            this.petTimer = 1.5;
+            return;
+        }
+        this.petTimer = 1.5;
+        const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+        Audio.fishNote({
+            freq: this.tamed ? 360 : 260,
+            wave: "triangle",
+            pan,
+            dur: 0.42,
+            level: 0.075,
+            partialAmt: 0.24,
+            bright: 1.15,
+        });
+        water.disturb(this.x, this.y, this.size * 0.35, 55);
+        if (this.tamed) return;
+        this.petCount++;
+        if (this.petCount >= this.petsNeeded() || this.petProgress >= this.sootheNeeded()) {
+            this.tame();
+        }
+    }
+
+    tame() {
+        if (this.tamed || this.dead) return;
+        this.tamed = true;
+        this.isHero = true;
+        this.leaving = false;
+        this.leaveSoon = 0;
+        this.petCount = 0;
+        this.petProgress = 0;
+        this.petTimer = Math.max(this.petTimer, 1.8);
+        const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+        if (Audio.goldChime) Audio.goldChime(pan);
+        Audio.fishNote({
+            freq: 400,
+            wave: "sine",
+            pan,
+            dur: 0.55,
+            level: 0.1,
+            partialAmt: 0.3,
+            bright: 1.3,
+        });
+        water.disturb(this.x, this.y, this.size * 0.7, 180);
+        spawnSplash(this.x, this.y, this.size * 0.28, 0.45);
+        if (typeof celebrateDiscovery === "function") {
+            celebrateDiscovery("tame:guardian:" + (this.kind || "warden"), this.x, this.y);
+        }
+    }
+
+    findPrey() {
+        let best = null;
+        let bestScore = Infinity;
+        for (const f of fishes) {
+            if (!isAggressivePondFish(f)) continue;
+            // Only take on prey we can overpower.
+            if (f.size >= this.size * 1.05) continue;
+            const d = Math.hypot(f.x - this.x, f.y - this.y);
+            const score = d * (f.isMonster ? 0.85 : 1);
+            if (score < bestScore) { bestScore = score; best = f; }
+        }
+        return best;
+    }
+
+    eatPrey(prey) {
+        if (!prey || prey.dead) return;
+        prey.dead = true;
+        this.prey = null;
+        this.meals++;
+        this.eatPulse = 0.35;
+        this.size = Math.min(this.size + 4, (this.meta.size[1] || 90) * 1.25);
+        const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+        if (Audio.predatorEat) Audio.predatorEat(pan);
+        water.disturb(this.x, this.y, this.size * 0.55, 200);
+        spawnSplash(this.x, this.y, this.size * 0.3, 0.7);
+        // Untamed guardians leave after a meal; tamed ones stay on watch.
+        if (!this.tamed) {
+            this.leaveSoon = Math.max(this.leaveSoon, 1.6);
+        }
+    }
+
+    update(dt) {
+        if (this.dead) return;
+        this.age += dt;
+        this.tailPhase += dt * (this.prey ? 5.2 : 3.2);
+        this.limbPhase += dt * (this.prey ? 6.2 : 3.8);
+        this.finWave += dt * (this.kind === "aegis" ? 4.2 : this.kind === "vigil" ? 3.6 : 3.0);
+        this.breath += dt * 1.8;
+        this.eatPulse = Math.max(0, this.eatPulse - dt);
+        if (this.petTimer > 0) this.petTimer = Math.max(0, this.petTimer - dt);
+
+        // Continuous stroke also counts toward tame (scaled by biome).
+        if (!this.tamed && this.petTimer > 0 && !this.leaving) {
+            this.petProgress += dt;
+            if (this.petProgress >= this.sootheNeeded() || this.petCount >= this.petsNeeded()) {
+                this.tame();
+            }
+        }
+
+        // Wrong biome and not befriended: drift out.
+        if (!this.tamed && this.biome !== environmentModeKey()) {
+            this.leaving = true;
+        }
+
+        if (this.leaveSoon > 0 && !this.tamed) {
+            this.leaveSoon = Math.max(0, this.leaveSoon - dt);
+            if (this.leaveSoon <= 0) this.leaving = true;
+        }
+
+        if (this.leaving) {
+            this.prey = null;
+            const edgeAng = Math.atan2(
+                this.y < viewH * 0.5 ? -1 : 1,
+                this.x < viewW * 0.5 ? -1 : 1
+            );
+            bankToward(this, edgeAng, dt, 1.4);
+            easeToward(
+                this,
+                this.x + Math.cos(this.dir) * 80,
+                this.y + Math.sin(this.dir) * 80,
+                dt,
+                this.speed * 1.35,
+                1.5
+            );
+            const m = this.size * 1.4;
+            if (this.x < -m || this.x > viewW + m || this.y < -m || this.y > viewH + m) {
+                this.dead = true;
+            }
+            return;
+        }
+
+        // Hunt only when aggressors are present.
+        if (!this.prey || !isAggressivePondFish(this.prey) || this.prey.size >= this.size * 1.05) {
+            this.prey = this.findPrey();
+        }
+
+        if (this.prey) {
+            const chase = chaseTowardPoint(this, this.prey.x, this.prey.y, this.speed * 1.55);
+            this.x += Math.cos(this.dir) * chase * dt;
+            this.y += Math.sin(this.dir) * chase * dt;
+            bankToward(this, Math.atan2(this.prey.y - this.y, this.prey.x - this.x), dt, 2.2);
+            if (Math.hypot(this.prey.x - this.x, this.prey.y - this.y) < this.size * 0.42) {
+                this.eatPrey(this.prey);
+            }
+        } else {
+            // Peaceful patrol while waiting for trouble.
+            this.wanderTimer -= dt;
+            if (this.wanderTimer <= 0) {
+                this.wanderTimer = 1.8 + Math.random() * 2.4;
+                this._wanderDir = this.dir + (Math.random() - 0.5) * 1.4;
+            }
+            let desired = this._wanderDir;
+            const margin = 70;
+            if (this.x < margin) desired = 0;
+            else if (this.x > viewW - margin) desired = Math.PI;
+            if (this.y < margin) desired = Math.PI / 2;
+            else if (this.y > viewH - margin) desired = -Math.PI / 2;
+            bankToward(this, desired, dt, 1.2);
+            easeToward(
+                this,
+                this.x + Math.cos(this.dir) * 40,
+                this.y + Math.sin(this.dir) * 40,
+                dt,
+                this.speed * 0.72,
+                1.1
+            );
+        }
+
+        this.x = Math.max(-this.size * 0.2, Math.min(viewW + this.size * 0.2, this.x));
+        this.y = Math.max(-this.size * 0.2, Math.min(viewH + this.size * 0.2, this.y));
+        if (Math.random() < 0.2) water.disturb(this.x, this.y, 10, 40);
+    }
+
+    draw(ctx) {
         const L = this.size;
-        const W = this.size * (this.kind === "axolotl" ? 0.42
-            : this.kind === "garden" || this.kind === "lumen" ? 0.38
-            : this.kind === "lotus" ? 0.36
-            : this.kind === "ribbon" ? 0.28
-            : this.kind === "beluga" ? 0.34
-            : this.kind === "singer" ? 0.32
-            : 0.36);
+        const meta = this.meta;
+        const limb = this.limbPhase || 0;
+        const fin = this.finWave || 0;
+        const breath = 1 + Math.sin(this.breath || 0) * 0.04;
+        const W = this.size * (this.kind === "aegis" ? 0.48 : this.kind === "vigil" ? 0.28 : 0.38);
         ctx.save();
         ctx.translate(this.x, this.y);
         ctx.rotate(this.dir);
-        ctx.globalAlpha = this.leaving ? 0.55 : 0.94;
-        if (this.rainbowMood > 0) {
-            const hue = (performance.now() * 0.18) % 360;
-            ctx.shadowColor = `hsla(${hue}, 90%, 65%, 0.85)`;
-            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 18;
-        } else if (this.isPink) {
-            ctx.shadowColor = "rgba(255,140,190,0.75)";
+        ctx.globalAlpha = this.leaving ? 0.55 : 0.9;
+        if (this.tamed) {
+            ctx.shadowColor = this.kind === "aegis"
+                ? "rgba(180,140,255,0.75)"
+                : this.kind === "vigil"
+                    ? "rgba(140,180,230,0.7)"
+                    : "rgba(255,200,100,0.7)";
             ctx.shadowBlur = gfxQuality <= 0 ? 0 : 16;
-        } else if (this.tamed) {
-            ctx.shadowColor = "rgba(160,220,255,0.7)";
-            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
+        } else if (this.prey) {
+            ctx.shadowColor = "rgba(220,80,60,0.45)";
+            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 12;
         }
 
-        if (this.kind === "garden" || this.kind === "lumen") {
-            // Arms under mantle.
-            for (const leg of this.legs) {
-                const lx = (leg.tipX || this.x) - this.x;
-                const ly = (leg.tipY || this.y) - this.y;
-                // Rotate into local space.
-                const ca = Math.cos(-this.dir), sa = Math.sin(-this.dir);
-                const localX = lx * ca - ly * sa;
-                const localY = lx * sa + ly * ca;
-                ctx.strokeStyle = this.kind === "lumen"
-                    ? (this.tamed ? "rgba(180,140,255,0.8)" : "rgba(140,100,220,0.75)")
-                    : (this.tamed ? "rgba(90,160,140,0.75)" : "rgba(70,120,110,0.7)");
-                ctx.lineWidth = Math.max(2, L * 0.06);
-                ctx.lineCap = "round";
-                ctx.beginPath();
-                ctx.moveTo(-L * 0.1, 0);
-                ctx.quadraticCurveTo(localX * 0.45, localY * 0.45, localX, localY);
-                ctx.stroke();
-                if (this.kind === "lumen") {
-                    ctx.fillStyle = "rgba(230,210,255,0.55)";
-                    ctx.beginPath();
-                    ctx.arc(localX, localY, Math.max(1.5, L * 0.04), 0, Math.PI * 2);
-                    ctx.fill();
-                }
-            }
-        }
+        const g = ctx.createLinearGradient(0, -W, 0, W);
+        g.addColorStop(0, meta.accent || meta.belly);
+        g.addColorStop(0.45, meta.body);
+        g.addColorStop(1, meta.belly);
+        ctx.fillStyle = g;
 
-        // Body fills by kind.
-        const body = ctx.createLinearGradient(0, -W, 0, W);
-        if (this.kind === "shard") {
-            body.addColorStop(0, this.tamed ? "#e8d8ff" : "#c8b0f0");
-            body.addColorStop(0.55, this.tamed ? "#9060c8" : "#6848a0");
-            body.addColorStop(1, "#40a0b8");
-        } else if (this.kind === "nurse") {
-            body.addColorStop(0, this.tamed ? "#d8c49a" : "#b89a6a");
-            body.addColorStop(0.55, this.tamed ? "#a88858" : "#8a6a40");
-            body.addColorStop(1, "#5a4830");
-        } else if (this.kind === "beluga") {
-            body.addColorStop(0, "#f4f8ff");
-            body.addColorStop(0.5, this.tamed ? "#d0e8f8" : "#c0d4e8");
-            body.addColorStop(1, "#8aa8c0");
-        } else if (this.kind === "singer") {
-            body.addColorStop(0, "#6a8aa0");
-            body.addColorStop(0.45, this.tamed ? "#4a7088" : "#3a5a70");
-            body.addColorStop(1, "#1a3040");
-        } else if (this.kind === "prism") {
-            body.addColorStop(0, "#d0e8ff");
-            body.addColorStop(0.5, this.tamed ? "#90c0e8" : "#70a0d0");
-            body.addColorStop(1, "#4060a0");
-        } else if (this.kind === "lotus") {
-            body.addColorStop(0, "#c8d8a8");
-            body.addColorStop(0.5, this.tamed ? "#88a868" : "#6a8850");
-            body.addColorStop(1, "#3a5028");
-        } else if (this.kind === "axolotl") {
-            body.addColorStop(0, "#f8c0d0");
-            body.addColorStop(0.5, this.tamed ? "#f090b0" : "#e07098");
-            body.addColorStop(1, "#a04868");
-        } else if (this.kind === "ribbon") {
-            body.addColorStop(0, "#70c8e8");
-            body.addColorStop(0.45, this.tamed ? "#40a0d0" : "#2a88b8");
-            body.addColorStop(1, "#184868");
-        } else if (this.kind === "lumen") {
-            body.addColorStop(0, "#f0e8ff");
-            body.addColorStop(0.45, this.tamed ? "#c8a0f0" : "#a070d8");
-            body.addColorStop(1, "#503088");
-        } else {
-            body.addColorStop(0, "#80c8b0");
-            body.addColorStop(0.5, this.tamed ? "#48a888" : "#388870");
-            body.addColorStop(1, "#1a5040");
-        }
-        ctx.fillStyle = body;
-
-        // Silhouette families.
-        ctx.beginPath();
-        if (this.kind === "nurse" || this.kind === "shard" || this.kind === "beluga" || this.kind === "singer") {
-            ctx.ellipse(0, 0, L * 0.5, W, 0, 0, Math.PI * 2);
-            ctx.fill();
-            // Tail fluke.
+        if (this.kind === "vigil") {
+            // Moon vigil: clear eel silhouette (long ribbon body + pointed head).
+            const und = Math.sin(fin);
             ctx.beginPath();
-            ctx.moveTo(-L * 0.42, 0);
-            ctx.quadraticCurveTo(-L * 0.7, -W * 1.1, -L * 0.95, -W * 0.35);
-            ctx.quadraticCurveTo(-L * 0.7, 0, -L * 0.95, W * 0.35);
-            ctx.quadraticCurveTo(-L * 0.7, W * 1.1, -L * 0.42, 0);
+            ctx.moveTo(L * 0.62, 0);
+            ctx.lineTo(L * 0.48, -W * 0.35);
+            ctx.bezierCurveTo(
+                L * 0.15, -W * (0.85 + und * 0.2) * breath,
+                -L * 0.25, -W * (0.7 - und * 0.25) * breath,
+                -L * 0.7, -W * 0.25
+            );
+            ctx.quadraticCurveTo(-L * 1.05, und * W * 0.35, -L * 1.25, 0);
+            ctx.quadraticCurveTo(-L * 1.05, -und * W * 0.35, -L * 0.7, W * 0.25);
+            ctx.bezierCurveTo(
+                -L * 0.25, W * (0.7 + und * 0.2),
+                L * 0.15, W * (0.85 - und * 0.15),
+                L * 0.48, W * 0.35
+            );
+            ctx.closePath();
             ctx.fill();
-            if (this.kind === "shard") {
-                // Prism ridges + crystal dorsal.
-                ctx.strokeStyle = "rgba(255,255,255,0.4)";
-                ctx.lineWidth = 1.3;
-                for (let i = 0; i < 4; i++) {
-                    ctx.beginPath();
-                    ctx.moveTo(L * (0.2 - i * 0.08), -W * 0.5);
-                    ctx.lineTo(L * (0.14 - i * 0.08), W * 0.45);
-                    ctx.stroke();
-                }
-                ctx.fillStyle = "rgba(180,220,255,0.5)";
+            ctx.strokeStyle = "rgba(200,225,255,0.55)";
+            ctx.lineWidth = Math.max(1.5, L * 0.03);
+            ctx.beginPath();
+            ctx.moveTo(L * 0.2, -W * 0.55);
+            for (let i = 0; i < 6; i++) {
+                const t = i / 5;
+                ctx.lineTo(
+                    L * (0.2 - t * 0.95),
+                    -W * (0.55 + 0.35 * Math.sin(fin * 2 + i) + t * 0.15)
+                );
+            }
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(L * 0.35, -W * 0.05, L * 0.12, -0.3, Math.PI * 1.1);
+            ctx.stroke();
+            const pec = Math.sin(limb) * 0.1;
+            ctx.beginPath();
+            ctx.ellipse(L * 0.1, W * (0.45 + pec), L * 0.12, W * 0.28, 0.45, 0, Math.PI * 2);
+            ctx.fill();
+        } else if (this.kind === "aegis") {
+            // Prism aegis: freshwater angelfish (tall triangle disc + trailing fins).
+            const flap = Math.sin(fin) * 0.14;
+            ctx.beginPath();
+            ctx.moveTo(L * 0.38, 0);
+            ctx.bezierCurveTo(L * 0.05, -W * (1.55 + flap) * breath, -L * 0.35, -W * 1.5 * breath, -L * 0.4, 0);
+            ctx.bezierCurveTo(-L * 0.35, W * 1.5, L * 0.05, W * (1.55 - flap), L * 0.38, 0);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(-L * 0.15, -W * 1.1);
+            ctx.quadraticCurveTo(-L * 0.55, -W * (1.6 + flap), -L * 1.05, -W * 0.4);
+            ctx.quadraticCurveTo(-L * 0.5, -W * 0.9, -L * 0.15, -W * 0.7);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(-L * 0.15, W * 1.1);
+            ctx.quadraticCurveTo(-L * 0.55, W * (1.6 - flap), -L * 1.05, W * 0.4);
+            ctx.quadraticCurveTo(-L * 0.5, W * 0.9, -L * 0.15, W * 0.7);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(L * 0.32, -W * 0.12);
+            ctx.lineTo(L * 0.52, 0);
+            ctx.lineTo(L * 0.32, W * 0.12);
+            ctx.fill();
+            ctx.strokeStyle = "rgba(255,255,255,0.4)";
+            ctx.lineWidth = 1.2;
+            for (let i = 0; i < 4; i++) {
                 ctx.beginPath();
-                ctx.moveTo(-L * 0.05, -W * 0.7);
-                ctx.lineTo(L * 0.1, -W * 1.65);
-                ctx.lineTo(L * 0.22, -W * 0.65);
+                ctx.moveTo(L * (0.12 - i * 0.1), -W * 0.95);
+                ctx.lineTo(L * (0.02 - i * 0.1), W * 0.95);
+                ctx.stroke();
+            }
+        } else {
+            // Sun warden: clear bass / sunfish (deep body, spiny dorsal, big mouth).
+            const pec = Math.sin(limb) * 0.18;
+            const tw = Math.sin(this.tailPhase) * 0.28;
+            ctx.beginPath();
+            ctx.moveTo(-L * 0.35, 0);
+            ctx.quadraticCurveTo(-L * 0.62, -W * (1.15 + tw), -L * 0.95, -W * 0.25);
+            ctx.lineTo(-L * 0.7, 0);
+            ctx.lineTo(-L * 0.95, W * 0.25);
+            ctx.quadraticCurveTo(-L * 0.62, W * (1.15 - tw), -L * 0.35, 0);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(L * 0.35, 0);
+            ctx.bezierCurveTo(L * 0.1, -W * 1.35 * breath, -L * 0.2, -W * 1.35 * breath, -L * 0.38, -W * 0.35);
+            ctx.quadraticCurveTo(-L * 0.45, 0, -L * 0.38, W * 0.35);
+            ctx.bezierCurveTo(-L * 0.2, W * 1.3, L * 0.1, W * 1.3, L * 0.35, 0);
+            ctx.fill();
+            ctx.fillStyle = "rgba(255,210,90,0.7)";
+            for (let i = 0; i < 6; i++) {
+                const h = 1.35 + Math.sin(fin + i * 0.7) * 0.15;
+                ctx.beginPath();
+                ctx.moveTo(L * (-0.12 + i * 0.07), -W * 0.85);
+                ctx.lineTo(L * (-0.06 + i * 0.07), -W * h);
+                ctx.lineTo(L * (0.02 + i * 0.07), -W * 0.8);
                 ctx.closePath();
                 ctx.fill();
-            } else if (this.kind === "nurse") {
-                // Broad pectorals + spotted nurse markings.
-                ctx.beginPath();
-                ctx.ellipse(L * 0.05, W * 0.85, L * 0.22, W * 0.55, 0.4, 0, Math.PI * 2);
-                ctx.ellipse(L * 0.05, -W * 0.85, L * 0.22, W * 0.55, -0.4, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.fillStyle = "rgba(40,30,18,0.35)";
-                for (let i = 0; i < 7; i++) {
-                    const px = (i / 6 - 0.5) * L * 0.7;
-                    const py = Math.sin(i * 1.7 + this.phase) * W * 0.35;
-                    ctx.beginPath();
-                    ctx.ellipse(px, py, L * 0.04, L * 0.03, 0, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-            } else if (this.kind === "beluga") {
-                // Melon forehead + soft dorsal ridge.
-                ctx.fillStyle = body;
-                ctx.beginPath();
-                ctx.ellipse(L * 0.28, -W * 0.15, L * 0.22, W * 0.55, -0.2, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.strokeStyle = "rgba(180,210,230,0.55)";
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                ctx.moveTo(-L * 0.1, -W * 0.85);
-                ctx.quadraticCurveTo(L * 0.1, -W * 1.15, L * 0.25, -W * 0.7);
-                ctx.stroke();
-            } else if (this.kind === "singer") {
-                // Tall scalloped dorsal + throat grooves.
-                ctx.beginPath();
-                ctx.moveTo(-L * 0.05, -W * 0.7);
-                ctx.quadraticCurveTo(L * 0.05, -W * 1.8, L * 0.25, -W * 0.85);
-                ctx.quadraticCurveTo(L * 0.1, -W * 0.9, -L * 0.05, -W * 0.7);
-                ctx.fill();
-                ctx.strokeStyle = "rgba(200,220,235,0.35)";
-                ctx.lineWidth = 1.2;
-                for (let i = 0; i < 4; i++) {
-                    ctx.beginPath();
-                    ctx.moveTo(L * 0.05, W * (0.15 + i * 0.18));
-                    ctx.quadraticCurveTo(L * 0.35, W * (0.2 + i * 0.18), L * 0.48, W * (0.12 + i * 0.15));
-                    ctx.stroke();
-                }
             }
-        } else if (this.kind === "prism" || this.kind === "lotus") {
-            // Softshell disc + long neck snout (prism uses cooler facet shell).
-            ctx.ellipse(0, 0, L * 0.42, W * 1.15, 0, 0, Math.PI * 2);
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.moveTo(-L * 0.05, -W * 0.8);
+            ctx.quadraticCurveTo(-L * 0.15, -W * 1.15, -L * 0.28, -W * 0.7);
             ctx.fill();
             ctx.beginPath();
-            ctx.moveTo(L * 0.3, -W * 0.15);
-            ctx.quadraticCurveTo(L * 0.7, -W * 0.25, L * 0.95, 0);
-            ctx.quadraticCurveTo(L * 0.7, W * 0.25, L * 0.3, W * 0.15);
+            ctx.moveTo(L * 0.28, -W * 0.2);
+            ctx.quadraticCurveTo(L * 0.55, -W * 0.05, L * 0.58, W * 0.08);
+            ctx.quadraticCurveTo(L * 0.4, W * 0.25, L * 0.25, W * 0.18);
             ctx.fill();
-            // Shell patterning.
-            ctx.strokeStyle = "rgba(40,60,30,0.35)";
-            ctx.lineWidth = 1.3;
-            for (let i = 0; i < 5; i++) {
-                const a = (i / 5) * Math.PI * 2;
-                ctx.beginPath();
-                ctx.moveTo(0, 0);
-                ctx.lineTo(Math.cos(a) * L * 0.35, Math.sin(a) * W * 0.9);
-                ctx.stroke();
-            }
-        } else if (this.kind === "axolotl") {
-            ctx.ellipse(0, 0, L * 0.48, W, 0, 0, Math.PI * 2);
-            ctx.fill();
-            // External gill fronds.
-            ctx.strokeStyle = this.tamed ? "rgba(255,140,180,0.85)" : "rgba(220,100,140,0.8)";
-            ctx.lineWidth = Math.max(1.5, L * 0.04);
-            ctx.lineCap = "round";
-            for (const side of [-1, 1]) {
-                for (let i = 0; i < 3; i++) {
-                    const base = -0.2 + i * 0.25;
-                    ctx.beginPath();
-                    ctx.moveTo(L * 0.15, side * W * 0.3);
-                    ctx.quadraticCurveTo(
-                        L * (0.35 + i * 0.05),
-                        side * W * (1.1 + i * 0.25 + Math.sin(this.phase + i) * 0.15),
-                        L * 0.2,
-                        side * W * (1.6 + i * 0.2)
-                    );
-                    ctx.stroke();
-                }
-            }
-            // Soft legs.
-            ctx.fillStyle = body;
-            for (const side of [-1, 1]) {
-                ctx.beginPath();
-                ctx.ellipse(-L * 0.05, side * W * 1.05, L * 0.14, W * 0.35, side * 0.3, 0, Math.PI * 2);
-                ctx.fill();
-            }
-        } else if (this.kind === "ribbon") {
-            // Slim sailfish with tall luminous sail.
-            ctx.moveTo(L * 0.55, 0);
-            ctx.bezierCurveTo(L * 0.3, -W * 0.9, -L * 0.1, -W, -L * 0.45, -W * 0.35);
-            ctx.bezierCurveTo(-L * 0.55, 0, -L * 0.45, W * 0.35, -L * 0.1, W * 0.85);
-            ctx.bezierCurveTo(L * 0.3, W * 0.7, L * 0.5, W * 0.25, L * 0.55, 0);
-            ctx.closePath();
-            ctx.fill();
-            // Bill.
+            ctx.strokeStyle = "rgba(60,40,20,0.45)";
+            ctx.lineWidth = Math.max(1.2, L * 0.02);
             ctx.beginPath();
-            ctx.moveTo(L * 0.5, -W * 0.08);
-            ctx.lineTo(L * 1.05, 0);
-            ctx.lineTo(L * 0.5, W * 0.08);
-            ctx.fill();
-            // Sail.
-            const sail = ctx.createLinearGradient(0, -W * 2.4, 0, -W);
-            sail.addColorStop(0, "rgba(120,220,255,0.55)");
-            sail.addColorStop(1, "rgba(40,120,180,0.35)");
-            ctx.fillStyle = sail;
+            ctx.moveTo(L * 0.32, W * 0.02);
+            ctx.quadraticCurveTo(L * 0.5, W * 0.08, L * 0.55, W * 0.05);
+            ctx.stroke();
             ctx.beginPath();
-            ctx.moveTo(-L * 0.15, -W * 0.6);
-            ctx.quadraticCurveTo(L * 0.05, -W * (2.4 + Math.sin(this.tailPhase) * 0.2), L * 0.4, -W * 0.5);
-            ctx.quadraticCurveTo(L * 0.1, -W * 1.1, -L * 0.15, -W * 0.6);
-            ctx.fill();
-            // Tail.
-            ctx.fillStyle = body;
+            ctx.ellipse(L * 0.12, 0, L * 0.08, W * 0.55, 0, 0, Math.PI * 2);
+            ctx.stroke();
             ctx.beginPath();
-            ctx.moveTo(-L * 0.4, 0);
-            ctx.lineTo(-L * 0.85, -W * 1.1);
-            ctx.lineTo(-L * 0.65, 0);
-            ctx.lineTo(-L * 0.85, W * 1.1);
-            ctx.closePath();
+            ctx.ellipse(L * 0.0, W * (0.95 + pec), L * 0.24, W * (0.6 + pec * 0.25), 0.45 + pec, 0, Math.PI * 2);
             ctx.fill();
-        } else {
-            // Garden octopus / lumen bloom mantle.
-            ctx.ellipse(0, 0, L * 0.42, W, 0, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = this.kind === "lumen" ? "rgba(230,210,255,0.28)" : "rgba(255,255,255,0.18)";
-            for (let i = 0; i < 5; i++) {
-                ctx.beginPath();
-                ctx.arc(
-                    Math.cos(i * 1.4 + this.phase) * L * 0.18,
-                    Math.sin(i * 1.7) * W * 0.35,
-                    L * (this.kind === "lumen" ? 0.055 : 0.05),
-                    0, Math.PI * 2
-                );
-                ctx.fill();
-            }
-            if (this.kind === "lumen") {
-                ctx.strokeStyle = "rgba(255,255,255,0.35)";
-                ctx.lineWidth = 1.1;
-                for (let i = 0; i < 3; i++) {
-                    ctx.beginPath();
-                    ctx.moveTo(-L * 0.1 + i * L * 0.12, -W * 0.55);
-                    ctx.lineTo(-L * 0.16 + i * L * 0.12, W * 0.45);
-                    ctx.stroke();
-                }
-            }
         }
 
         // Eye.
-        ctx.fillStyle = "rgba(250,252,255,0.95)";
-        const eyeX = this.kind === "lotus" ? L * 0.55
-            : this.kind === "ribbon" ? L * 0.28
-            : L * 0.22;
-        const eyeY = this.kind === "beluga" ? -W * 0.05 : -W * 0.22;
-        ctx.beginPath();
-        ctx.ellipse(eyeX, eyeY, Math.max(2.2, L * 0.045), Math.max(2.5, L * 0.055), 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = this.tamed ? "rgba(40,90,120,0.95)" : "rgba(20,30,40,0.95)";
-        ctx.beginPath();
-        ctx.arc(eyeX + L * 0.01, eyeY, Math.max(1.1, L * 0.022), 0, Math.PI * 2);
-        ctx.fill();
+        ctx.shadowBlur = 0;
+        const eyeX = this.kind === "aegis" ? L * 0.18 : L * 0.28;
+        const eyeY = this.kind === "vigil" ? -W * 0.12 : -W * 0.22;
         if (this.petTimer > 0) {
-            ctx.strokeStyle = "rgba(20,30,40,0.7)";
-            ctx.lineWidth = Math.max(1, L * 0.02);
+            ctx.strokeStyle = "rgba(20,30,40,0.8)";
+            ctx.lineWidth = Math.max(1.2, L * 0.02);
             ctx.beginPath();
-            ctx.moveTo(eyeX - L * 0.04, eyeY);
-            ctx.quadraticCurveTo(eyeX, eyeY + L * 0.03, eyeX + L * 0.04, eyeY);
+            ctx.moveTo(eyeX - L * 0.05, eyeY);
+            ctx.quadraticCurveTo(eyeX, eyeY + L * 0.03, eyeX + L * 0.05, eyeY);
             ctx.stroke();
+        } else {
+            ctx.fillStyle = "rgba(245,250,255,0.92)";
+            ctx.beginPath();
+            ctx.ellipse(eyeX, eyeY, Math.max(2.2, L * 0.03), Math.max(2, L * 0.024), 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "rgba(20,30,40,0.92)";
+            ctx.beginPath();
+            ctx.arc(eyeX + L * 0.008, eyeY, Math.max(1.2, L * 0.015), 0, Math.PI * 2);
+            ctx.fill();
         }
 
-        // Tamed crest glow.
+        if (this.eatPulse > 0) {
+            ctx.globalCompositeOperation = "lighter";
+            ctx.fillStyle = `rgba(255,160,120,${0.2 * this.eatPulse / 0.35})`;
+            ctx.beginPath();
+            ctx.ellipse(L * 0.3, 0, L * 0.2, W * 0.7, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
         if (this.tamed) {
             ctx.globalCompositeOperation = "lighter";
-            ctx.fillStyle = "rgba(180,230,255,0.18)";
+            ctx.fillStyle = "rgba(200,230,255,0.16)";
             ctx.beginPath();
-            ctx.ellipse(0, 0, L * 0.55, W * 1.2, 0, 0, Math.PI * 2);
+            ctx.ellipse(0, 0, L * 0.55, W * 1.15, 0, 0, Math.PI * 2);
             ctx.fill();
         }
         ctx.restore();
     }
 }
-
-
 
 // Crystal Depths apex visitor: eldritch prism worm that hunts smaller fish.
 class CrystalSerpent {
@@ -18690,6 +20191,18 @@ function manageEcosystem(dt) {
         }
     }
     updatePacifistVisitors(dt);
+
+    // Rare biome guardians: hunt aggressive fish, leave after a meal unless tamed.
+    biomeGuardianCheckTimer += dt;
+    if (biomeGuardianCheckTimer >= CONFIG.biomeGuardianInterval) {
+        biomeGuardianCheckTimer = 0;
+        if (!repopulating && !pondFinaleActive() && !apexDuel
+            && countable.length > 1
+            && Math.random() < CONFIG.biomeGuardianChance) {
+            spawnBiomeGuardian();
+        }
+    }
+    updateBiomeGuardians(dt);
 
     // Background frogs along the lower bank with tadpole clusters.
     frogCheckTimer += dt;
@@ -19699,6 +21212,16 @@ function petPondLifeAt(x, y, quiet) {
             return;
         }
     }
+    const guard = typeof biomeGuardianAt === "function" ? biomeGuardianAt(x, y) : null;
+    if (guard) {
+        if (quiet && guard.petTimer > 0.6) {
+            guard.petTimer = 1.5;
+            return;
+        }
+        guard.pet(quiet);
+        markFirstInteraction();
+        return;
+    }
     const pac = pacifistAt(x, y);
     if (pac) {
         if (quiet && pac.petTimer > 0.6) {
@@ -19712,6 +21235,7 @@ function petPondLifeAt(x, y, quiet) {
     if (whale && !whale.dead) {
         const d = Math.hypot(x - whale.x, y - whale.y);
         if (d < whale.size * 0.48) {
+            if (whale.rollTimer > 0) return;
             if (quiet && whale.petTimer > whale.petDur * 0.55) {
                 whale.petTimer = whale.petDur;
                 return;
@@ -20298,7 +21822,7 @@ const REGISTRY_GROUP_BLURB = {
     night: "Moon pond fish. Cooler colors and quieter habits under moonlight.",
     crystal: "Crystal Depths fish. Gemstone colors that appear after moon and platinum progress.",
     apex: "Large hunters and guests that can empty or reshape the pond. Pet carefully, or let them leave on their own.",
-    helpers: "Pacifist counterparts to apex life. They grow the pond with gifts and soft auras instead of hunting. Pet them to befriend.",
+    helpers: "Pacifist counterparts and rare biome guardians. Helpers gift and soothe. Guardians hunt aggressive fish, then leave unless you pet them enough to stay. Later biomes take more pets.",
     rare: "Special forms a fish can enter. Gold rests on the bed, rainbow hunts hard, monster rises from eating reptiles, and platinum cannot be eaten.",
 };
 
@@ -20335,12 +21859,18 @@ const REGISTRY_HELPER_TIP = {
     beluga: "Moon beluga. A calm night helper that gifts and soothes.",
     singer: "Song whale. Slow, musical helper that lifts the mood of the pond.",
     lotus: "Softshell counterpart to the crocodile. Spreads calm and gifts.",
-    axolotl: "Tiny alligator counterpart. Friendly and gift-giving.",
+    axolotl: "Pond axolotl. A soft frog-cousin salamander with feathery gills. Friendly and gift-giving.",
     ribbon: "Ribbon sail. Swordfish counterpart that helps rather than spears.",
     garden: "Garden octopus. Tends the pond with soft arms and gifts.",
     lumen: "Lumen bloom. Crystal mantle counterpart with soft light gifts.",
     shard: "Shard nurse. Crystal shark counterpart that nurses the depths.",
     prism: "Prism softshell. Serpent counterpart that gifts instead of hunting.",
+};
+
+const REGISTRY_GUARDIAN_TIP = {
+    warden: "Sun warden. Rare day guardian that waits for aggressive fish, eats them, then leaves unless befriended.",
+    vigil: "Moon vigil. Rare night guardian. Harder to befriend than day helpers, stays only if tamed.",
+    aegis: "Prism aegis. Rare Crystal Depths guardian. Needs the most pets, then stays on watch if tamed.",
 };
 
 function registryPrettyName(name) {
@@ -20430,6 +21960,17 @@ function getRegistryCatalog() {
             previewPac: kind,
         });
     }
+    for (const kind of Object.keys(BIOME_GUARDIAN_META)) {
+        const m = BIOME_GUARDIAN_META[kind];
+        list.push({
+            id: "guard:" + kind,
+            group: "helpers",
+            label: registryPrettyName(m.label || kind),
+            color: m.body || "#d8a048",
+            tip: REGISTRY_GUARDIAN_TIP[kind] || "A rare biome guardian that eats aggressive fish.",
+            previewGuard: kind,
+        });
+    }
     for (const r of REGISTRY_RARE_META) {
         list.push({
             id: r.id,
@@ -20487,6 +22028,9 @@ function scanLivingForRegistry() {
     }
     for (const p of pacifistVisitors) {
         if (p && !p.dead) noteRegistryEncounter("pac:" + (p.kind || "nurse"));
+    }
+    for (const g of biomeGuardians) {
+        if (g && !g.dead) noteRegistryEncounter("guard:" + (g.kind || "warden"));
     }
 }
 
@@ -20594,6 +22138,10 @@ function createRegistryPreviewEntity(entry) {
             ent = new PacifistVisitor(entry.previewPac);
             ent.size = Math.min(ent.size, 78);
             fit = 0.68;
+        } else if (entry.previewGuard) {
+            ent = new BiomeGuardian(entry.previewGuard);
+            ent.size = Math.min(ent.size, 72);
+            fit = 0.7;
         } else if (entry.previewApex) {
             const k = entry.previewApex;
             if (k === "shark") {
@@ -20908,6 +22456,8 @@ function clearPondEntitiesForLoad() {
     crystalApexEnding = null;
     apexDuel = null;
     frogFinale = null;
+    pacifistVisitors.length = 0;
+    biomeGuardians.length = 0;
 }
 
 function applyProgressSnapshot(data) {
@@ -21491,14 +23041,16 @@ loadDelightSeen();
 
 function setNightMode(on) {
     if (!nightUnlocked) return;
-    const was = nightMode;
+    const wasNight = nightMode;
+    const wasCrystal = crystalMode;
     nightMode = !!on;
     if (nightMode) {
         crystalMode = false;
         // Moon pond owns the sky; sun wash stays off while nightMode is true.
         scenery.sun = true;
-        if (!was && typeof celebrateDiscovery === "function") celebrateDiscovery("moonVisit");
+        if (!wasNight && typeof celebrateDiscovery === "function") celebrateDiscovery("moonVisit");
     }
+    if (wasNight !== nightMode || wasCrystal !== crystalMode) rebuildScenery();
     saveMarketState();
     updateNightButtonUI();
     updateCrystalButtonUI();
@@ -21508,13 +23060,15 @@ function setNightMode(on) {
 
 function setCrystalMode(on) {
     if (!crystalUnlocked) return;
-    const was = crystalMode;
+    const wasNight = nightMode;
+    const wasCrystal = crystalMode;
     crystalMode = !!on;
     if (crystalMode) {
         nightMode = false;
         scenery.sun = true;
-        if (!was && typeof celebrateDiscovery === "function") celebrateDiscovery("crystalVisit");
+        if (!wasCrystal && typeof celebrateDiscovery === "function") celebrateDiscovery("crystalVisit");
     }
+    if (wasNight !== nightMode || wasCrystal !== crystalMode) rebuildScenery();
     saveMarketState();
     updateNightButtonUI();
     updateCrystalButtonUI();
@@ -26151,6 +27705,7 @@ function frame(now) {
         if (shark) shark.draw(ctx);
         if (whale) whale.draw(ctx);
         if (typeof drawPacifistVisitors === "function") drawPacifistVisitors(ctx);
+        if (typeof drawBiomeGuardians === "function") drawBiomeGuardians(ctx);
 
         // Surface greens float above the fish.
         drawDuckweed(ctx, sceneryTime, dt);
