@@ -520,9 +520,10 @@ let looksPanelOpen = false;
 function catcherMaxRadius() {
     return CATCHER_BASE_MAX_RADIUS + catcherLevel * CATCHER_RADIUS_STEP;
 }
-let catcherOwned = false;
+let catcherOwned = true; // starter tool: available from the first pond visit
 let catcherMode = false;
-let catcherDrag = null; // { cx, cy, r } while drawing a catch circle
+let catcherDrag = null; // { cx, cy, r, t0, pathPts, lockToneT } while drawing a catch circle
+let catcherLockGlow = 0; // 0..1 soft caustic when a rainbow sits inside the circle
 
 // Scales: fish bites walk up these for melodic runs.
 const PENTATONIC = [1, 9 / 8, 5 / 4, 3 / 2, 5 / 3];
@@ -826,6 +827,17 @@ const Audio = (() => {
     function toggleAmbient() {
         ensure();
         ambientOn = !ambientOn;
+        applyAmbientForMode();
+        return ambientOn;
+    }
+
+    function isAmbientOn() {
+        return !!ambientOn;
+    }
+
+    function setAmbientOn(on) {
+        ensure();
+        ambientOn = !!on;
         applyAmbientForMode();
         return ambientOn;
     }
@@ -1509,6 +1521,8 @@ const Audio = (() => {
         whaleCall,
         whalePurr,
         toggleAmbient,
+        isAmbientOn,
+        setAmbientOn,
         onModeChange: applyAmbientForMode,
         cycleDropStyle,
         getDropStyle,
@@ -2052,6 +2066,38 @@ function updateSoftMovables(dt) {
             a.y = Math.max(pad, Math.min(viewH - pad, a.y));
             b.x = Math.max(pad, Math.min(viewW - pad, b.x));
             b.y = Math.max(pad, Math.min(viewH - pad, b.y));
+        }
+    }
+    // Soft plant / debris separation so shore piles do not look broken.
+    if (scenery.debris && obstacles.length) {
+        for (const soft of list) {
+            const sr = softPropRadius(soft) * 0.75;
+            for (const o of obstacles) {
+                const or = obstacleRadius(o) * 0.85;
+                let dx = soft.x - o.x;
+                let dy = soft.y - o.y;
+                let dist = Math.hypot(dx, dy);
+                const minD = sr + or;
+                if (dist >= minD) continue;
+                if (dist < 0.001) {
+                    const ang = Math.random() * Math.PI * 2;
+                    dx = Math.cos(ang);
+                    dy = Math.sin(ang);
+                    dist = 1;
+                }
+                const push = (minD - dist) * 0.45;
+                const nx = dx / dist;
+                const ny = dy / dist;
+                const k = Math.min(1, 3.2 * dt);
+                soft.x += nx * push * k;
+                soft.y += ny * push * k;
+                // Light debris yields a little; heavy rocks barely budge.
+                const give = (o.kind === "boulder" || o.kind === "mossrock") ? 0.08 : 0.35;
+                o.x -= nx * push * k * give;
+                o.y -= ny * push * k * give;
+                soft.x = Math.max(pad, Math.min(viewW - pad, soft.x));
+                soft.y = Math.max(pad, Math.min(viewH - pad, soft.y));
+            }
         }
     }
 }
@@ -3611,21 +3657,23 @@ function updateFrogFinale(dt) {
     const t = frogFinale.t;
     const cx = viewW * 0.5;
     const cy = viewH * 0.5;
+    const ease = (rate) => 1 - Math.exp(-rate * dt);
     if (f && !f.dead && !frogFinale.burst) {
-        f.size += (CONFIG.sharkSize * 1.15 - f.size) * Math.min(1, dt * 1.8);
-        f.x += (cx - f.x) * Math.min(1, dt * 1.3);
-        f.y += (cy - f.y) * Math.min(1, dt * 1.3);
-        f.dir += dt * 0.55;
-        f.kick = 0.35 + 0.4 * Math.sin(t * 6);
+        const sizeGoal = CONFIG.sharkSize * 1.15;
+        f.size += (sizeGoal - f.size) * ease(1.6);
+        // Swim into center rather than snapping with a lerp factor.
+        easeToward(f, cx, cy, dt, 48 + Math.min(40, t * 18), 0.95);
+        f.dir += dt * (0.35 + 0.25 * Math.sin(t * 3.2));
+        f.kick = 0.28 + 0.35 * Math.sin(t * 5.2);
         f.petTimer = Math.max(f.petTimer, 1.2);
-        f.breath += dt * 2.5;
-        if (Math.random() < 0.16) water.disturb(f.x, f.y, f.size * 0.4, 60);
+        f.breath += dt * 2.2;
+        if (Math.random() < 0.14) water.disturb(f.x, f.y, f.size * 0.4, 55);
     }
-    if (t >= 2.6 && !frogFinale.burst) {
+    if (t >= 3.05 && !frogFinale.burst) {
         frogFinale.burst = true;
         explodeFrogIntoTadpoles(f);
     }
-    if (t >= 3.4) frogFinale = null;
+    if (t >= 4.0) frogFinale = null;
 }
 
 function updateHungryTadpoles(dt) {
@@ -6447,6 +6495,9 @@ class Fish {
         this.mirrorTrail = null;
         this.lineageHue = null; // breeding family tint
         this.lineageGen = 0;
+        this.lineageShape = null; // inherited fin/body shape override
+        this.lineagePattern = null; // inherited pattern name
+        this.heroBlood = 0; // fades over generations
     }
 
     // Stable chase: slow near the target and when turning hard so rainbow fish do not softlock.
@@ -7460,15 +7511,8 @@ class Fish {
             if (this.rainbowPhase === "center" || this.rainbowPhase === "logo") {
                 this.rainbowPhase = "center";
                 this._logoDoneT = (this._logoDoneT || 0) + dt;
-                const want = Math.atan2(cy - this.y, cx - this.x);
-                const diff = normAngle(want - this.dir);
-                this.dir += Math.max(-3.2 * dt, Math.min(3.2 * dt, diff));
                 const dist = Math.hypot(cx - this.x, cy - this.y);
-                const step = Math.min(dist, (95 + this.size * 0.4) * dt);
-                if (dist > 1) {
-                    this.x += Math.cos(want) * step;
-                    this.y += Math.sin(want) * step;
-                }
+                easeToward(this, cx, cy, dt, 88 + this.size * 0.35, 3.0);
                 this.trailDrop -= dt;
                 if (this.trailDrop <= 0) {
                     this.trailDrop = 0.06;
@@ -7476,7 +7520,7 @@ class Fish {
                     pushRainbowTrail(this.x, this.y, 3.2, this._writePathI);
                 }
                 this.tailPhase += dt * 10;
-                if (dist < 14 || this._logoDoneT > 2.8) {
+                if (dist < 14 || this._logoDoneT > 3.2) {
                     burstRainbowIntoFood(this);
                 }
                 return;
@@ -7883,7 +7927,19 @@ class Fish {
             this.shoveObstaclesWithTentacles(dt);
         }
 
-        this.tailPhase += dt * (4 + speed * 0.12) * (this.type.wiggle || 1);
+        // Shape follow-through: rays flap, eels ribbon, angels pulse taller.
+        const shapeName = (this.type && this.type.shape) || "oval";
+        let wigMul = this.type.wiggle || 1;
+        if (shapeName === "ray") wigMul *= 1.35;
+        else if (shapeName === "eel") wigMul *= 1.55;
+        else if (shapeName === "angel" || shapeName === "discus") wigMul *= 0.85;
+        else if (shapeName === "longfin") wigMul *= 1.2;
+        this.tailPhase += dt * (4 + speed * 0.12) * wigMul;
+        if (shapeName === "eel") {
+            this._ribbon = (this._ribbon || 0) + dt * (2.4 + speed * 0.04);
+        } else if (shapeName === "ray") {
+            this._flap = (this._flap || 0) + dt * (3.2 + speed * 0.05);
+        }
 
         if (Math.random() < (this.isRainbow ? 0.2 : 0.05)) {
             water.disturb(this.x - Math.cos(this.dir) * this.size * 0.5,
@@ -8281,7 +8337,15 @@ class Fish {
         const wigAmt = this.golden ? 0 : (this.type.wiggle || 1);
         const liftZ = this.pickerLiftZ || 0;
         const thrash = liftZ > 2 ? Math.sin(this.tailPhase * 2.4) * 0.35 : 0;
-        const wig = Math.sin(this.tailPhase) * 0.5 * wigAmt + thrash * 0.2;
+        let wig = Math.sin(this.tailPhase) * 0.5 * wigAmt + thrash * 0.2;
+        if (!this.golden && shape === "ray") {
+            wig += Math.sin(this._flap || this.tailPhase) * 0.28;
+        } else if (!this.golden && shape === "eel") {
+            wig += Math.sin(this._ribbon || this.tailPhase * 1.4) * 0.22;
+        } else if (!this.golden && (shape === "angel" || shape === "discus")) {
+            wig *= 0.72;
+            wig += Math.sin(this.tailPhase * 0.55) * 0.12;
+        }
         const sink = this.golden ? (this.sinkDepth || 0) : 0;
         const isKoi = !!(this.type.koi || shape === "koi");
         const isRay = shape === "ray";
@@ -8337,13 +8401,22 @@ class Fish {
             ctx.fill();
             ctx.restore();
         }
+        const bobY = (!this.golden && (shape === "angel" || shape === "discus"))
+            ? Math.sin(this.tailPhase * 0.7) * (2.2 + this.size * 0.04)
+            : 0;
         ctx.translate(
             this.x + thrash * 3,
-            this.y + (this.golden ? sink * 6 : 0) - liftZ
+            this.y + (this.golden ? sink * 6 : 0) - liftZ + bobY
         );
         const s = (1 - sink * 0.35) * (1 + liftZ / 220);
-        ctx.scale(s, s);
-        ctx.rotate(this.dir + thrash * 0.45);
+        const discPulse = (!this.golden && shape === "ray")
+            ? 1 + Math.sin(this._flap || this.tailPhase) * 0.04
+            : 1;
+        ctx.scale(s * discPulse, s * (shape === "eel" ? 1 : discPulse));
+        const ribbonYaw = (!this.golden && shape === "eel")
+            ? Math.sin(this._ribbon || this.tailPhase) * 0.12
+            : 0;
+        ctx.rotate(this.dir + thrash * 0.45 + ribbonYaw);
         // Golden fish settle on the lakebed and stay visible (dimmer) until refresh.
         const ghost = this.type.ghost || 1;
         const morphA = this.plantMorph && this._morphAlpha != null ? this._morphAlpha : 1;
@@ -8366,12 +8439,13 @@ class Fish {
         };
         // Alias kept for the body-part draw sites below.
         const withPeacePart = withGiantPart;
-        const depthFog = Math.max(0.55, 1 - Math.min(0.4, (this.size - 14) / 220));
+        // Lakebed giants read deeper; midwater mid-size; surface stays clear.
+        const depthFog = Math.max(0.42, 1 - Math.min(0.52, (this.size - 12) / 160));
         ctx.globalAlpha = (this.golden
             ? (0.42 + 0.38 * (1 - sink))
             : this.isPlatinum ? 0.98 * ghost
             : this.isMirror ? 0.55 * ghost
-            : 0.9 * ghost * depthFog) * morphA * giantA;
+            : 0.92 * ghost * depthFog) * morphA * giantA;
 
         if (this.golden) {
             ctx.shadowColor = `rgba(255,215,90,${0.55 * (1 - sink * 0.7)})`;
@@ -8586,8 +8660,12 @@ class Fish {
                     : shape === "arrow" ? 1.15
                     : isKoi ? 1.4 : 1.55;
                 const startX = shape === "arrow" ? L * 0.05 : -L * 0.08;
+                const softFin = shape === "longfin" || shape === "angel";
                 ctx.fillStyle = body;
-                ctx.globalAlpha *= 0.82;
+                ctx.globalAlpha *= softFin ? 0.48 : 0.82;
+                if (softFin) {
+                    ctx.globalCompositeOperation = "lighter";
+                }
                 ctx.beginPath();
                 ctx.moveTo(startX, -W * 0.72);
                 ctx.quadraticCurveTo(L * 0.02, -W * tall, L * 0.22, -W * (tall * 0.92));
@@ -8596,7 +8674,7 @@ class Fish {
                 ctx.fill();
                 if (L > 16) {
                     ctx.save();
-                    ctx.globalAlpha *= 0.35;
+                    ctx.globalAlpha *= softFin ? 0.22 : 0.35;
                     ctx.strokeStyle = "rgba(15,30,40,0.45)";
                     ctx.lineWidth = Math.max(0.45, L * 0.01);
                     for (let i = 0; i < 3; i++) {
@@ -8608,17 +8686,24 @@ class Fish {
                     }
                     ctx.restore();
                 }
-                ctx.globalAlpha /= 0.82;
+                if (softFin) {
+                    ctx.globalCompositeOperation = "source-over";
+                    ctx.globalAlpha /= 0.48;
+                } else {
+                    ctx.globalAlpha /= 0.82;
+                }
             }
             if (shape === "longfin" || shape === "angel") {
+                ctx.save();
+                ctx.globalCompositeOperation = "lighter";
                 ctx.fillStyle = body;
-                ctx.globalAlpha *= 0.42;
+                ctx.globalAlpha *= 0.28;
                 ctx.beginPath();
                 ctx.moveTo(-L * 0.18, -W * 0.48);
                 ctx.quadraticCurveTo(L * 0.08, -W * (shape === "angel" ? 2.45 : 2.35), L * 0.4, -W * 0.32);
                 ctx.quadraticCurveTo(L * 0.08, -W * 0.95, -L * 0.18, -W * 0.48);
                 ctx.fill();
-                ctx.globalAlpha /= 0.42;
+                ctx.restore();
             }
             // Soft adipose / rear dorsal nub on most shapes.
             if (!this.golden && !isRay && !isEel && shape !== "blob" && shape !== "longfin" && shape !== "angel") {
@@ -9290,6 +9375,32 @@ function spawnBreedOffspring(a, b) {
         CONFIG.lineageFadeGens,
         Math.max(a.lineageGen || 0, b.lineageGen || 0) + 1
     );
+    // Visible lineage: shape/pattern inheritance and fading hero blood.
+    const shapeA = a.lineageShape || (a.type && a.type.shape);
+    const shapeB = b.lineageShape || (b.type && b.type.shape);
+    baby.lineageShape = Math.random() < 0.55 ? shapeA : shapeB;
+    const patA = a.lineagePattern || (a.type && a.type.pattern);
+    const patB = b.lineagePattern || (b.type && b.type.pattern);
+    baby.lineagePattern = Math.random() < 0.5 ? patA : patB;
+    const bloodParents = Math.max(a.heroBlood || 0, b.heroBlood || 0);
+    const heroParents = (a.isHero || a.redeemed ? 1 : 0) + (b.isHero || b.redeemed ? 1 : 0);
+    baby.heroBlood = Math.max(
+        bloodParents * 0.62,
+        heroParents > 0 ? (0.85 - baby.lineageGen * 0.18) : 0
+    );
+    if (baby.lineageShape && baby.type) {
+        baby.type = Object.assign({}, baby.type, { shape: baby.lineageShape });
+        if (baby.lineagePattern) {
+            baby.type = Object.assign({}, baby.type, {
+                pattern: baby.lineagePattern,
+                patternColor: baby.type.patternColor || a.type.patternColor || b.type.patternColor,
+            });
+        }
+    }
+    if (baby.heroBlood > 0.35 && !baby.isHero && (a.redeemed || b.redeemed || a.isHero || b.isHero)) {
+        // Soft hero tint without full hero privileges after early gens.
+        if (baby.lineageGen <= 1) baby.isHero = true;
+    }
     fishes.push(baby);
     a.breedCooldown = CONFIG.breedCooldown;
     b.breedCooldown = CONFIG.breedCooldown;
@@ -9552,11 +9663,10 @@ function updateRainbowReptileFinale(r, dt) {
             fin.t = 0;
         }
     } else if (fin.phase === "center") {
-        r.x += (cx - r.x) * Math.min(1, dt * 2.2);
-        r.y += (cy - r.y) * Math.min(1, dt * 2.2);
-        r.dir += dt * 2.8;
-        if (Math.random() < 0.2) water.disturb(r.x, r.y, r.size * 0.4, 70);
-        if (fin.t >= 1.35 || Math.hypot(r.x - cx, r.y - cy) < 18) {
+        easeToward(r, cx, cy, dt, 62, 1.35);
+        r.dir += dt * (1.6 + Math.sin(fin.t * 5) * 0.8);
+        if (Math.random() < 0.18) water.disturb(r.x, r.y, r.size * 0.4, 70);
+        if (fin.t >= 1.85 || Math.hypot(r.x - cx, r.y - cy) < 16) {
             fin.phase = "burst";
             explodeRainbowReptile(r);
         }
@@ -13448,35 +13558,32 @@ function updateHeroRemorseEnding(dt) {
     const cx = viewW * 0.5;
     const cy = viewH * 0.5;
     const targetSize = Math.min(viewW, viewH) * CONFIG.giantCapFrac * 0.96;
+    const ease = (rate) => 1 - Math.exp(-rate * dt);
 
     if (f && !f.dead && !heroRemorseEnding.burst) {
-        // 1) Surge toward half-screen scale.
-        if (t < 1.5) {
-            f.size += (targetSize - f.size) * Math.min(1, dt * 2.1);
+        // Grow and swim into center with capped ease (no teleport).
+        if (t < 2.0) {
+            f.size += (targetSize - f.size) * ease(1.55);
         }
-        // 2) Swim to the middle of the pond.
-        f.x += (cx - f.x) * Math.min(1, dt * 1.25);
-        f.y += (cy - f.y) * Math.min(1, dt * 1.25);
-        f.dir += dt * 0.4;
-        f.tailPhase += dt * 3.2;
-        // 3) Close eyes in remorse (pet-style lids, held).
-        if (t >= 1.35) {
+        const maxSpd = t < 1.2 ? 52 : 38;
+        easeToward(f, cx, cy - 4, dt, maxSpd, 0.85);
+        f.dir += dt * (0.28 + 0.12 * Math.sin(t * 2.4));
+        f.tailPhase += dt * (2.8 + Math.min(2.2, t));
+        if (t >= 1.55) {
             f.petTimer = Math.max(f.petTimer, 1.6);
         }
-        if (Math.random() < 0.14) {
-            water.disturb(f.x, f.y, f.size * 0.4, 70);
+        if (Math.random() < 0.12) {
+            water.disturb(f.x, f.y, f.size * 0.4, 65);
         }
     }
 
-    // 4) Explode into one of every fish and exotic type (all heroes).
-    if (t >= 3.05 && !heroRemorseEnding.burst) {
+    if (t >= 3.45 && !heroRemorseEnding.burst) {
         heroRemorseEnding.burst = true;
         if (f && !f.dead) explodeHeroIntoSchool(f);
         else explodeHeroIntoSchool({ x: cx, y: cy, dead: true });
     }
 
-    // Brief ecosystem pause, then continue with the new hero school (no full reset).
-    if (t >= 4.15) {
+    if (t >= 4.65) {
         heroRemorseEnding = null;
         if (whale && whale.dead) whale = null;
     }
@@ -13488,9 +13595,9 @@ function drawHeroRemorseEnding(ctx) {
     const f = heroRemorseEnding.fish;
     const glow = Math.min(1, t / 1.1);
     const burst = heroRemorseEnding.burst
-        ? Math.min(1, (t - 3.05) / 0.55)
+        ? Math.min(1, (t - 3.45) / 0.65)
         : 0;
-    const fade = t > 3.6 ? Math.min(1, (t - 3.6) / 0.55) : 0;
+    const fade = t > 4.05 ? Math.min(1, (t - 4.05) / 0.6) : 0;
 
     ctx.save();
     const wash = ctx.createRadialGradient(
@@ -13717,12 +13824,17 @@ function updatePovAttack(dt) {
     if (!povAttack) return;
     povAttack.t += dt;
     const f = povAttack.fish;
-    if (f) {
-        // Drift toward screen center while "charging" the camera.
-        f.x += (viewW * 0.5 - f.x) * Math.min(1, dt * 1.8);
-        f.y += (viewH * 0.5 - f.y) * Math.min(1, dt * 1.8);
+    if (f && !f.dead) {
+        // Swim toward the lens with a capped surge, then loom.
+        const cx = viewW * 0.5;
+        const cy = viewH * 0.5;
+        const surge = 55 + Math.min(90, (f.size || 40) * 0.9);
+        easeToward(f, cx, cy, dt, surge, 1.6);
+        f.tailPhase = (f.tailPhase || 0) + dt * (4.5 + Math.min(3, povAttack.t));
+        f.dir += normAngle(Math.atan2(cy - f.y, cx - f.x) - f.dir) * Math.min(1, 2.4 * dt);
+        if (Math.random() < 0.2) water.disturb(f.x, f.y, f.size * 0.45, 80);
     }
-    if (povAttack.t >= 3.4) {
+    if (povAttack.t >= 3.8) {
         resetPond();
     }
 }
@@ -13730,23 +13842,23 @@ function updatePovAttack(dt) {
 function drawPovAttack(ctx) {
     if (!povAttack) return;
     const t = povAttack.t;
-    const f = povAttack.fish;
-    const zoom = Math.min(1, t / 2.2);
-    const choke = t > 2.4 ? Math.min(1, (t - 2.4) / 0.7) : 0;
+    const zoom = Math.min(1, 1 - Math.exp(-t * 0.85));
+    const choke = t > 2.6 ? Math.min(1, (t - 2.6) / 1.0) : 0;
+    const breath = 0.5 + 0.5 * Math.sin(t * 5.2);
 
     // Darken the pond as the monster fills the view.
     ctx.save();
-    ctx.fillStyle = `rgba(4, 6, 8, ${0.15 + zoom * 0.55})`;
+    ctx.fillStyle = `rgba(4, 6, 8, ${0.1 + zoom * 0.5 + choke * 0.35})`;
     ctx.fillRect(0, 0, viewW, viewH);
 
     const cx = viewW * 0.5;
     const cy = viewH * 0.5;
-    const scale = 0.4 + zoom * 3.8;
-    const mouth = 0.15 + zoom * 0.55 + choke * 0.2;
+    const scale = 0.35 + zoom * 4.1;
+    const mouth = 0.12 + zoom * 0.5 + choke * 0.28 + breath * 0.04;
 
     ctx.translate(cx, cy);
     ctx.scale(scale, scale);
-    ctx.globalAlpha = 0.92;
+    ctx.globalAlpha = 0.88 + zoom * 0.1;
 
     // Facing-camera head: dark oval with opening jaws.
     const g = ctx.createRadialGradient(0, 0, 10, 0, 0, 90);
@@ -13761,7 +13873,7 @@ function drawPovAttack(ctx) {
     // Eyes staring at the user.
     ctx.fillStyle = "#ff3030";
     ctx.shadowColor = "rgba(255,40,40,0.8)";
-    ctx.shadowBlur = 12;
+    ctx.shadowBlur = 12 + choke * 18;
     ctx.beginPath();
     ctx.ellipse(-22, -12, 8, 5, -0.2, 0, Math.PI * 2);
     ctx.ellipse(22, -12, 8, 5, 0.2, 0, Math.PI * 2);
@@ -13788,36 +13900,14 @@ function drawPovAttack(ctx) {
         ctx.lineTo(tx + 2.2, 18 - mouth * 20);
         ctx.closePath();
         ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo(tx - 2.2, 18 + mouth * 18);
-        ctx.lineTo(tx, 18 + mouth * 30);
-        ctx.lineTo(tx + 2.2, 18 + mouth * 18);
-        ctx.closePath();
-        ctx.fill();
     }
-
-    ctx.restore();
-
-    // Final bite flash.
+    // Soft vignette choke (no hard cut to black until the very end).
     if (choke > 0) {
-        ctx.fillStyle = `rgba(0,0,0,${choke})`;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.fillStyle = `rgba(0,0,0,${choke * 0.72})`;
         ctx.fillRect(0, 0, viewW, viewH);
-        if (choke > 0.55) {
-            ctx.fillStyle = `rgba(20,0,0,${(choke - 0.55) * 1.5})`;
-            ctx.fillRect(0, 0, viewW, viewH);
-        }
     }
-
-    // Keep a faint species hint if we still have the fish reference.
-    if (f && t < 1.2) {
-        ctx.save();
-        ctx.globalAlpha = 0.35 * (1 - t / 1.2);
-        ctx.fillStyle = "#6a2038";
-        ctx.beginPath();
-        ctx.arc(f.x, f.y, f.size * 0.4, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-    }
+    ctx.restore();
 }
 
 function resetPond(opts) {
@@ -15371,7 +15461,12 @@ function onPointerDown(ev) {
     // Rainbow catcher: left-drag a small circle that must contain a free rainbow fish.
     if (ev.button === 0 && mode === "pond" && catcherMode) {
         pointerNow = { x: ev.clientX, y: ev.clientY };
-        catcherDrag = { cx: ev.clientX, cy: ev.clientY, r: 8 };
+        catcherDrag = {
+            cx: ev.clientX, cy: ev.clientY, r: 8,
+            t0: performance.now(),
+            pathPts: [{ x: ev.clientX, y: ev.clientY }],
+            lockToneT: 0,
+        };
         pointerDownAt = null;
         return;
     }
@@ -15460,6 +15555,12 @@ function onPointerMove(ev) {
     if (mode === "pond" && catcherDrag && (ev.buttons & 1)) {
         const r = Math.hypot(ev.clientX - catcherDrag.cx, ev.clientY - catcherDrag.cy);
         catcherDrag.r = Math.max(8, Math.min(catcherMaxRadius(), r));
+        const pts = catcherDrag.pathPts || (catcherDrag.pathPts = []);
+        const last = pts[pts.length - 1];
+        if (!last || Math.hypot(ev.clientX - last.x, ev.clientY - last.y) > 6) {
+            pts.push({ x: ev.clientX, y: ev.clientY });
+            if (pts.length > 48) pts.shift();
+        }
         return;
     }
     // Long left-drag while charging food carves a temporary current lane.
@@ -15532,8 +15633,9 @@ function onPointerUp(ev) {
         return;
     }
     if (ev.button === 0 && catcherDrag) {
-        tryCatchRainbowInCircle(catcherDrag.cx, catcherDrag.cy, catcherDrag.r);
+        tryCatchRainbowInCircle(catcherDrag.cx, catcherDrag.cy, catcherDrag.r, catcherDrag);
         catcherDrag = null;
+        catcherLockGlow = 0;
         return;
     }
     const x = ev.clientX;
@@ -15817,7 +15919,13 @@ toggle.addEventListener("click", () => {
 });
 toggle.addEventListener("dblclick", (e) => {
     e.preventDefault();
-    Audio.toggleAmbient();
+    const on = Audio.toggleAmbient();
+    const ambBtn = document.getElementById("ambient-btn");
+    if (ambBtn) {
+        ambBtn.classList.toggle("on", !!on);
+        ambBtn.setAttribute("aria-pressed", on ? "true" : "false");
+        ambBtn.title = on ? "Ambient bed on" : "Ambient bed off";
+    }
 });
 
 // Pond scenery toggles and drop-sound cycle (minimalist corner controls).
@@ -15913,6 +16021,18 @@ dropSoundBtn.addEventListener("click", (e) => {
     });
 });
 
+const ambientBtn = document.getElementById("ambient-btn");
+if (ambientBtn) {
+    ambientBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const on = Audio.toggleAmbient();
+        ambientBtn.classList.toggle("on", !!on);
+        ambientBtn.setAttribute("aria-pressed", on ? "true" : "false");
+        ambientBtn.title = on ? "Ambient bed on" : "Ambient bed off";
+        markFirstInteraction();
+    });
+}
+
 function dropStylePreviewFreq(style) {
     if (style === "fart") return 90;
     if (style === "thud" || style === "plop" || style === "deep") return 180;
@@ -15963,7 +16083,7 @@ updateHatsButtonUI();
 function resetMarketUnlocks() {
     marketUnlocked = false;
     magnetOwned = false;
-    catcherOwned = false;
+    catcherOwned = true; // always available; upgrades still come from the market
     doublePetterOwned = false;
     pickerOwned = false;
     catcherLevel = 0;
@@ -15983,7 +16103,7 @@ function applyMarketData(data) {
     }
     marketUnlocked = !!data.unlocked;
     magnetOwned = !!data.magnet;
-    catcherOwned = !!data.catcher;
+    catcherOwned = true;
     doublePetterOwned = !!data.doublePetter;
     pickerOwned = !!data.picker;
     catcherLevel = Math.max(0, Math.min(CATCHER_LEVEL_MAX, Math.floor(data.catcherLevel || 0)));
@@ -15991,7 +16111,6 @@ function applyMarketData(data) {
     platinumUnlocked = !!data.platinum || rainbowCaughtCount >= RAINBOWS_FOR_PLATINUM;
     nightUnlocked = !!data.moonPond;
     nightMode = false;
-    if (!catcherOwned) catcherLevel = 0;
 }
 
 function loadMarketState() {
@@ -16828,13 +16947,9 @@ function updateMarketUI() {
             : "Lift settled gold fish much faster";
     }
     if (rows.catcher) {
-        rows.catcher.disabled = !marketUnlocked || catcherOwned || goldCollected < CATCHER_GOLD_COST;
-        rows.catcher.textContent = catcherOwned
-            ? "Rainbow catcher owned"
-            : "Rainbow catcher · " + CATCHER_GOLD_COST + " gold";
-        rows.catcher.title = catcherOwned
-            ? "Use the catcher button, then drag a small circle"
-            : "Draw a small circle that must contain a rainbow fish";
+        rows.catcher.disabled = true;
+        rows.catcher.textContent = "Rainbow catcher owned";
+        rows.catcher.title = "Starter tool: use the catcher button, then drag a small circle";
     }
     if (rows.catcherUp) {
         const rainbowFood = availableRainbowFood();
@@ -17023,7 +17138,25 @@ function marketBuyPlatinumFood() {
     markFirstInteraction();
 }
 
-function tryCatchRainbowInCircle(cx, cy, r) {
+function catcherRoundnessScore(drag) {
+    if (!drag || !drag.pathPts || drag.pathPts.length < 6) return 0.35;
+    const pts = drag.pathPts;
+    const cx = drag.cx;
+    const cy = drag.cy;
+    let sum = 0;
+    let n = 0;
+    for (const p of pts) {
+        const d = Math.hypot(p.x - cx, p.y - cy);
+        if (d < 4) continue;
+        sum += Math.abs(d - drag.r) / Math.max(12, drag.r);
+        n++;
+    }
+    if (!n) return 0.35;
+    const err = sum / n;
+    return Math.max(0, Math.min(1, 1 - err * 1.8));
+}
+
+function tryCatchRainbowInCircle(cx, cy, r, dragMeta) {
     if (!catcherOwned || r < 10) return false;
     let best = null;
     let bestD = Infinity;
@@ -17060,6 +17193,15 @@ function tryCatchRainbowInCircle(cx, cy, r) {
     const bx = best.x;
     const by = best.y;
     const bsize = best.size;
+    // Perfect circle: centered catch + round drag + mid radius + slow close.
+    const centerScore = 1 - Math.min(1, bestD / Math.max(10, r));
+    const roundScore = catcherRoundnessScore(dragMeta);
+    const maxR = catcherMaxRadius();
+    const sizeScore = 1 - Math.abs((r / maxR) - 0.55) / 0.55;
+    const dur = dragMeta && dragMeta.t0 ? (performance.now() - dragMeta.t0) / 1000 : 0.6;
+    const slowScore = dur > 0.55 && dur < 2.8 ? 1 : dur >= 0.35 ? 0.55 : 0.2;
+    const perfect = (centerScore * 0.4 + roundScore * 0.3 + sizeScore * 0.15 + slowScore * 0.15) >= 0.72
+        && centerScore > 0.55 && roundScore > 0.45;
     best.dead = true;
     best.isRainbow = false;
     if (nightKind === "swordfish") swordfish = null;
@@ -17067,11 +17209,31 @@ function tryCatchRainbowInCircle(cx, cy, r) {
     rainbowCaughtCount++;
     saveMarketState();
     maybeUnlockPlatinum();
-    if (nightKind) spawnRainbowFishReward(bx, by, CATCHER_NIGHT_RAINBOW_REWARD);
+    let reward = nightKind ? CATCHER_NIGHT_RAINBOW_REWARD : 0;
+    if (perfect) {
+        reward += 2;
+        beginWeatherMood("mist");
+        if (weatherMood) {
+            weatherMood.life = Math.min(weatherMood.life, 8);
+            weatherMood.aggressionMul = 0.7;
+        }
+    }
+    if (reward > 0) spawnRainbowFishReward(bx, by, reward);
     const pan = Math.max(-1, Math.min(1, (bx / viewW) * 2 - 1));
     if (typeof Audio !== "undefined" && Audio.ensure) {
         Audio.ensure();
         if (Audio.rainbowChime) Audio.rainbowChime(pan);
+        if (perfect) {
+            Audio.fishNote({
+                freq: 520,
+                wave: "sine",
+                pan,
+                dur: 0.45,
+                level: 0.08,
+                partialAmt: 0.35,
+                bright: 1.4,
+            });
+        }
     }
     water.disturb(bx, by, bsize * 1.2, 220);
     spawnSplash(bx, by, bsize * 0.55, 0.7);
@@ -17080,23 +17242,72 @@ function tryCatchRainbowInCircle(cx, cy, r) {
     return true;
 }
 
+function rainbowInsideCatcher(cx, cy, r) {
+    for (const f of fishes) {
+        if (f.dead || !f.isRainbow || f.rainbowLeaving) continue;
+        if (Math.hypot(f.x - cx, f.y - cy) <= r) return f;
+    }
+    if (swordfish && !swordfish.dead && swordfish.isRainbow
+        && Math.hypot(swordfish.x - cx, swordfish.y - cy) <= r) return swordfish;
+    if (octopus && !octopus.dead && octopus.isRainbow
+        && Math.hypot(octopus.x - cx, octopus.y - cy) <= r) return octopus;
+    return null;
+}
+
 function drawCatcherOverlay(ctx) {
     if (mode !== "pond" || !catcherMode) return;
     if (catcherDrag) {
         const { cx, cy, r } = catcherDrag;
+        const locked = rainbowInsideCatcher(cx, cy, r);
+        const wantGlow = locked ? 1 : 0;
+        catcherLockGlow += (wantGlow - catcherLockGlow) * 0.12;
+        if (locked) {
+            catcherDrag.lockToneT = (catcherDrag.lockToneT || 0) + 0.016;
+            if (catcherDrag.lockToneT > 0.55) {
+                catcherDrag.lockToneT = 0;
+                const pan = Math.max(-1, Math.min(1, (cx / viewW) * 2 - 1));
+                if (Audio.fishNote) {
+                    Audio.fishNote({
+                        freq: 390,
+                        wave: "sine",
+                        pan,
+                        dur: 0.18,
+                        level: 0.03,
+                        partialAmt: 0.2,
+                        bright: 1.15,
+                    });
+                }
+            }
+        } else {
+            catcherDrag.lockToneT = 0;
+        }
         ctx.save();
-        ctx.strokeStyle = "rgba(200, 170, 255, 0.75)";
-        ctx.lineWidth = 1.6;
-        ctx.setLineDash([5, 5]);
+        const g = catcherLockGlow;
+        ctx.strokeStyle = g > 0.2
+            ? "rgba(255, 220, 160, " + (0.55 + g * 0.4) + ")"
+            : "rgba(200, 170, 255, 0.75)";
+        ctx.lineWidth = 1.6 + g * 1.4;
+        ctx.setLineDash(g > 0.35 ? [] : [5, 5]);
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
         ctx.stroke();
         ctx.setLineDash([]);
-        ctx.globalAlpha = 0.08;
-        ctx.fillStyle = "rgba(180, 150, 255, 1)";
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.fill();
+        if (g > 0.05) {
+            const caustic = ctx.createRadialGradient(cx, cy, r * 0.2, cx, cy, r * 1.05);
+            caustic.addColorStop(0, "rgba(255,240,180," + (0.12 * g) + ")");
+            caustic.addColorStop(0.55, "rgba(200,170,255," + (0.1 * g) + ")");
+            caustic.addColorStop(1, "rgba(180,150,255,0)");
+            ctx.fillStyle = caustic;
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.fill();
+        } else {
+            ctx.globalAlpha = 0.08;
+            ctx.fillStyle = "rgba(180, 150, 255, 1)";
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.fill();
+        }
         ctx.restore();
         return;
     }
@@ -17523,6 +17734,7 @@ function refreshDevMenuToggles() {
         else if (key === "market") on = marketOpen;
         else if (key === "pond") on = mode === "pond";
         else if (key === "killTool") on = devKillTool;
+        else if (key === "ambient") on = !!(Audio.isAmbientOn && Audio.isAmbientOn());
         else if (key in scenery) on = !!scenery[key];
         btn.classList.toggle("on", on);
     });
@@ -17753,7 +17965,15 @@ function buildDevMenu() {
         hatsUnlocked = true;
         hatsOn = !hatsOn;
     }, { toggle: "hats" });
-    btn(modes, "Ambient", () => { Audio.toggleAmbient(); });
+    btn(modes, "Ambient", () => {
+        const on = Audio.toggleAmbient();
+        const ambBtn = document.getElementById("ambient-btn");
+        if (ambBtn) {
+            ambBtn.classList.toggle("on", !!on);
+            ambBtn.setAttribute("aria-pressed", on ? "true" : "false");
+            ambBtn.title = on ? "Ambient bed on" : "Ambient bed off";
+        }
+    }, { toggle: "ambient" });
     btn(modes, "Drop sound", () => {
         const style = Audio.cycleDropStyle();
         if (dropSoundLabel) dropSoundLabel.textContent = style;
@@ -18312,6 +18532,77 @@ function buildDevMenu() {
         spawnHeroApexGuardians(p.x, p.y);
     });
 
+    const kits = section("Scene kits");
+    btn(kits, "Night fireflies", () => {
+        devEnsurePond();
+        if (nightUnlocked) setNightMode(true);
+        beginWeatherMood("fireflies");
+        maybeSpawnComet(0.02);
+        for (let i = 0; i < 3; i++) maybeSpawnIcePatch();
+    });
+    btn(kits, "Pink pair + territory", () => {
+        devEnsurePond();
+        const a = devDemoFish({ size: 28 });
+        a.isPink = true;
+        a.breedCooldown = 0;
+        const b = devDemoFish({ size: 28 });
+        b.isPink = true;
+        b.breedCooldown = 0;
+        b.x = a.x + 36;
+        b.y = a.y + 8;
+        const h = devDemoFish({ hero: true, size: Math.max(72, CONFIG.territoryHeroSize + 8) });
+        h.x = a.x - 50;
+        h.y = a.y - 20;
+    });
+    btn(kits, "Mist + current lanes", () => {
+        devEnsurePond();
+        beginWeatherMood("mist");
+        for (let i = 0; i < 12; i++) {
+            const x = viewW * (0.2 + i * 0.05);
+            const y = viewH * 0.55 + Math.sin(i) * 30;
+            addCurrentLanePoint(x, y, 40, Math.sin(i * 0.7) * 12);
+        }
+    });
+    btn(kits, "Log blockade", () => {
+        devEnsurePond();
+        scenery.debris = true;
+        devSyncSceneryBtn("debris");
+        const p = devSpawnPoint();
+        for (let i = 0; i < 3; i++) {
+            obstacles.push({
+                kind: "log",
+                x: p.x + i * 36 - 36,
+                y: p.y + (i - 1) * 18,
+                thick: 14,
+                len: 70,
+                rot: 0.2 + i * 0.4,
+                tone: 0.4,
+                moss: 0.3,
+                vx: 0, vy: 0, spin: 0,
+                profile: makeObstacleDetail(i + 20, 10, 1),
+                knobs: makeObstacleDetail(i + 20, 5, 2),
+            });
+        }
+        obstacles.push({
+            kind: "stump",
+            x: p.x + 70,
+            y: p.y + 40,
+            r: 22,
+            rot: 0,
+            tone: 0.35,
+            moss: 0.4,
+            vx: 0, vy: 0, spin: 0,
+            profile: makeObstacleDetail(99, 10, 1),
+            knobs: makeObstacleDetail(99, 5, 2),
+        });
+        if (!reptiles.some((r) => !r.dead)) {
+            const r = new Reptile("crocodile");
+            r.x = p.x - 80;
+            r.y = p.y;
+            reptiles.push(r);
+        }
+    });
+
     const endings = section("Endings");
     btn(endings, "Clear finales", () => {
         devClearFinales();
@@ -18656,9 +18947,12 @@ function plantRefractionOffset(x, y) {
     if (typeof water === "undefined" || !water.gradientAt) return { x: 0, y: 0 };
     const g = water.gradientAt(x, y);
     if (!g) return { x: 0, y: 0 };
+    // Stronger local bend near wakes; far field stays quiet via clamp.
+    const mag = Math.hypot(g.gx || 0, g.gy || 0);
+    const boost = 18 + Math.min(22, mag * 40);
     return {
-        x: Math.max(-6, Math.min(6, (g.gx || 0) * 14)),
-        y: Math.max(-6, Math.min(6, (g.gy || 0) * 14)),
+        x: Math.max(-10, Math.min(10, (g.gx || 0) * boost)),
+        y: Math.max(-10, Math.min(10, (g.gy || 0) * boost)),
     };
 }
 
@@ -18677,7 +18971,7 @@ function queuePetEcho(source) {
             pan: Math.max(-1, Math.min(1, (f.x / viewW) * 2 - 1)),
         });
         n++;
-        if (n >= 4) break;
+        if (n >= 7) break;
     }
 }
 
@@ -18772,11 +19066,18 @@ function drawCurrentLanes(ctx) {
     ctx.lineCap = "round";
     for (const c of currentLanes) {
         const u = 1 - c.age / c.life;
-        ctx.strokeStyle = "rgba(160,210,230," + (0.12 * u) + ")";
-        ctx.lineWidth = 2 + 4 * u;
+        // Soft ink ribbon: glow wash then a thin bright core.
+        ctx.strokeStyle = "rgba(120,180,210," + (0.1 * u) + ")";
+        ctx.lineWidth = 7 + 6 * u;
         ctx.beginPath();
-        ctx.moveTo(c.x - c.ux * 10, c.y - c.uy * 10);
-        ctx.lineTo(c.x + c.ux * 18, c.y + c.uy * 18);
+        ctx.moveTo(c.x - c.ux * 14, c.y - c.uy * 14);
+        ctx.lineTo(c.x + c.ux * 22, c.y + c.uy * 22);
+        ctx.stroke();
+        ctx.strokeStyle = "rgba(200,235,250," + (0.22 * u) + ")";
+        ctx.lineWidth = 1.6 + 2.4 * u;
+        ctx.beginPath();
+        ctx.moveTo(c.x - c.ux * 12, c.y - c.uy * 12);
+        ctx.lineTo(c.x + c.ux * 20, c.y + c.uy * 20);
         ctx.stroke();
     }
     ctx.restore();
@@ -18795,13 +19096,35 @@ function beginWeatherMood(forceKind) {
         life: 14 + Math.random() * 10,
         pitchMul: kind === "mist" ? 0.92 : kind === "fireflies" ? 1.08 : 1,
         aggressionMul: kind === "mist" ? 0.85 : kind === "pollen" ? 1.05 : 0.95,
+        lightTint: kind === "mist" ? [160, 190, 210]
+            : kind === "pollen" ? [240, 200, 120]
+            : [150, 210, 160],
     };
     weatherParticles.length = 0;
     const n = gfxQuality >= 2 ? 48 : 28;
     for (let i = 0; i < n; i++) {
+        let px = Math.random() * viewW;
+        let py = Math.random() * viewH;
+        // Fireflies cluster near plants and shore rather than open midwater.
+        if (kind === "fireflies") {
+            const anchors = [];
+            for (const p of pondPlants) anchors.push(p);
+            if (scenery.lilies) {
+                for (const L of sceneryItems.lilies) anchors.push(L);
+            }
+            if (anchors.length) {
+                const a = anchors[Math.floor(Math.random() * anchors.length)];
+                px = a.x + (Math.random() - 0.5) * 70;
+                py = a.y + (Math.random() - 0.5) * 50;
+            } else {
+                px = Math.random() < 0.5 ? viewW * (0.05 + Math.random() * 0.18)
+                    : viewW * (0.77 + Math.random() * 0.18);
+                py = viewH * (0.35 + Math.random() * 0.5);
+            }
+        }
         weatherParticles.push({
-            x: Math.random() * viewW,
-            y: Math.random() * viewH,
+            x: px,
+            y: py,
             vx: (Math.random() - 0.5) * (kind === "mist" ? 8 : 18),
             vy: (Math.random() - 0.5) * (kind === "fireflies" ? 12 : 6),
             phase: Math.random() * Math.PI * 2,
@@ -18846,6 +19169,13 @@ function drawWeather(ctx) {
     if (!weatherMood) return;
     const fade = Math.min(1, weatherMood.t * 0.5, (weatherMood.life - weatherMood.t) * 0.4);
     ctx.save();
+    // Whole-pond lighting wash: mist cools, pollen warms, fireflies stay subtle.
+    if (weatherMood.lightTint && fade > 0.02) {
+        const lt = weatherMood.lightTint;
+        const washA = weatherMood.kind === "fireflies" ? 0.035 : 0.07;
+        ctx.fillStyle = "rgba(" + lt[0] + "," + lt[1] + "," + lt[2] + "," + (washA * fade) + ")";
+        ctx.fillRect(0, 0, viewW, viewH);
+    }
     if (weatherMood.kind === "mist") {
         ctx.fillStyle = "rgba(200,220,230," + (0.08 * fade) + ")";
         ctx.fillRect(0, 0, viewW, viewH);
@@ -19488,14 +19818,17 @@ function updateSchoolOrbit(dt) {
 }
 
 function updateMemorySeek(dt) {
-    // Calm fish occasionally ease toward recent pet glows.
+    // Calm fish prefer remembered pet spots and ease toward them more often.
     for (const f of fishes) {
         if (f.dead || f.isPredator || f.isMonster || f.isRainbow || f.petTimer > 0) continue;
-        if (Math.random() > 0.01) continue;
-        const m = nearestPetMemory(f.x, f.y, 150);
+        if (Math.random() > 0.045) continue;
+        const m = nearestPetMemory(f.x, f.y, 220);
         if (!m) continue;
         const want = Math.atan2(m.y - f.y, m.x - f.x);
-        f.dir += normAngle(want - f.dir) * Math.min(1, 1.5 * dt);
+        f.dir += normAngle(want - f.dir) * Math.min(1, 2.4 * dt);
+        const step = Math.min(28 * dt, Math.hypot(m.x - f.x, m.y - f.y) * 0.35);
+        f.x += Math.cos(want) * step;
+        f.y += Math.sin(want) * step;
     }
 }
 
@@ -19608,6 +19941,202 @@ function marketCraftNightBloom() {
     markFirstInteraction();
 }
 
+let nightLoop = null; // { t, phase, predator, rewardReady }
+
+function updateHeroSoftJobs(dt) {
+    for (const hero of fishes) {
+        if (hero.dead || !(hero.isHero || hero.redeemed) || hero.size < 52) continue;
+        // Scare smaller wild evils out of the territory ring.
+        for (const f of fishes) {
+            if (f === hero || f.dead || f.isHero || f.redeemed || f.tamedMonster) continue;
+            if (!(f.isPredator || f.isMonster) || f.size >= hero.size * 0.92) continue;
+            const d = Math.hypot(f.x - hero.x, f.y - hero.y);
+            const r = heroTerritoryRadius(hero) || hero.size * 1.2;
+            if (d > r || d < 8) continue;
+            const ang = Math.atan2(f.y - hero.y, f.x - hero.x);
+            const push = (22 + hero.size * 0.15) * dt * (1 - d / r);
+            f.x += Math.cos(ang) * push;
+            f.y += Math.sin(ang) * push;
+            f.dir += normAngle(ang - f.dir) * Math.min(1, 2.2 * dt);
+        }
+        // Escort nearby pink breeding pairs: gentle pull toward mid-pair.
+        const pinks = fishes.filter((p) => canBreedFish(p) && p !== hero);
+        if (pinks.length >= 2) {
+            let best = null;
+            let bestD = 140;
+            for (let i = 0; i < pinks.length; i++) {
+                for (let j = i + 1; j < pinks.length; j++) {
+                    const mx = (pinks[i].x + pinks[j].x) * 0.5;
+                    const my = (pinks[i].y + pinks[j].y) * 0.5;
+                    const d = Math.hypot(hero.x - mx, hero.y - my);
+                    if (d < bestD) { bestD = d; best = { mx, my }; }
+                }
+            }
+            if (best && bestD > 40) {
+                easeToward(hero, best.mx, best.my, dt, 18, 0.55);
+            }
+        }
+        // Calm nearby whirlpools when a large hero parks on them.
+        if (typeof whirlpools !== "undefined") {
+            for (const w of whirlpools) {
+                if (Math.hypot(hero.x - w.x, hero.y - w.y) < hero.size * 0.7 + (w.r || 30)) {
+                    w.power = Math.max(8, (w.power || 20) - 18 * dt);
+                    w.life = Math.max(0.2, (w.life || 1) - 0.35 * dt);
+                }
+            }
+        }
+    }
+}
+
+function fuseNearbySpecialFood(dt) {
+    // In-pond craft: two special pellets near each other fuse into a recipe effect.
+    const specials = foods.filter((f) => !f.eaten && (f.golden || f.rainbow || f.pink
+        || f.grower || f.platinum || f.hero));
+    if (specials.length < 2) return;
+    for (let i = 0; i < specials.length; i++) {
+        for (let j = i + 1; j < specials.length; j++) {
+            const a = specials[i];
+            const b = specials[j];
+            if (a.eaten || b.eaten) continue;
+            const d = Math.hypot(a.x - b.x, a.y - b.y);
+            if (d > (a.radius() + b.radius() + 10)) continue;
+            const mx = (a.x + b.x) * 0.5;
+            const my = (a.y + b.y) * 0.5;
+            let fused = false;
+            // gold + pink => mirror twin near mid
+            if ((a.golden && b.pink) || (b.golden && a.pink)) {
+                const host = fishes.find((f) => !f.dead && !f.isMirror && !f.golden
+                    && Math.hypot(f.x - mx, f.y - my) < 160);
+                if (host) {
+                    const twin = new Fish(host.type);
+                    twin.isMirror = true;
+                    twin.mirrorOf = assignFishId(host);
+                    twin.mirrorTrail = [];
+                    twin.size = host.size * 0.92;
+                    twin.baseSpeed = host.baseSpeed;
+                    twin.x = host.x + Math.cos(host.dir + Math.PI) * 28;
+                    twin.y = host.y + Math.sin(host.dir + Math.PI) * 28;
+                    twin.dir = host.dir;
+                    fishes.push(twin);
+                    fused = true;
+                }
+            } else if ((a.rainbow && b.grower) || (b.rainbow && a.grower)) {
+                beginWeatherMood("mist");
+                pendingGlassRain = Math.min(2.8, pendingGlassRain + 0.7);
+                fused = true;
+            } else if ((a.platinum && b.rainbow) || (b.platinum && a.rainbow)) {
+                beginWeatherMood("fireflies");
+                for (let k = 0; k < 2; k++) maybeSpawnIcePatch();
+                fused = true;
+            } else if ((a.hero && b.pink) || (b.hero && a.pink)) {
+                foods.push(new Food(mx, my, 10, { rainbow: true }));
+                fused = true;
+            }
+            if (!fused) continue;
+            a.eaten = true;
+            b.eaten = true;
+            water.disturb(mx, my, 16, 90);
+            spawnSplash(mx, my, 10, 0.4);
+            if (Audio.goldChime) Audio.goldChime(0);
+            return;
+        }
+    }
+}
+
+function updateDebrisTools(dt) {
+    // Logs / driftwood gently block wild reptiles; stump-like pots become frog sit spots.
+    for (const r of reptiles) {
+        if (r.dead || r.tamed || r.isHero || r.golden || r.duelMode) continue;
+        for (const o of obstacles) {
+            if (!(o.kind === "log" || o.kind === "driftwood" || o.kind === "plank")) continue;
+            const d = Math.hypot(r.x - o.x, r.y - o.y);
+            const blockR = obstacleRadius(o) + r.size * 0.35;
+            if (d >= blockR) continue;
+            const ang = Math.atan2(r.y - o.y, r.x - o.x);
+            const push = (blockR - d) * 1.4;
+            r.x += Math.cos(ang) * push * Math.min(1, 4 * dt);
+            r.y += Math.sin(ang) * push * Math.min(1, 4 * dt);
+            r.dir += normAngle(ang - r.dir) * Math.min(1, 2 * dt);
+        }
+    }
+    if (!scenery.frogs || !frogGroups.length) return;
+    for (const g of frogGroups) {
+        const frog = g.frog;
+        if (!frog || frog.dead || frog.befriended) continue;
+        let best = null;
+        let bestD = 90;
+        for (const o of obstacles) {
+            if (!(o.kind === "stump" || o.kind === "pot" || o.kind === "crate")) continue;
+            const d = Math.hypot(frog.x - o.x, frog.y - o.y);
+            if (d < bestD) { bestD = d; best = o; }
+        }
+        if (!best) continue;
+        const sitR = (best.r || 18) * 0.35;
+        if (bestD > 18) {
+            easeToward(frog, best.x, best.y - sitR, dt, 22, 1.1);
+        } else {
+            frog.kick = 0.08;
+            frog.petTimer = Math.max(frog.petTimer || 0, 0.4);
+        }
+    }
+}
+
+function updateNightLoop(dt) {
+    if (!nightMode) {
+        nightLoop = null;
+        return;
+    }
+    if (!nightLoop) {
+        nightLoop = { t: 0, phase: "comet", predator: false, rewardReady: false };
+    }
+    nightLoop.t += dt;
+    if (nightLoop.phase === "comet" && nightLoop.t > 4.5) {
+        if (!cometVisitor && Math.random() < 0.4) maybeSpawnComet(0.02);
+        nightLoop.phase = "biolum";
+        nightLoop.t = 0;
+    } else if (nightLoop.phase === "biolum") {
+        // Encourage soft biolum wakes: nudge a few night fish.
+        if (Math.random() < 0.08) {
+            for (const f of fishes) {
+                if (f.dead || !(f.type && f.type.night)) continue;
+                if (typeof emitBiolumWake === "function") emitBiolumWake(f);
+                break;
+            }
+        }
+        if (nightLoop.t > 8) {
+            nightLoop.phase = "predator";
+            nightLoop.t = 0;
+        }
+    } else if (nightLoop.phase === "predator") {
+        if (!nightLoop.predator && !swordfish && !octopus && Math.random() < 0.02) {
+            nightLoop.predator = true;
+            // Prefer swordfish as the rare night loop hunter.
+            if (!swordfish || swordfish.dead) {
+                swordfish = new Swordfish();
+            }
+        }
+        if (nightLoop.t > 14 || (nightLoop.predator && swordfish && swordfish.dead)) {
+            nightLoop.phase = "dawn";
+            nightLoop.t = 0;
+            nightLoop.rewardReady = true;
+        }
+    } else if (nightLoop.phase === "dawn") {
+        if (nightLoop.rewardReady) {
+            nightLoop.rewardReady = false;
+            const cx = viewW * 0.5;
+            const cy = viewH * 0.5;
+            foods.push(new Food(cx + (Math.random() - 0.5) * 40, cy, 11, { rainbow: true }));
+            foods.push(new Food(cx + 30, cy + 10, 9, platinumUnlocked ? { platinum: true } : { golden: true }));
+            if (Audio.rainbowChime) Audio.rainbowChime(0);
+            beginWeatherMood("pollen");
+        }
+        if (nightLoop.t > 5.5) {
+            // Soft return toward day mood without forcing night off.
+            nightLoop = { t: 0, phase: "comet", predator: false, rewardReady: false };
+        }
+    }
+}
+
 function updateFlavorSystems(dt) {
     updateColoredWakes(dt);
     updateCurrentLanes(dt);
@@ -19622,6 +20151,10 @@ function updateFlavorSystems(dt) {
     updateWhirlpools(dt);
     updateSchoolOrbit(dt);
     updateMemorySeek(dt);
+    updateHeroSoftJobs(dt);
+    fuseNearbySpecialFood(dt);
+    updateDebrisTools(dt);
+    updateNightLoop(dt);
     maybeSpawnComet(dt);
     updateIcePatches(dt);
     if (weatherMood && weatherMood.kind === "mist" && Math.random() < 0.002) {
