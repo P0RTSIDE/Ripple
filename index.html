@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Ripple</title>
-    <link rel="stylesheet" href="style.css?v=20260812aq" />
+    <link rel="stylesheet" href="style.css?v=20260812at" />
 </head>
 <body>
     <!-- The whole experience is a single full-viewport canvas surface. -->
@@ -83,6 +83,9 @@
         <button type="button" id="market-btn" class="locked" title="Market: 7 gold fish" aria-disabled="true" aria-pressed="false">
             <span class="ico ico-market"></span>
             <span id="market-cost">7</span>
+        </button>
+        <button type="button" id="registry-btn" class="scenery-btn" title="Fish registry" aria-pressed="false" aria-expanded="false" aria-controls="registry-panel">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M4 5h16v2H4V5zm0 6h10v2H4v-2zm0 6h16v2H4v-2zm13-7.5l4 2.5-4 2.5v-5z"/></svg>
         </button>
         <button type="button" id="progress-btn" class="scenery-btn" title="Save progress" aria-pressed="false">
             <span class="ico ico-save"></span>
@@ -170,6 +173,17 @@
     </div>
 
     <!-- Free local progress: stays in this browser, or download a file. No account. -->
+    <div id="registry-panel" aria-label="Fish registry" aria-hidden="true">
+        <div class="registry-head">
+            <span>Fish registry</span>
+            <span id="registry-count">0 / 0</span>
+        </div>
+        <p id="registry-blurb" class="registry-blurb">Entries stay dark until you meet them in the pond.</p>
+        <div id="registry-tabs" class="registry-tabs" role="tablist" aria-label="Registry groups"></div>
+        <div id="registry-grid" class="registry-grid" role="list"></div>
+        <div id="registry-detail" class="registry-detail" aria-live="polite"></div>
+    </div>
+
     <div id="progress-panel" aria-label="Progress" aria-hidden="true">
         <div class="market-meta">
             <span id="progress-status">Not saved this visit</span>
@@ -191,6 +205,6 @@
     <!-- On-load hint that fades out after the first interaction and never returns. -->
     <div id="hint">click anywhere</div>
 
-    <script src="main.js?v=20260812aq"></script>
+    <script src="main.js?v=20260812at"></script>
 </body>
 </html>

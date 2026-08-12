@@ -68,7 +68,8 @@ const CONFIG = {
     giantCapFrac: 0.9,      // grower/carcass (and hero) size ceiling vs shorter screen side
     goldSinkTime: 2.4,      // seconds for a golden fish to settle on the lakebed
     rainbowSpeed: 2.35,     // rainbow chase speed (kept moderate so tracking stays stable)
-    rainbowExitMaxTime: 20, // single-fish rainbow victory lap hard cap (seconds)
+    rainbowExitErraticTime: 1.05, // short frantic zig-zag before the logo / center burst
+    rainbowExitMaxTime: 7.5, // single-fish rainbow victory lap hard cap (seconds)
     predatorFoodBoost: 1.045, // each food bite makes an evil fish a bit faster
     predatorSpeedCap: 110,  // max baseSpeed an evil fish can reach from food
     whaleChance: 0.004,     // rare whale visit chance (checked every whaleInterval)
@@ -701,12 +702,12 @@ function resize() {
 
     // Warm dusk vignette so golden hour light still feels submerged.
     vignette = ctx.createRadialGradient(
-        viewW / 2, viewH / 2, Math.min(viewW, viewH) * 0.28,
-        viewW / 2, viewH / 2, Math.max(viewW, viewH) * 0.76
+        viewW / 2, viewH / 2, Math.min(viewW, viewH) * 0.3,
+        viewW / 2, viewH / 2, Math.max(viewW, viewH) * 0.77
     );
-    vignette.addColorStop(0, "rgba(36, 18, 6, 0)");
-    vignette.addColorStop(0.55, "rgba(40, 18, 6, 0.12)");
-    vignette.addColorStop(1, "rgba(22, 8, 2, 0.58)");
+    vignette.addColorStop(0, "rgba(32, 18, 8, 0)");
+    vignette.addColorStop(0.58, "rgba(32, 18, 8, 0.1)");
+    vignette.addColorStop(1, "rgba(18, 8, 4, 0.54)");
 
     if (water) water.resize();
     if (typeof rebuildScenery === "function") rebuildScenery();
@@ -2065,17 +2066,17 @@ class WaterSim {
             && typeof nightMode !== "undefined" && !nightMode
             && typeof crystalMode !== "undefined" && !crystalMode;
         // Clearer near the lit surface; alpha still lets bed read through.
-        const alpha = showBed ? (sunOn ? 68 : 132) : 255;
+        const alpha = showBed ? (sunOn ? 70 : 132) : 255;
         const sunClear = sunOn ? 1 : 0;
         const causticPhase = sunOn && typeof sunPhase === "number" ? sunPhase * 0.42 : 1.7;
         let p = 0;
         for (let y = 0; y < rows; y++) {
-            // Orange-gold water column under late golden hour.
+            // Soft amber water under golden hour (less hard orange).
             const ty = y / rows;
             const depth = ty * ty;
-            const baseR = (showBed ? 28 : 14) + ty * 10 + depth * 8 + sunClear * 28;
-            const baseG = (showBed ? 30 : 20) + ty * 9 + depth * 5 + sunClear * 12;
-            const baseB = (showBed ? 18 : 12) + ty * 5 + depth * 3 + sunClear * 2;
+            const baseR = (showBed ? 22 : 12) + ty * 8 + depth * 6 + sunClear * 20;
+            const baseG = (showBed ? 32 : 22) + ty * 11 + depth * 6 + sunClear * 11;
+            const baseB = (showBed ? 26 : 16) + ty * 7 + depth * 5 + sunClear * 3;
             for (let x = 0; x < cols; x++) {
                 const i = y * cols + x;
                 const l = x > 0 ? field[i - 1] : field[i];
@@ -2084,10 +2085,10 @@ class WaterSim {
                 const d = y < rows - 1 ? field[i + cols] : field[i];
                 const sx = l - r;
                 const sy = u - d;
-                const shade = (sx * (0.95 + sunClear * 0.4) + sy * 0.85) * (0.9 + sunClear * 0.25);
+                const shade = (sx * (0.95 + sunClear * 0.38) + sy * 0.88) * (0.9 + sunClear * 0.24);
                 let spec = 0;
                 const s = sx * 0.55 + sy;
-                if (s > 5.0) spec = Math.min(96, (s - 5.0) * (s - 5.0) * (0.4 + sunClear * 0.18));
+                if (s > 5.0) spec = Math.min(92, (s - 5.0) * (s - 5.0) * (0.38 + sunClear * 0.16));
                 let caustic = 0;
                 if (sunOn && gfxQuality >= 1) {
                     const cx = x * 0.12 + causticPhase + y * 0.035;
@@ -2095,13 +2096,13 @@ class WaterSim {
                     const n = Math.sin(cx) * Math.sin(cy * 1.15)
                         + Math.sin(cx * 0.4 + cy * 0.65) * 0.5
                         + Math.sin(cx * 1.7 - cy * 0.9) * 0.25;
-                    caustic = (n + 1.5) * (3.2 + sunClear * 0.55) * sunClear;
+                    caustic = (n + 1.5) * (3.0 + sunClear * 0.48) * sunClear;
                 }
 
-                // Spec and caustics lean gold / orange, not cool teal.
-                data[p] = clampByte(baseR + shade * 1.15 + spec * 0.95 + caustic * 1.45);
-                data[p + 1] = clampByte(baseG + shade * 0.85 + spec * 0.7 + caustic * 0.95);
-                data[p + 2] = clampByte(baseB + shade * 0.55 + spec * 0.35 + caustic * 0.4);
+                // Spec and caustics stay gold-leaning without heavy orange cast.
+                data[p] = clampByte(baseR + shade * 1.05 + spec * 0.85 + caustic * 1.3);
+                data[p + 1] = clampByte(baseG + shade * 0.9 + spec * 0.72 + caustic * 1.0);
+                data[p + 2] = clampByte(baseB + shade * 0.7 + spec * 0.45 + caustic * 0.55);
                 data[p + 3] = alpha;
                 p += 4;
             }
@@ -2690,16 +2691,16 @@ function drawPondBed(ctx) {
     ctx.drawImage(pondBedCanvas, 0, 0, viewW, viewH);
     // Soft water-column veil: submerged feel without hiding floor silhouettes.
     const daySun = scenery.sun && !nightMode && !crystalMode;
-    ctx.globalAlpha = daySun ? 0.06 : 0.08;
-    ctx.fillStyle = daySun ? "rgba(58, 32, 12, 1)" : "rgba(22, 48, 46, 1)";
+    ctx.globalAlpha = daySun ? 0.055 : 0.08;
+    ctx.fillStyle = daySun ? "rgba(50, 34, 18, 1)" : "rgba(22, 48, 46, 1)";
     ctx.fillRect(0, 0, viewW, viewH);
     if (daySun) {
-        // Stronger orange depth falloff toward the lower frame.
+        // Soft amber depth falloff toward the lower frame.
         const depth = ctx.createLinearGradient(0, 0, 0, viewH);
-        depth.addColorStop(0, "rgba(255, 150, 55, 0)");
-        depth.addColorStop(0.4, "rgba(255, 120, 40, 0.05)");
-        depth.addColorStop(0.7, "rgba(90, 40, 14, 0.1)");
-        depth.addColorStop(1, "rgba(36, 14, 4, 0.2)");
+        depth.addColorStop(0, "rgba(255, 170, 80, 0)");
+        depth.addColorStop(0.45, "rgba(255, 140, 60, 0.035)");
+        depth.addColorStop(0.75, "rgba(80, 42, 20, 0.07)");
+        depth.addColorStop(1, "rgba(32, 16, 8, 0.15)");
         ctx.globalAlpha = 1;
         ctx.fillStyle = depth;
         ctx.fillRect(0, 0, viewW, viewH);
@@ -7352,8 +7353,9 @@ function pushRainbowTrail(x, y, life, pathIndex) {
 }
 
 function updateRainbowTrail(dt) {
-    // Hold the logo trail while drawing; fade once the fish heads to center / bursts.
-    const drawing = fishes.some((f) => f.isRainbow && f.rainbowLeaving && f.rainbowPhase === "logo");
+    // Hold the logo trail while drawing or during the erratic frenzy.
+    const drawing = fishes.some((f) => f.isRainbow && f.rainbowLeaving
+        && (f.rainbowPhase === "logo" || f.rainbowPhase === "erratic"));
     if (!drawing) {
         for (const p of rainbowScriptTrail) p.age += dt;
     }
@@ -7436,7 +7438,7 @@ class Fish {
         this.stuckPrey = []; // fish speared on an inherited sword (digest while swimming)
         this.tentacleGrab = null; // { prey, t } while reeling with tentacles
         this.rainbowLeaving = false;
-        this.rainbowPhase = null; // "write" | "exit" during victory lap
+        this.rainbowPhase = null; // "erratic" | "logo" | "center" during victory lap
         this.ninjaFight = false; // locked into rainbow ninja finale choreography
         this.eggPath = null;
         this.eggIndex = 0;
@@ -7470,6 +7472,7 @@ class Fish {
         this.lineageShape = null; // inherited fin/body shape override
         this.lineagePattern = null; // inherited pattern name
         this.heroBlood = 0; // fades over generations
+        if (typeof noteRegistryFromFish === "function") noteRegistryFromFish(this);
     }
 
     // Stable chase: slow near the target and when turning hard so rainbow fish do not softlock.
@@ -7666,6 +7669,7 @@ class Fish {
         Audio.sharkStrike(pan);
         water.disturb(this.x, this.y, this.size, 500);
         spawnSplash(this.x, this.y, this.size * 0.7, 0.9);
+        if (typeof noteRegistryEncounter === "function") noteRegistryEncounter("form:monster");
         this.maybeBeginGiantEnding();
     }
 
@@ -7687,6 +7691,7 @@ class Fish {
         Audio.goldChime(pan);
         water.disturb(this.x, this.y, this.size * 1.2, 280);
         spawnSplash(this.x, this.y, this.size * 0.5, 0.5);
+        if (typeof noteRegistryEncounter === "function") noteRegistryEncounter("form:gold");
     }
 
     // Eating rainbow food: become a fast apex predator with stable tracking.
@@ -7713,6 +7718,7 @@ class Fish {
         Audio.rainbowChime(pan);
         water.disturb(this.x, this.y, this.size * 1.4, 360);
         spawnSplash(this.x, this.y, this.size * 0.7, 0.8);
+        if (typeof noteRegistryEncounter === "function") noteRegistryEncounter("form:rainbow");
     }
 
     // Platinum food: invulnerable glowing fish that cannot be eaten.
@@ -7744,6 +7750,7 @@ class Fish {
         });
         water.disturb(this.x, this.y, this.size * 1.3, 300);
         spawnSplash(this.x, this.y, this.size * 0.55, 0.65);
+        if (typeof noteRegistryEncounter === "function") noteRegistryEncounter("form:platinum");
         unlockMoonPond();
         if (nightMode && nightUnlocked) {
             crystalMoonPlats++;
@@ -7816,15 +7823,17 @@ class Fish {
         spawnSplash(this.x, this.y, this.size * 0.35, 0.4);
     }
 
-    // Victory lap: swim a fish logo, ease to center, burst into two rainbow food.
+    // Victory lap: brief erratic frenzy, swim a fish logo, ease to center, burst.
     beginRainbowExit() {
         this.rainbowLeaving = true;
-        this.rainbowPhase = "logo";
+        this.rainbowPhase = "erratic";
         rainbowScriptTrail.length = 0;
         this.eggPath = buildFishLogoPath(this.x, this.y);
         this.eggIndex = 0;
         this.trailDrop = 0;
         this.erraticTimer = 0;
+        this._erraticAng = this.dir + (Math.random() - 0.5) * Math.PI;
+        this._erraticFlip = 0.08 + Math.random() * 0.1;
         this.prey = null;
         this.target = null;
         this.petTimer = 0;
@@ -8454,7 +8463,7 @@ class Fish {
             speed *= weatherAggressionMul();
         }
 
-        // Rainbow victory lap: draw a fish logo, ease to center, burst into food.
+        // Rainbow victory lap: short erratic frenzy, draw a fish logo, ease to center, burst.
         if (this.rainbowLeaving) {
             freeRoam = true;
             const cx = viewW * 0.5;
@@ -8465,8 +8474,58 @@ class Fish {
                 burstRainbowIntoFood(this);
                 return;
             }
+
+            // Brief frantic zig-zag before the logo write.
+            if (this.rainbowPhase === "erratic") {
+                this.erraticTimer = (this.erraticTimer || 0) + dt;
+                this._erraticFlip = (this._erraticFlip || 0.1) - dt;
+                if (this._erraticFlip <= 0) {
+                    // Sharp bank changes (capped turn, no teleport).
+                    this._erraticAng = this.dir
+                        + (Math.random() < 0.5 ? 1 : -1) * (1.1 + Math.random() * 1.8)
+                        + (Math.random() - 0.5) * 0.8;
+                    this._erraticFlip = 0.05 + Math.random() * 0.09;
+                }
+                // Bounce off edges so the frenzy stays on-screen.
+                const margin = 36;
+                if (this.x < margin) this._erraticAng = 0 + (Math.random() - 0.5) * 0.6;
+                else if (this.x > viewW - margin) this._erraticAng = Math.PI + (Math.random() - 0.5) * 0.6;
+                if (this.y < margin) this._erraticAng = Math.PI * 0.5 + (Math.random() - 0.5) * 0.6;
+                else if (this.y > viewH - margin) this._erraticAng = -Math.PI * 0.5 + (Math.random() - 0.5) * 0.6;
+                const want = this._erraticAng + Math.sin(this.erraticTimer * 18) * 0.85
+                    + Math.sin(this.erraticTimer * 31) * 0.45;
+                const turnRate = 9.5;
+                const diff = normAngle(want - this.dir);
+                this.dir += Math.max(-turnRate * dt, Math.min(turnRate * dt, diff));
+                const spd = 210 + this.size * 1.1 + Math.sin(this.erraticTimer * 12) * 40;
+                this.x += Math.cos(this.dir) * spd * dt;
+                this.y += Math.sin(this.dir) * spd * dt;
+                this.x = Math.max(18, Math.min(viewW - 18, this.x));
+                this.y = Math.max(18, Math.min(viewH - 18, this.y));
+                this.trailDrop -= dt;
+                if (this.trailDrop <= 0) {
+                    this.trailDrop = 0.028;
+                    this._writePathI = (this._writePathI || 0) + 1;
+                    pushRainbowTrail(this.x, this.y, 4.2, this._writePathI);
+                }
+                this.tailPhase += dt * 14;
+                if (Math.random() < 0.18) water.disturb(this.x, this.y, 7, 28);
+                if (this.erraticTimer >= CONFIG.rainbowExitErraticTime) {
+                    this.rainbowPhase = "logo";
+                    this.eggIndex = 0;
+                    this._logoStallT = 0;
+                    if (this.eggPath && this.eggPath.length > 1) {
+                        // Rebuild logo from current frenzy end so the path starts here.
+                        this.eggPath = buildFishLogoPath(this.x, this.y);
+                        const n = this.eggPath[1];
+                        this.dir = Math.atan2(n.y - this.y, n.x - this.x);
+                    }
+                }
+                return;
+            }
+
             // If the logo path stalls, skip ahead to the center burst.
-            if (this.rainbowPhase === "logo" && this._rainbowExitT >= CONFIG.rainbowExitMaxTime * 0.65) {
+            if (this.rainbowPhase === "logo" && this._rainbowExitT >= CONFIG.rainbowExitMaxTime * 0.55) {
                 this.rainbowPhase = "center";
                 this._logoDoneT = 0;
             }
@@ -8475,11 +8534,11 @@ class Fish {
                 const look = Math.min(this.eggPath.length - 1, this.eggIndex + 3);
                 const wp = this.eggPath[look];
                 const desiredWrite = Math.atan2(wp.y - this.y, wp.x - this.x);
-                const turnRate = 5.4;
+                const turnRate = 6.2;
                 const diff = normAngle(desiredWrite - this.dir);
                 this.dir += Math.max(-turnRate * dt, Math.min(turnRate * dt, diff));
                 const align = 1 - Math.min(1, Math.abs(diff) / Math.PI);
-                const writeSpeed = 160 + 70 * align;
+                const writeSpeed = 185 + 80 * align;
                 this.x += Math.cos(this.dir) * writeSpeed * dt;
                 this.y += Math.sin(this.dir) * writeSpeed * dt;
                 const before = this.eggIndex;
@@ -8491,7 +8550,7 @@ class Fish {
                 if (this.eggIndex === before) {
                     this._logoStallT = (this._logoStallT || 0) + dt;
                     // Skip a stubborn waypoint so the path cannot soft-lock.
-                    if (this._logoStallT > 1.1) {
+                    if (this._logoStallT > 0.7) {
                         this.eggIndex = Math.min(this.eggPath.length, this.eggIndex + 1);
                         this._logoStallT = 0;
                     }
@@ -8516,15 +8575,15 @@ class Fish {
                 this.rainbowPhase = "center";
                 this._logoDoneT = (this._logoDoneT || 0) + dt;
                 const dist = Math.hypot(cx - this.x, cy - this.y);
-                easeToward(this, cx, cy, dt, 88 + this.size * 0.35, 3.0);
+                easeToward(this, cx, cy, dt, 100 + this.size * 0.4, 3.4);
                 this.trailDrop -= dt;
                 if (this.trailDrop <= 0) {
-                    this.trailDrop = 0.06;
+                    this.trailDrop = 0.055;
                     this._writePathI = (this._writePathI || 0) + 1;
                     pushRainbowTrail(this.x, this.y, 3.2, this._writePathI);
                 }
-                this.tailPhase += dt * 10;
-                if (dist < 14 || this._logoDoneT > 3.2) {
+                this.tailPhase += dt * 11;
+                if (dist < 14 || this._logoDoneT > 2.4) {
                     burstRainbowIntoFood(this);
                 }
                 return;
@@ -11121,6 +11180,9 @@ class Reptile {
         if (!(opts && opts.quiet)) {
             Audio.predatorEat(this.x < viewW * 0.5 ? -0.3 : 0.3);
         }
+        if (typeof noteRegistryEncounter === "function") {
+            noteRegistryEncounter(this.kind === "alligator" ? "apex:alligator" : "apex:crocodile");
+        }
     }
 
     pet() {
@@ -11223,6 +11285,7 @@ class Reptile {
         if (Audio.rainbowChime) Audio.rainbowChime(pan);
         water.disturb(this.x, this.y, this.size * 1.2, 340);
         spawnSplash(this.x, this.y, this.size * 0.55, 0.75);
+        if (typeof noteRegistryEncounter === "function") noteRegistryEncounter("form:rainbow");
     }
 
     tryBiteFood(dt) {
@@ -12314,6 +12377,7 @@ class Swordfish {
             this.dir = Math.atan2(this.target.y - this.y, this.target.x - this.x);
         }
         Audio.predatorEat(this.x < viewW * 0.5 ? -0.35 : 0.35);
+        if (typeof noteRegistryEncounter === "function") noteRegistryEncounter("apex:swordfish");
     }
 
     pet(quiet) { nightPredatorPet(this, quiet); }
@@ -12944,6 +13008,9 @@ class Octopus {
         }
         if (!(opts && opts.quiet)) {
             Audio.predatorEat(this.x < viewW * 0.5 ? -0.2 : 0.2);
+        }
+        if (typeof noteRegistryEncounter === "function") {
+            noteRegistryEncounter(this.isCrystal ? "apex:mantle" : "apex:octopus");
         }
     }
 
@@ -15856,6 +15923,11 @@ class Shark {
         else { this.x = Math.random() * viewW; this.y = viewH + this.size; }
         this.target = target;
         this.dir = target ? Math.atan2(target.y - this.y, target.x - this.x) : 0;
+        if (typeof noteRegistryEncounter === "function") {
+            noteRegistryEncounter(
+                this.isOrca ? "apex:orca" : this.isCrystal ? "apex:prismshark" : "apex:shark"
+            );
+        }
     }
 
     pet() {
@@ -16418,6 +16490,7 @@ class Whale {
         this.age = 0;
         Audio.whaleCall(this.fromLeft ? -0.4 : 0.4);
         water.disturb(this.x, this.y, this.size * 0.35, 320);
+        if (typeof noteRegistryEncounter === "function") noteRegistryEncounter("apex:whale");
     }
 
     pet(quiet) {
@@ -16797,6 +16870,9 @@ class PacifistVisitor {
                     baseAng,
                 });
             }
+        }
+        if (typeof noteRegistryEncounter === "function") {
+            noteRegistryEncounter("pac:" + (this.kind || "nurse"));
         }
     }
 
@@ -17735,6 +17811,7 @@ class CrystalSerpent {
         if (!(opts && opts.quiet)) {
             Audio.predatorEat(this.x < viewW * 0.5 ? -0.28 : 0.28);
         }
+        if (typeof noteRegistryEncounter === "function") noteRegistryEncounter("apex:serpent");
     }
 
     pet(quiet) {
@@ -20195,6 +20272,318 @@ function reviveFishType(data) {
     return type;
 }
 
+// ---------------------------------------------------------------------------
+// Fish registry: blacked-out until encountered, persisted in the save file.
+// ---------------------------------------------------------------------------
+let registrySeen = Object.create(null);
+let registryOpen = false;
+let registryTab = "common";
+let registrySelectedId = null;
+let _registryCatalog = null;
+
+const REGISTRY_TABS = [
+    { id: "common", label: "Common" },
+    { id: "exotic", label: "Exotic" },
+    { id: "night", label: "Night" },
+    { id: "crystal", label: "Crystal" },
+    { id: "apex", label: "Apex" },
+    { id: "helpers", label: "Helpers" },
+    { id: "rare", label: "Rare" },
+];
+
+const REGISTRY_GROUP_BLURB = {
+    common: "Everyday pond fish. They eat, grow, school, and can blush pink to breed.",
+    exotic: "Uncommon visitors with odd swim habits. They show up less often than commons, and each has a quirky way of moving.",
+    night: "Moon pond fish. Cooler colors and quieter habits under moonlight.",
+    crystal: "Crystal Depths fish. Gemstone colors that appear after moon and platinum progress.",
+    apex: "Large hunters and guests that can empty or reshape the pond. Pet carefully, or let them leave on their own.",
+    helpers: "Pacifist counterparts to apex life. They grow the pond with gifts and soft auras instead of hunting. Pet them to befriend.",
+    rare: "Special forms a fish can enter. Gold rests on the bed, rainbow hunts hard, monster rises from eating reptiles, and platinum cannot be eaten.",
+};
+
+const REGISTRY_ODD_TIP = {
+    spiral: "Prefers looping spirals while it swims.",
+    zigzag: "Cuts sharp zig-zags through the water.",
+    jitter: "Jitters and darts in short bursts.",
+    drift: "Drifts slowly, almost hovering.",
+    glide: "Glides in long, steady lines.",
+};
+
+const REGISTRY_APEX_META = [
+    { id: "apex:shark", label: "Shark", color: "#6a7a88", tip: "Day apex hunter. Empties the pond if left unchecked. Pet for a roll; a remorse path can turn it into a guardian." },
+    { id: "apex:orca", label: "Orca", color: "#d8dde8", tip: "Night apex when few fish remain. A powerful hunter under moonlight." },
+    { id: "apex:prismshark", label: "Prism shark", color: "#b090e0", tip: "Crystal Depths apex hunter with a gemstone sheen." },
+    { id: "apex:whale", label: "Whale", color: "#8aa0b8", tip: "Huge visitor that can swallow fish whole. Petting can calm it into a soft hero path." },
+    { id: "apex:crocodile", label: "Crocodile", color: "#4a6a48", tip: "Narrow-snout reptile apex. Hunts fish; petting can tame it into a friend." },
+    { id: "apex:alligator", label: "Alligator", color: "#3a5540", tip: "Broad-snout reptile apex. Hunts fish; petting can tame it into a friend." },
+    { id: "apex:swordfish", label: "Swordfish", color: "#7090a8", tip: "Spears smaller fish on its bill. Night-leaning hunter with a fierce chase." },
+    { id: "apex:octopus", label: "Octopus", color: "#8a5078", tip: "Grabs prey with arms and can wrap larger guests. Night-leaning hunter." },
+    { id: "apex:mantle", label: "Crystal mantle", color: "#70a0d0", tip: "Crystal Depths limb apex, a fantasy cousin to the octopus." },
+    { id: "apex:serpent", label: "Prism serpent", color: "#90c8e0", tip: "Crystal Depths serpent apex that weaves and hunts through gemstone water." },
+];
+
+const REGISTRY_RARE_META = [
+    { id: "form:gold", label: "Gold form", color: "#e0b24a", tip: "From golden food. The fish freezes into gold and rests on the lakebed." },
+    { id: "form:rainbow", label: "Rainbow form", color: "#c070e0", tip: "From rainbow food. A fast hunting form that can empty the pond, then leave in a flourish." },
+    { id: "form:monster", label: "Monster form", color: "#4a3038", tip: "From eating a crocodile or alligator. A huge predatory fish that can still be soothed." },
+    { id: "form:platinum", label: "Platinum form", color: "#d0e0f0", tip: "From platinum food. Glows and cannot be eaten. Helps unlock moon and crystal progress." },
+];
+
+const REGISTRY_HELPER_TIP = {
+    nurse: "Gentle shark cousin. Feeds the pond and softens danger instead of hunting.",
+    beluga: "Moon beluga. A calm night helper that gifts and soothes.",
+    singer: "Song whale. Slow, musical helper that lifts the mood of the pond.",
+    lotus: "Softshell counterpart to the crocodile. Spreads calm and gifts.",
+    axolotl: "Tiny alligator counterpart. Friendly and gift-giving.",
+    ribbon: "Ribbon sail. Swordfish counterpart that helps rather than spears.",
+    garden: "Garden octopus. Tends the pond with soft arms and gifts.",
+    lumen: "Lumen bloom. Crystal mantle counterpart with soft light gifts.",
+    shard: "Shard nurse. Crystal shark counterpart that nurses the depths.",
+    prism: "Prism softshell. Serpent counterpart that gifts instead of hunting.",
+};
+
+function registryPrettyName(name) {
+    return String(name || "")
+        .replace(/[-_]/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function registryIdForType(type) {
+    if (!type || !type.name) return null;
+    return "fish:" + type.name;
+}
+
+function noteRegistryEncounter(id) {
+    if (!id || typeof id !== "string") return false;
+    if (registrySeen[id]) return false;
+    registrySeen[id] = Date.now();
+    if (registryOpen) renderRegistryUI();
+    return true;
+}
+
+function noteRegistryFromFish(f) {
+    if (!f || f.dead) return;
+    const id = registryIdForType(f.type);
+    if (id) noteRegistryEncounter(id);
+    if (f.isRainbow) noteRegistryEncounter("form:rainbow");
+    if (f.isMonster || f.tamedMonster) noteRegistryEncounter("form:monster");
+    if (f.isPlatinum) noteRegistryEncounter("form:platinum");
+    if (f.golden) noteRegistryEncounter("form:gold");
+}
+
+function pushRegistryTypeEntry(list, type, group) {
+    if (!type || !type.name) return;
+    const id = registryIdForType(type);
+    if (!id) return;
+    let tip = "A " + group + " pond fish.";
+    if (group === "exotic") {
+        tip = REGISTRY_ODD_TIP[type.odd] || "An uncommon visitor with odd swim habits.";
+    } else if (group === "night") {
+        tip = "A moon pond fish with cooler colors and quieter habits.";
+    } else if (group === "crystal") {
+        tip = type.exotic
+            ? (REGISTRY_ODD_TIP[type.odd] || "A rare crystal visitor with odd swim habits.")
+            : "A Crystal Depths fish with gemstone coloring.";
+    } else if (type.blobfish) {
+        tip = "A rare night deep-sea oddity with a soft, sagging body.";
+    }
+    list.push({
+        id,
+        group: type.blobfish ? "exotic" : group,
+        label: registryPrettyName(type.name),
+        color: type.body || "#7aa89a",
+        tip,
+    });
+}
+
+function getRegistryCatalog() {
+    if (_registryCatalog) return _registryCatalog;
+    const list = [];
+    for (const t of FISH_TYPES) pushRegistryTypeEntry(list, t, "common");
+    for (const t of EXOTIC_TYPES) pushRegistryTypeEntry(list, t, "exotic");
+    if (typeof BLOBFISH_TYPE !== "undefined") pushRegistryTypeEntry(list, BLOBFISH_TYPE, "exotic");
+    for (const t of NIGHT_FISH_TYPES) pushRegistryTypeEntry(list, t, "night");
+    for (const t of CRYSTAL_FISH_TYPES) pushRegistryTypeEntry(list, t, "crystal");
+    for (const t of CRYSTAL_EXOTIC_TYPES) pushRegistryTypeEntry(list, t, "crystal");
+    for (const a of REGISTRY_APEX_META) {
+        list.push({ id: a.id, group: "apex", label: a.label, color: a.color, tip: a.tip });
+    }
+    for (const kind of Object.keys(PACIFIST_KIND_META)) {
+        const m = PACIFIST_KIND_META[kind];
+        const pal = APEX_BREED_PALETTE["pac:" + kind];
+        list.push({
+            id: "pac:" + kind,
+            group: "helpers",
+            label: registryPrettyName(m.label || kind),
+            color: (pal && pal.body) || "#9ec4b4",
+            tip: REGISTRY_HELPER_TIP[kind] || "A pacifist helper. Gifts and auras instead of hunting.",
+        });
+    }
+    for (const r of REGISTRY_RARE_META) {
+        list.push({ id: r.id, group: "rare", label: r.label, color: r.color, tip: r.tip });
+    }
+    _registryCatalog = list;
+    return list;
+}
+
+function serializeRegistry() {
+    const seen = {};
+    for (const id of Object.keys(registrySeen)) {
+        if (registrySeen[id]) seen[id] = registrySeen[id];
+    }
+    return { seen };
+}
+
+function applyRegistryData(data) {
+    // Missing registry field keeps current discoveries (old saves / fresh ponds).
+    if (!data || !data.registry || !data.registry.seen || typeof data.registry.seen !== "object") {
+        return;
+    }
+    const next = Object.create(null);
+    for (const key of Object.keys(data.registry.seen)) {
+        const v = data.registry.seen[key];
+        if (v) next[key] = typeof v === "number" ? v : Date.now();
+    }
+    registrySeen = next;
+}
+
+function scanLivingForRegistry() {
+    for (const f of fishes) {
+        if (f && !f.dead) noteRegistryFromFish(f);
+    }
+    if (shark && !shark.dead) {
+        noteRegistryEncounter(
+            shark.isOrca ? "apex:orca" : shark.isCrystal ? "apex:prismshark" : "apex:shark"
+        );
+    }
+    if (whale && !whale.dead) noteRegistryEncounter("apex:whale");
+    if (swordfish && !swordfish.dead) noteRegistryEncounter("apex:swordfish");
+    if (octopus && !octopus.dead) {
+        noteRegistryEncounter(octopus.isCrystal ? "apex:mantle" : "apex:octopus");
+    }
+    if (crystalMantle && !crystalMantle.dead) noteRegistryEncounter("apex:mantle");
+    if (crystalSerpent && !crystalSerpent.dead) noteRegistryEncounter("apex:serpent");
+    for (const r of reptiles) {
+        if (!r || r.dead) continue;
+        noteRegistryEncounter(r.kind === "alligator" ? "apex:alligator" : "apex:crocodile");
+    }
+    for (const p of pacifistVisitors) {
+        if (p && !p.dead) noteRegistryEncounter("pac:" + (p.kind || "nurse"));
+    }
+}
+
+function registryCounts() {
+    const cat = getRegistryCatalog();
+    let seen = 0;
+    for (const e of cat) {
+        if (registrySeen[e.id]) seen++;
+    }
+    return { seen, total: cat.length };
+}
+
+function updateRegistryButtonUI() {
+    const btn = document.getElementById("registry-btn");
+    if (!btn) return;
+    btn.classList.toggle("on", registryOpen);
+    btn.setAttribute("aria-pressed", registryOpen ? "true" : "false");
+    btn.setAttribute("aria-expanded", registryOpen ? "true" : "false");
+    btn.title = registryOpen ? "Close fish registry" : "Fish registry";
+}
+
+function setRegistryOpen(open) {
+    registryOpen = !!open;
+    if (registryOpen) {
+        setMarketOpen(false);
+        setProgressOpen(false);
+        if (typeof setTunesPanelOpen === "function") setTunesPanelOpen(false);
+        scanLivingForRegistry();
+    }
+    const panel = document.getElementById("registry-panel");
+    if (panel) {
+        panel.classList.toggle("open", registryOpen);
+        panel.setAttribute("aria-hidden", registryOpen ? "false" : "true");
+    }
+    updateRegistryButtonUI();
+    if (registryOpen) renderRegistryUI();
+}
+
+function renderRegistryUI() {
+    const cat = getRegistryCatalog();
+    const counts = registryCounts();
+    const countEl = document.getElementById("registry-count");
+    if (countEl) countEl.textContent = counts.seen + " / " + counts.total;
+
+    const blurbEl = document.getElementById("registry-blurb");
+    if (blurbEl) {
+        blurbEl.textContent = REGISTRY_GROUP_BLURB[registryTab]
+            || "Entries stay dark until you meet them in the pond.";
+    }
+
+    const tabsEl = document.getElementById("registry-tabs");
+    if (tabsEl) {
+        tabsEl.innerHTML = "";
+        for (const tab of REGISTRY_TABS) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "registry-tab" + (tab.id === registryTab ? " on" : "");
+            btn.setAttribute("role", "tab");
+            btn.setAttribute("aria-selected", tab.id === registryTab ? "true" : "false");
+            btn.textContent = tab.label;
+            btn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                registryTab = tab.id;
+                registrySelectedId = null;
+                renderRegistryUI();
+            });
+            tabsEl.appendChild(btn);
+        }
+    }
+
+    const grid = document.getElementById("registry-grid");
+    const detail = document.getElementById("registry-detail");
+    if (!grid) return;
+    grid.innerHTML = "";
+    const rows = cat.filter((e) => e.group === registryTab);
+    let selected = null;
+    for (const entry of rows) {
+        const seen = !!registrySeen[entry.id];
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "registry-card"
+            + (seen ? " seen" : " locked")
+            + (registrySelectedId === entry.id ? " selected" : "");
+        card.setAttribute("role", "listitem");
+        card.style.setProperty("--reg-color", entry.color || "#7aa89a");
+        card.title = seen ? entry.label : "Not yet met";
+        const sil = document.createElement("span");
+        sil.className = "registry-sil";
+        sil.setAttribute("aria-hidden", "true");
+        const name = document.createElement("span");
+        name.className = "registry-name";
+        name.textContent = seen ? entry.label : "???";
+        card.appendChild(sil);
+        card.appendChild(name);
+        if (seen) {
+            card.addEventListener("click", (e) => {
+                e.stopPropagation();
+                registrySelectedId = entry.id;
+                renderRegistryUI();
+            });
+            if (registrySelectedId === entry.id) selected = entry;
+        } else {
+            card.disabled = true;
+        }
+        grid.appendChild(card);
+    }
+    if (detail) {
+        if (selected) {
+            detail.textContent = selected.label + ". " + (selected.tip || "");
+        } else {
+            detail.textContent = "Meet a new fish in the pond to reveal its silhouette. Select a revealed entry for notes.";
+        }
+    }
+}
+
 function serializeFish(f) {
     if (!f || f.dead) return null;
     const typeName = f.type && f.type.name;
@@ -20280,6 +20669,7 @@ function restoreFishFromSave(data) {
         f.isPredator = false;
         f.sinkDepth = Math.max(f.sinkDepth, 1);
     }
+    if (typeof noteRegistryFromFish === "function") noteRegistryFromFish(f);
     return f;
 }
 
@@ -20291,7 +20681,7 @@ function buildProgressSnapshot() {
         if (living.length >= 90) break;
     }
     return {
-        version: 1,
+        version: 2,
         savedAt: Date.now(),
         goldCollected,
         hatsUnlocked,
@@ -20314,6 +20704,7 @@ function buildProgressSnapshot() {
             normalBank: normalFoodBank,
         },
         fish: living,
+        registry: serializeRegistry(),
         nightMode: false,
     };
 }
@@ -20353,6 +20744,7 @@ function clearPondEntitiesForLoad() {
 function applyProgressSnapshot(data) {
     if (!data || typeof data !== "object") return false;
     clearPondEntitiesForLoad();
+    applyRegistryData(data);
     goldCollected = Math.max(0, Math.floor(data.goldCollected || 0));
     hatsUnlocked = !!data.hatsUnlocked;
     hatsOn = !!data.hatsOn && hatsUnlocked;
@@ -20369,6 +20761,8 @@ function applyProgressSnapshot(data) {
     crystalMode = false;
     setMarketOpen(false);
     setProgressOpen(false);
+    setRegistryOpen(false);
+    scanLivingForRegistry();
     updateHatsButtonUI();
     updateGoldCountUI();
     updateNightButtonUI();
@@ -20379,6 +20773,7 @@ function applyProgressSnapshot(data) {
     updateMarketUI();
     renderFoodStashUI();
     updateProgressUI();
+    updateRegistryButtonUI();
     return true;
 }
 
@@ -20481,6 +20876,9 @@ function startNewPond() {
     initFish();
     setMarketOpen(false);
     setProgressOpen(false);
+    setRegistryOpen(false);
+    // Keep fish registry discoveries across fresh ponds.
+    scanLivingForRegistry();
     updateHatsButtonUI();
     updateGoldCountUI();
     updateNightButtonUI();
@@ -20491,6 +20889,7 @@ function startNewPond() {
     renderFoodStashUI();
     setProgressStatus("Fresh pond");
     updateProgressUI();
+    updateRegistryButtonUI();
 }
 
 let progressOpen = false;
@@ -20518,6 +20917,7 @@ function setProgressOpen(open) {
     progressOpen = !!open;
     if (progressOpen) {
         setMarketOpen(false);
+        setRegistryOpen(false);
         if (typeof setTunesPanelOpen === "function") setTunesPanelOpen(false);
     }
     const panel = document.getElementById("progress-panel");
@@ -21053,6 +21453,15 @@ function setMarketOpen(open) {
         }
         updateProgressUI();
     }
+    if (marketOpen && registryOpen) {
+        registryOpen = false;
+        const r = document.getElementById("registry-panel");
+        if (r) {
+            r.classList.remove("open");
+            r.setAttribute("aria-hidden", "true");
+        }
+        updateRegistryButtonUI();
+    }
     if (marketOpen && typeof setTunesPanelOpen === "function") setTunesPanelOpen(false);
     const panel = document.getElementById("market-panel");
     if (panel) {
@@ -21495,6 +21904,7 @@ loadMarketState();
 updateCatcherButtonUI();
 updatePickerButtonUI();
 updateProgressUI();
+updateRegistryButtonUI();
 
 const marketBtn = document.getElementById("market-btn");
 if (marketBtn) {
@@ -21523,6 +21933,20 @@ if (progressBtn) {
         Audio.ensure();
         setProgressOpen(!progressOpen);
     });
+}
+
+const registryBtn = document.getElementById("registry-btn");
+if (registryBtn) {
+    registryBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        Audio.ensure();
+        setRegistryOpen(!registryOpen);
+    });
+}
+
+const registryPanel = document.getElementById("registry-panel");
+if (registryPanel) {
+    registryPanel.addEventListener("click", (e) => e.stopPropagation());
 }
 
 const progressPanel = document.getElementById("progress-panel");
@@ -23782,18 +24206,21 @@ function mixLineageHue(a, b) {
 function tryBeginRainbowDuet(fish) {
     const partner = fishes.find(function (f) {
         return f !== fish && f.isRainbow && f.rainbowLeaving
-            && f.rainbowPhase === "logo" && f.eggPath;
+            && (f.rainbowPhase === "logo" || f.rainbowPhase === "erratic") && f.eggPath;
     });
     if (!partner || !partner.eggPath) return false;
-    const path = partner.eggPath.map(function (p, i) {
-        const cx = viewW * 0.5;
-        return {
-            x: cx * 2 - p.x + Math.sin(i * 0.2) * 4,
-            y: p.y + Math.cos(i * 0.15) * 3,
-        };
-    });
-    fish.eggPath = path;
-    fish.eggIndex = Math.min(fish.eggIndex, Math.floor(path.length * 0.15));
+    // Mirror the partner path once both are writing; during erratic just link ids.
+    if (partner.rainbowPhase === "logo") {
+        const path = partner.eggPath.map(function (p, i) {
+            const cx = viewW * 0.5;
+            return {
+                x: cx * 2 - p.x + Math.sin(i * 0.2) * 4,
+                y: p.y + Math.cos(i * 0.15) * 3,
+            };
+        });
+        fish.eggPath = path;
+        fish.eggIndex = Math.min(fish.eggIndex, Math.floor(path.length * 0.15));
+    }
     fish._duetPartner = partner._fid || assignFishId(partner);
     partner._duetPartner = assignFishId(fish);
     return true;
@@ -25308,6 +25735,7 @@ function setTunesPanelOpen(open) {
         setRhythmPanelOpen(false);
         setMarketOpen(false);
         setProgressOpen(false);
+        setRegistryOpen(false);
     }
     const panel = document.getElementById("tunes-panel");
     if (panel) {
