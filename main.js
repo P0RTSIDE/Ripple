@@ -49,7 +49,8 @@ const CONFIG = {
     orcaSize: 178,          // night last-fish: much larger than the day shark
     crystalSize: 148,       // crystal depths last-fish: prism shark
     crystalSerpentSize: [88, 118], // crystal apex visitor
-    crystalPredatorChance: 0.36, // roll chance for crystal serpent
+    crystalMantleSize: [78, 108], // crystal limb apex (fantasy octopus cousin)
+    crystalPredatorChance: 0.36, // roll chance for crystal serpent or mantle
     fleeRange: 210,         // px within which prey flee a predator/shark
     huntRange: 340,         // px within which a predator/shark spots prey
     repopInterval: 1.1,     // seconds between new fish swimming in
@@ -2727,33 +2728,33 @@ function lightCastsFloorShadows() {
     return !!scenery.sun;
 }
 
-// Offset silhouette on the bed: crisp shape-matched cast like the koi reference.
+// Offset silhouette on the bed: crisp shape-matched cast, close and lightly warped.
 function withFloorShadow(ctx, x, y, sizeHint, alpha, rot, drawFn) {
     const d = skyShadowDir();
     const day = !crystalMode && !nightMode;
-    // Moderate offset; mild squash so fins and pads stay readable.
-    const stretch = crystalMode ? 1.42 : nightMode ? 1.28 : 1.08;
-    const len = (crystalMode ? 42 : nightMode ? 34 : 22) + Math.max(8, sizeHint) * stretch;
-    const a = Math.min(1, alpha * (crystalMode ? 1.55 : nightMode ? 1.25 : 1.7));
+    // Short cast; gentle squash so shapes stay close to the real silhouette.
+    const stretch = crystalMode ? 1.12 : nightMode ? 1.05 : 0.82;
+    const len = (crystalMode ? 22 : nightMode ? 18 : 12) + Math.max(6, sizeHint) * stretch;
+    const a = Math.min(1, alpha * (crystalMode ? 1.2 : nightMode ? 1.05 : 1.25));
     ctx.save();
     ctx.translate(x + d.x * len, y + d.y * len);
-    ctx.scale(1, crystalMode ? 0.46 : nightMode ? 0.5 : 0.58);
+    ctx.scale(1, crystalMode ? 0.72 : nightMode ? 0.76 : 0.82);
     if (rot != null) ctx.rotate(rot);
     if (!day) {
         ctx.save();
-        ctx.globalAlpha = Math.min(1, a * (crystalMode ? 0.55 : 0.45));
+        ctx.globalAlpha = Math.min(1, a * (crystalMode ? 0.4 : 0.32));
         ctx.fillStyle = crystalMode ? "rgba(28, 6, 42, 1)" : "rgba(4, 8, 18, 1)";
-        ctx.scale(crystalMode ? 1.2 : 1.12, crystalMode ? 1.28 : 1.18);
+        ctx.scale(crystalMode ? 1.1 : 1.06, crystalMode ? 1.14 : 1.08);
         drawFn(ctx);
         ctx.restore();
     }
     // Cool dark teal-grey core (underwater shadow), not warm brown.
     ctx.globalAlpha = Math.min(1, a);
     ctx.fillStyle = crystalMode
-        ? `rgba(22, 4, 36, ${Math.min(0.98, a)})`
+        ? `rgba(22, 4, 36, ${Math.min(0.82, a)})`
         : nightMode
-            ? `rgba(3, 6, 16, ${Math.min(0.95, a)})`
-            : `rgba(6, 22, 28, ${Math.min(0.92, a)})`;
+            ? `rgba(3, 6, 16, ${Math.min(0.78, a)})`
+            : `rgba(6, 22, 28, ${Math.min(0.72, a)})`;
     drawFn(ctx);
     ctx.restore();
 }
@@ -3119,7 +3120,7 @@ function drawSunContactShadows(ctx) {
     if (!lightCastsFloorShadows()) return;
     ctx.save();
     ctx.globalCompositeOperation = "multiply";
-    ctx.globalAlpha = crystalMode ? 1 : nightMode ? 0.95 : 1.08;
+    ctx.globalAlpha = crystalMode ? 0.82 : nightMode ? 0.78 : 0.88;
 
     if (scenery.debris) {
         for (const o of obstacles) {
@@ -3323,15 +3324,15 @@ function drawSunCreatureShadows(ctx) {
     if (!lightCastsFloorShadows()) return;
     ctx.save();
     ctx.globalCompositeOperation = "multiply";
-    ctx.globalAlpha = crystalMode ? 1 : nightMode ? 0.95 : 1.1;
+    ctx.globalAlpha = crystalMode ? 0.84 : nightMode ? 0.8 : 0.9;
     for (const f of fishes) {
         if (f.dead) continue;
         const { L, W, shape } = fishShadowDims(f);
         const scale = f.golden ? (1 - (f.sinkDepth || 0) * 0.35) : 1;
         const yOff = f.golden ? (f.sinkDepth || 0) * 6 : 0;
         const liftZ = f.pickerLiftZ || 0;
-        // Lifted fish: longer floor contact; day shadows stay hard and opaque.
-        const alpha = f.golden ? 0.78 : (liftZ > 1 ? 0.7 : 0.96);
+        // Lifted fish: longer floor contact; keep day shadows readable but softer.
+        const alpha = f.golden ? 0.62 : (liftZ > 1 ? 0.55 : 0.78);
         withFloorShadow(ctx, f.x, f.y + yOff, L, alpha, f.dir, (c) => {
             c.scale(scale, scale);
             fillFishShadowPaths(c, L, W, shape);
@@ -3371,6 +3372,27 @@ function drawSunCreatureShadows(ctx) {
                 c.quadraticCurveTo(lx * 0.45 + 2, ly * 0.45 + 2,
                     Math.cos(octopus.dir || 0) * -octopus.size * 0.1,
                     Math.sin(octopus.dir || 0) * -octopus.size * 0.1);
+                c.closePath();
+                c.fill();
+            }
+        });
+    }
+    if (crystalMantle && !crystalMantle.dead) {
+        withFloorShadow(ctx, crystalMantle.x, crystalMantle.y, crystalMantle.size * 1.2, 0.72, 0, (c) => {
+            c.beginPath();
+            c.ellipse(0, 0, crystalMantle.size * 0.42, crystalMantle.size * 0.34, crystalMantle.dir || 0, 0, Math.PI * 2);
+            c.fill();
+            for (const leg of crystalMantle.legs || []) {
+                const lx = leg.tipX - crystalMantle.x;
+                const ly = leg.tipY - crystalMantle.y;
+                c.beginPath();
+                c.moveTo(Math.cos(crystalMantle.dir || 0) * -crystalMantle.size * 0.15,
+                    Math.sin(crystalMantle.dir || 0) * -crystalMantle.size * 0.15);
+                c.quadraticCurveTo(lx * 0.45, ly * 0.45, lx, ly);
+                c.lineTo(lx + 3, ly + 2);
+                c.quadraticCurveTo(lx * 0.45 + 2, ly * 0.45 + 2,
+                    Math.cos(crystalMantle.dir || 0) * -crystalMantle.size * 0.1,
+                    Math.sin(crystalMantle.dir || 0) * -crystalMantle.size * 0.1);
                 c.closePath();
                 c.fill();
             }
@@ -7011,6 +7033,11 @@ function beginRainbowNinjaFight() {
         octopus.dead = true;
         octopus = null;
     }
+    if (crystalMantle && !crystalMantle.tamed && !crystalMantle.isHero && !crystalMantle.golden) {
+        if (typeof crystalMantle.clearApexWrap === "function") crystalMantle.clearApexWrap();
+        crystalMantle.dead = true;
+        crystalMantle = null;
+    }
     for (const r of reptiles) {
         if (!r.dead && !r.tamed && !r.golden && !r.isHero) r.leaving = true;
     }
@@ -7790,6 +7817,13 @@ class Fish {
                 return { x: octopus.x, y: octopus.y };
             }
         }
+        if (isWildNightPredator(crystalMantle) && this.size <= crystalMantle.size * 1.02) {
+            const d = Math.hypot(crystalMantle.x - this.x, crystalMantle.y - this.y);
+            if (d < CONFIG.fleeRange * 1.9
+                && !(this.isHero && this.size > crystalMantle.size)) {
+                return { x: crystalMantle.x, y: crystalMantle.y };
+            }
+        }
         let best = null, bd = CONFIG.fleeRange;
         for (const p of fishes) {
             if (p === this || p.dead || p.golden) continue;
@@ -8035,6 +8069,10 @@ class Fish {
             const d = Math.hypot(octopus.x - tip.x, octopus.y - tip.y);
             if (d < bd) { bd = d; best = octopus; bestKind = "octopus"; }
         }
+        if (isWildNightPredator(crystalMantle) && this.swordOutsizesApex(crystalMantle.size)) {
+            const d = Math.hypot(crystalMantle.x - tip.x, crystalMantle.y - tip.y);
+            if (d < bd) { bd = d; best = crystalMantle; bestKind = "mantle"; }
+        }
 
         if (shark && !shark.dead && !shark.leaving && !shark.isHero
             && this.swordOutsizesApex(shark.size)) {
@@ -8096,12 +8134,12 @@ class Fish {
             return;
         }
 
-        if (kind === "swordfish" || kind === "octopus") {
+        if (kind === "swordfish" || kind === "octopus" || kind === "mantle") {
             if (!isWildNightPredator(prey) || !this.swordOutsizesApex(prey.size)) return;
             this.pushSwordTrophy({
                 size: Math.max(10, prey.size * 0.45),
-                body: kind === "swordfish" ? "#7a8a9a" : "#8a4060",
-                belly: kind === "swordfish" ? "#d0d8e0" : "#c08090",
+                body: kind === "swordfish" ? "#7a8a9a" : kind === "mantle" ? "#7040b0" : "#8a4060",
+                belly: kind === "swordfish" ? "#d0d8e0" : kind === "mantle" ? "#e0d0ff" : "#c08090",
                 nourishing: false,
             });
             consumeWildNightPredator(this, kind);
@@ -8315,7 +8353,7 @@ class Fish {
         }
         // Held by an octopus tentacle: body is reeled by the octopus update.
         // Larger heroes break free so wrap cannot block eating a smaller wild octopus.
-        if (this.tentacleGrab && this.tentacleGrab.owner === "octopus") {
+        if (this.tentacleGrab && (this.tentacleGrab.owner === "octopus" || this.tentacleGrab.owner === "mantle")) {
             if (!releaseIfHeroOutgrowsOctopus(this)) return;
         }
 
@@ -10298,6 +10336,7 @@ const APEX_BREED_PALETTE = {
     crystal: { body: "#6848a0", belly: "#d8c8f8", label: "prism shark", shape: "arrow" },
     swordfish: { body: "#2a88b8", belly: "#a8e0f4", label: "swordfish", shape: "arrow" },
     octopus: { body: "#388870", belly: "#a8e0d0", label: "octopus", shape: "round" },
+    mantle: { body: "#7a48c0", belly: "#e8d8ff", label: "crystal mantle", shape: "round" },
     whale: { body: "#3a5a70", belly: "#b0c8d8", label: "whale", shape: "oval" },
     serpent: { body: "#7050b0", belly: "#e0d0ff", label: "crystal serpent", shape: "eel" },
     "pac:nurse": { body: "#a88858", belly: "#e8d8b0", label: "nurse shark", shape: "oval" },
@@ -10307,6 +10346,7 @@ const APEX_BREED_PALETTE = {
     "pac:axolotl": { body: "#f090b0", belly: "#ffe0ec", label: "pond axolotl", shape: "slim" },
     "pac:ribbon": { body: "#40a0d0", belly: "#d0f0ff", label: "ribbon sail", shape: "arrow" },
     "pac:garden": { body: "#48a888", belly: "#c8f0e0", label: "garden octopus", shape: "round" },
+    "pac:lumen": { body: "#a878e0", belly: "#f0e8ff", label: "lumen bloom", shape: "round" },
     "pac:shard": { body: "#9060c8", belly: "#e8d8ff", label: "shard nurse", shape: "oval" },
     "pac:prism": { body: "#70a0d0", belly: "#e0f0ff", label: "prism softshell", shape: "round" },
 };
@@ -10318,6 +10358,7 @@ function apexBreedId(ent) {
     if (ent === crystalSerpent) return "serpent";
     if (ent === swordfish) return "swordfish";
     if (ent === octopus) return "octopus";
+    if (ent === crystalMantle) return "mantle";
     if (ent === whale) return "whale";
     if (ent === shark) {
         if (ent.isOrca) return "orca";
@@ -10326,6 +10367,7 @@ function apexBreedId(ent) {
     }
     // Fallbacks when globals were cleared mid-frame.
     if (ent.isOrca) return "orca";
+    if (ent.isCrystal && ent.legs) return "mantle";
     if (ent.isCrystal) return "crystal";
     if (ent.stuck && Array.isArray(ent.stuck)) return "swordfish";
     if (ent.legs && ent.findHuntFish) return "octopus";
@@ -10348,7 +10390,7 @@ function getApexBreedProfile(ent) {
         size: ent.size || 80,
         pacifist: !!ent.isPacifist,
         sword: id === "swordfish" || id === "pac:ribbon",
-        tentacles: id === "octopus" || id === "pac:garden",
+        tentacles: id === "octopus" || id === "mantle" || id === "pac:garden" || id === "pac:lumen",
     };
 }
 
@@ -10397,6 +10439,7 @@ function collectApexBreeders() {
     push(whale);
     push(swordfish);
     push(octopus);
+    push(crystalMantle);
     push(crystalSerpent);
     for (const p of pacifistVisitors || []) push(p);
     return list;
@@ -10567,6 +10610,7 @@ function updateApexBreeding(dt) {
     if (whale) all.push(whale);
     if (swordfish) all.push(swordfish);
     if (octopus) all.push(octopus);
+    if (crystalMantle) all.push(crystalMantle);
     if (crystalSerpent) all.push(crystalSerpent);
     for (const p of pacifistVisitors || []) all.push(p);
     for (const ent of all) tickApexBreedCooldown(ent, dt);
@@ -10693,6 +10737,7 @@ let whale = null;
 let reptiles = [];
 let swordfish = null; // night-mode spear hunter
 let octopus = null; // night-mode tentacle hunter
+let crystalMantle = null; // crystal depths limb apex (fantasy octopus cousin)
 let crystalSerpent = null; // crystal depths prism serpent
 let octopusWhaleFight = null; // { t, phase: "wrap"|"eat"|"ship", shipY, shipAlpha }
 let pirateShipDrop = null; // leftover alias during ship phase
@@ -11762,6 +11807,15 @@ function findEdibleWildOctopus(hunter) {
     return d < range ? octopus : null;
 }
 
+function findEdibleWildMantle(hunter) {
+    if (!hunter || hunter.dead || hunter.golden) return null;
+    if (!isWildNightPredator(crystalMantle)) return null;
+    if (hunter.size <= crystalMantle.size) return null;
+    const d = Math.hypot(crystalMantle.x - hunter.x, crystalMantle.y - hunter.y);
+    const range = CONFIG.huntRange * (hunter.isHero ? 1.7 : 1.35);
+    return d < range ? crystalMantle : null;
+}
+
 function grantSwordTrait(ent) {
     if (!ent || ent.dead) return;
     ent.hasSword = true;
@@ -11787,12 +11841,14 @@ function grantTentacleTrait(ent) {
     spawnSplash(ent.x, ent.y, ent.size * 0.45, 0.6);
 }
 
-// Kill a wild swordfish / octopus and inherit sword or tentacles.
+// Kill a wild swordfish / octopus / crystal mantle and inherit sword or tentacles.
 function consumeWildNightPredator(hunter, kind) {
-    const prey = kind === "swordfish" ? swordfish : octopus;
+    const prey = kind === "swordfish" ? swordfish
+        : kind === "mantle" ? crystalMantle
+        : octopus;
     if (!hunter || !isWildNightPredator(prey) || hunter.size <= prey.size) return false;
     const gain = prey.size * (hunter.isHero ? 0.35 : 0.4);
-    if (kind === "octopus" && typeof prey.clearApexWrap === "function") {
+    if ((kind === "octopus" || kind === "mantle") && typeof prey.clearApexWrap === "function") {
         prey.clearApexWrap();
     }
     if (prey.legs) {
@@ -11805,6 +11861,7 @@ function consumeWildNightPredator(hunter, kind) {
     }
     prey.dead = true;
     if (kind === "swordfish") swordfish = null;
+    else if (kind === "mantle") crystalMantle = null;
     else octopus = null;
 
     if (typeof hunter.heroFinishKill === "function" && hunter.isHero) {
@@ -11825,29 +11882,36 @@ function consumeWildNightPredator(hunter, kind) {
     return true;
 }
 
-// Hero (fish or apex) chase: ease toward a wild night predator and eat when close.
+// Hero (fish or apex) chase: ease toward a wild night / crystal limb predator and eat when close.
 function tryHeroHuntNightPredator(hunter, dt, baseSpeed) {
     if (!hunter || !hunter.isHero || hunter.dead || hunter.golden || hunter.plantMorph) {
         return null;
     }
     const sf = findEdibleWildSwordfish(hunter);
     const oc = sf ? null : findEdibleWildOctopus(hunter);
-    const prey = sf || oc;
+    const mantle = (sf || oc) ? null : findEdibleWildMantle(hunter);
+    const prey = sf || oc || mantle;
     if (!prey) return null;
     const chase = chaseTowardPoint(hunter, prey.x, prey.y, baseSpeed);
     if (chase.dist < hunter.size * 0.5 + prey.size * 0.4 + 10) {
-        consumeWildNightPredator(hunter, sf ? "swordfish" : "octopus");
+        consumeWildNightPredator(
+            hunter,
+            sf ? "swordfish" : mantle ? "mantle" : "octopus"
+        );
     }
     return chase;
 }
 
-// Larger heroes shrug off octopus grabs so wrap cannot block an intended eat.
+// Larger heroes shrug off limb grabs so wrap cannot block an intended eat.
 function releaseIfHeroOutgrowsOctopus(prey) {
-    if (!prey || !prey.tentacleGrab || prey.tentacleGrab.owner !== "octopus") return false;
-    if (!octopus || octopus.dead || !isWildNightPredator(octopus)) return false;
-    if (!(prey.isHero || prey.redeemed) || prey.size <= octopus.size) return false;
+    if (!prey || !prey.tentacleGrab) return false;
+    const ownerTag = prey.tentacleGrab.owner;
+    if (ownerTag !== "octopus" && ownerTag !== "mantle") return false;
+    const apex = ownerTag === "mantle" ? crystalMantle : octopus;
+    if (!apex || apex.dead || !isWildNightPredator(apex)) return false;
+    if (!(prey.isHero || prey.redeemed) || prey.size <= apex.size) return false;
     prey.tentacleGrab = null;
-    for (const leg of octopus.legs || []) {
+    for (const leg of apex.legs || []) {
         if (leg.grab && leg.grab.prey === prey) leg.grab = null;
     }
     return true;
@@ -11902,6 +11966,7 @@ function nightPredatorTame(ent) {
     if (!ent || ent.tamed || ent.dead || ent.golden) return;
     ent.tamed = true;
     ent.isHero = true;
+    ent.leaving = false;
     ent.target = null;
     ent.foodTarget = null;
     ent.petCount = 0;
@@ -11931,6 +11996,12 @@ function nightPredatorTame(ent) {
     });
     water.disturb(ent.x, ent.y, ent.size * 0.8, 220);
     spawnSplash(ent.x, ent.y, ent.size * 0.35, 0.5);
+    if (typeof celebrateDiscovery === "function") {
+        const key = ent.isCrystal ? "tame:mantle"
+            : (ent === swordfish || (ent.stuck && Array.isArray(ent.stuck))) ? "tame:swordfish"
+            : "tame:octopus";
+        celebrateDiscovery(key, ent.x, ent.y);
+    }
 }
 
 function nightPredatorTurnGold(ent) {
@@ -12703,9 +12774,13 @@ function drawTaperTentacle(ctx, bx, by, mx, my, tipX, tipY, baseW, tipW, fillSty
 }
 
 class Octopus {
-    constructor() {
-        this.size = rand(CONFIG.octopusSize[0], CONFIG.octopusSize[1]);
+    constructor(opts) {
+        this.isCrystal = !!(opts && opts.crystal);
+        this.size = this.isCrystal
+            ? rand(CONFIG.crystalMantleSize[0], CONFIG.crystalMantleSize[1])
+            : rand(CONFIG.octopusSize[0], CONFIG.octopusSize[1]);
         this.dead = false;
+        this.leaving = false;
         this.phase = Math.random() * Math.PI * 2;
         this.pulse = 0;
         this.grabCooldown = 0;
@@ -12716,6 +12791,7 @@ class Octopus {
         this.retargetTimer = 0;
         this.wanderTimer = 0;
         this._wanderDir = 0;
+        this.grabOwner = this.isCrystal ? "mantle" : "octopus";
         initNightPredatorSocial(this);
         this.tamed = false;
         this.isHero = false;
@@ -12727,7 +12803,7 @@ class Octopus {
         this.vx = 0;
         this.vy = 0;
         this.dir = Math.atan2(viewH * 0.5 - this.y, viewW * 0.5 - this.x);
-        this.speed = 28 + Math.random() * 10;
+        this.speed = (this.isCrystal ? 32 : 28) + Math.random() * 10;
         this.legs = [];
         // Arms fan from the rear of the elliptical mantle (heading-relative).
         for (let i = 0; i < 8; i++) {
@@ -12747,7 +12823,9 @@ class Octopus {
                 autonomy: 0.75 + Math.random() * 0.85,
             });
         }
-        Audio.predatorEat(this.x < viewW * 0.5 ? -0.2 : 0.2);
+        if (!(opts && opts.quiet)) {
+            Audio.predatorEat(this.x < viewW * 0.5 ? -0.2 : 0.2);
+        }
     }
 
     pet(quiet) { nightPredatorPet(this, quiet); }
@@ -12777,18 +12855,30 @@ class Octopus {
 
     findApexWrapTarget() {
         const candidates = [];
-        if (isWildNightPredator(swordfish)) {
-            candidates.push({ kind: "swordfish", ent: swordfish, size: swordfish.size });
-        }
-        if (shark && !shark.dead && !shark.isHero && !shark.leaving) {
-            candidates.push({ kind: "shark", ent: shark, size: shark.size });
-        }
-        if (whale && !whale.dead && !whale.isHero) {
-            candidates.push({ kind: "whale", ent: whale, size: whale.size });
-        }
-        for (const r of reptiles) {
-            if (r.dead || r.tamed || r.golden || r.plantMorph || r.leaving) continue;
-            candidates.push({ kind: "reptile", ent: r, size: r.size });
+        if (this.isCrystal) {
+            if (crystalSerpent && !crystalSerpent.dead && !crystalSerpent.isHero && !crystalSerpent.tamed) {
+                candidates.push({ kind: "serpent", ent: crystalSerpent, size: crystalSerpent.size });
+            }
+            if (shark && !shark.dead && !shark.isHero && !shark.leaving && shark.isCrystal) {
+                candidates.push({ kind: "shark", ent: shark, size: shark.size });
+            }
+            if (whale && !whale.dead && !whale.isHero) {
+                candidates.push({ kind: "whale", ent: whale, size: whale.size });
+            }
+        } else {
+            if (isWildNightPredator(swordfish)) {
+                candidates.push({ kind: "swordfish", ent: swordfish, size: swordfish.size });
+            }
+            if (shark && !shark.dead && !shark.isHero && !shark.leaving) {
+                candidates.push({ kind: "shark", ent: shark, size: shark.size });
+            }
+            if (whale && !whale.dead && !whale.isHero) {
+                candidates.push({ kind: "whale", ent: whale, size: whale.size });
+            }
+            for (const r of reptiles) {
+                if (r.dead || r.tamed || r.golden || r.plantMorph || r.leaving) continue;
+                candidates.push({ kind: "reptile", ent: r, size: r.size });
+            }
         }
         let best = null, bd = this.size * 3.4;
         for (const c of candidates) {
@@ -12838,6 +12928,7 @@ class Octopus {
             }
         } else if (wrap.kind === "shark") shark = null;
         else if (wrap.kind === "whale") whale = null;
+        else if (wrap.kind === "serpent") crystalSerpent = null;
         else if (wrap.kind === "reptile") {
             const idx = reptiles.indexOf(prey);
             if (idx >= 0) reptiles.splice(idx, 1);
@@ -12854,6 +12945,23 @@ class Octopus {
         Audio.sharkStrike(pan);
         water.disturb(this.x, this.y, this.size * 0.9, 360);
         spawnSplash(this.x, this.y, 22, 0.75);
+        // Crystal mantle: prism gift burst after wrapping another apex.
+        if (this.isCrystal) {
+            for (let i = 0; i < 3; i++) {
+                const ang = Math.random() * Math.PI * 2;
+                const rad = 18 + Math.random() * 28;
+                const roll = Math.random();
+                const flags = roll < 0.4 ? { rainbow: true }
+                    : roll < 0.7 ? { grower: true }
+                    : { pink: true };
+                foods.push(new Food(
+                    this.x + Math.cos(ang) * rad,
+                    this.y + Math.sin(ang) * rad,
+                    7 + Math.random() * 4,
+                    flags
+                ));
+            }
+        }
     }
 
     shoveObstaclesWithArms(dt) {
@@ -12881,10 +12989,37 @@ class Octopus {
 
     update(dt) {
         if (this.dead) return;
-        if (octopusWhaleFight) return;
+        if (octopusWhaleFight && !this.isCrystal) return;
         if (this.pickerHeld) {
             this.phase += dt * 2.1;
             this.pulse += dt * 2.8;
+            return;
+        }
+        // Wrong sky: ease off-screen unless already befriended.
+        if (this.isCrystal) {
+            if (!crystalMode && !this.tamed && !this.isHero) this.leaving = true;
+        } else if (!nightMode && !this.tamed && !this.isHero) {
+            // Day sky: wild night octopus drifts out.
+            this.leaving = true;
+        }
+        if (this.leaving && !this.tamed && !this.isHero) {
+            this.phase += dt * 2.4;
+            this.pulse += dt * 3;
+            const edgeX = this.x < viewW * 0.5 ? -this.size * 1.4 : viewW + this.size * 1.4;
+            const edgeY = this.y < viewH * 0.5 ? -this.size * 1.4 : viewH + this.size * 1.4;
+            const desired = Math.atan2(edgeY - this.y, edgeX - this.x);
+            const diff = normAngle(desired - this.dir);
+            this.dir += Math.max(-1.6 * dt, Math.min(1.6 * dt, diff));
+            this.vx += Math.cos(this.dir) * 55 * dt;
+            this.vy += Math.sin(this.dir) * 55 * dt;
+            this.vx *= Math.exp(-1.2 * dt);
+            this.vy *= Math.exp(-1.2 * dt);
+            this.x += this.vx * dt;
+            this.y += this.vy * dt;
+            if (this.x < -this.size * 1.5 || this.x > viewW + this.size * 1.5
+                || this.y < -this.size * 1.5 || this.y > viewH + this.size * 1.5) {
+                this.dead = true;
+            }
             return;
         }
         this.grabCooldown = Math.max(0, this.grabCooldown - dt);
@@ -12914,11 +13049,24 @@ class Octopus {
         this.pulse += dt * 2.8;
 
         // Wild octopus alone (glow fish do not count): summon a whale fight.
+        // Crystal mantle alone: ease a whale in and wrap it with prism arms.
         if (!this.tamed && !this.isHero
             && countableSwimmers().length === 0 && !whale && !shark && !swordfish
+            && !(this.isCrystal ? crystalSerpent : null)
             && reptiles.every((r) => r.dead) && !pondFinaleActive()) {
-            beginOctopusWhaleFight();
-            return;
+            if (this.isCrystal) {
+                whale = new Whale();
+                whale.fromLeft = this.x < viewW * 0.5;
+                whale.x = whale.fromLeft ? -whale.size * 0.8 : viewW + whale.size * 0.8;
+                whale.y = viewH * 0.48 + (Math.random() - 0.5) * 30;
+                whale.dir = whale.fromLeft ? 0 : Math.PI;
+                whale.isHero = false;
+                whale.ateFish = true;
+                Audio.predatorEat(0);
+            } else {
+                beginOctopusWhaleFight();
+                return;
+            }
         }
 
         let desired = this.dir;
@@ -13182,7 +13330,7 @@ class Octopus {
                     }
                     if (free) {
                         free.grab = { prey, reel: 0 };
-                        prey.tentacleGrab = { owner: "octopus" };
+                        prey.tentacleGrab = { owner: this.grabOwner || "octopus" };
                         this.grabCooldown = 1.15;
                     }
                 }
@@ -13275,11 +13423,19 @@ class Octopus {
             mantleA = "#b4d8ec";
             mantleB = "#5a8aaa";
             mantleC = "#2a4a60";
+        } else if (this.isCrystal) {
+            armFill = "#6a38a8";
+            armGrab = "#a060e0";
+            sucker = "rgba(220,200,255,0.78)";
+            mantleA = "#d8c0ff";
+            mantleB = "#8050c8";
+            mantleC = "#3a1860";
         }
 
         // Soft web between arm roots at the rear hub.
         ctx.fillStyle = this.golden ? "rgba(180,140,50,0.35)"
             : this.isHero || this.tamed ? "rgba(60,100,130,0.35)"
+            : this.isCrystal ? "rgba(80,40,140,0.45)"
             : "rgba(90,40,50,0.42)";
         ctx.beginPath();
         ctx.moveTo(rearX, rearY);
@@ -14665,6 +14821,7 @@ function environmentRoster(mode) {
                 crystal: true,
                 swordfish: false,
                 octopus: false,
+                mantle: true,
                 whale: false,
                 serpent: true,
             },
@@ -14681,6 +14838,7 @@ function environmentRoster(mode) {
                 orca: true,
                 swordfish: true,
                 octopus: true,
+                mantle: false,
                 whale: false,
                 serpent: false,
             },
@@ -14697,6 +14855,7 @@ function environmentRoster(mode) {
             orca: false,
             swordfish: false,
             octopus: false,
+            mantle: false,
             whale: false,
             serpent: false,
         },
@@ -14771,6 +14930,19 @@ function spawnEnvironmentHeroApex(cx, cy, roster) {
         octopus.x = op.x;
         octopus.y = op.y;
         octopus.dir = Math.atan2(cy - octopus.y, cx - octopus.x);
+    }
+
+    if (apex.mantle) {
+        if (crystalMantle && !crystalMantle.dead) crystalMantle.dead = true;
+        crystalMantle = new Octopus({ crystal: true, quiet: true });
+        crystalMantle.tamed = true;
+        crystalMantle.isHero = true;
+        crystalMantle.huntTarget = null;
+        if (typeof crystalMantle.clearApexWrap === "function") crystalMantle.clearApexWrap();
+        const mp = placeNearBurst(cx, cy, 4.1, 105);
+        crystalMantle.x = mp.x;
+        crystalMantle.y = mp.y;
+        crystalMantle.dir = Math.atan2(cy - crystalMantle.y, cx - crystalMantle.x);
     }
 
     if (apex.serpent) {
@@ -15274,6 +15446,7 @@ function resetPond(opts) {
     whale = null;
     swordfish = null;
     octopus = null;
+    crystalMantle = null;
     crystalSerpent = null;
     pacifistVisitors.length = 0;
     pacifistCheckTimer = 0;
@@ -16144,6 +16317,7 @@ const PACIFIST_KIND_META = {
     axolotl: { apex: "alligator", day: true, night: false, crystal: false, size: [52, 72], label: "pond axolotl" },
     ribbon:  { apex: "swordfish", day: false, night: true, crystal: false, size: [95, 125], label: "ribbon sail" },
     garden:  { apex: "octopus", day: false, night: true, crystal: false, size: [58, 84], label: "garden octopus" },
+    lumen:   { apex: "mantle", day: false, night: false, crystal: true, size: [62, 90], label: "lumen bloom" },
     shard:   { apex: "crystal", day: false, night: false, crystal: true, size: [78, 105], label: "shard nurse" },
     prism:   { apex: "serpent", day: false, night: false, crystal: true, size: [70, 96], label: "prism softshell" },
 };
@@ -16209,7 +16383,7 @@ function pacifistAt(x, y) {
     let bestD = Infinity;
     for (const p of pacifistVisitors) {
         if (!p || p.dead) continue;
-        const hitR = p.kind === "garden" ? p.size * 0.75 : p.size * 0.55;
+        const hitR = (p.kind === "garden" || p.kind === "lumen") ? p.size * 0.75 : p.size * 0.55;
         const d = Math.hypot(x - p.x, y - p.y);
         if (d < hitR && d < bestD) { bestD = d; best = p; }
     }
@@ -16251,7 +16425,7 @@ class PacifistVisitor {
         if (kind === "singer") this.speed *= 0.75;
         if (kind === "ribbon") this.speed *= 1.15;
         if (kind === "axolotl") this.speed *= 0.85;
-        if (kind === "garden") {
+        if (kind === "garden" || kind === "lumen") {
             for (let i = 0; i < 8; i++) {
                 const ang = (i / 8) * Math.PI * 2;
                 const len = this.size * (0.9 + Math.random() * 0.4);
@@ -16333,8 +16507,9 @@ class PacifistVisitor {
             const rad = 12 + Math.random() * 22;
             let flags = {};
             const roll = Math.random();
-            if (this.kind === "lotus" || this.kind === "garden") {
+            if (this.kind === "lotus" || this.kind === "garden" || this.kind === "lumen") {
                 flags = roll < 0.55 ? { green: true } : { grower: true };
+                if (this.kind === "lumen" && roll < 0.35) flags = { rainbow: true };
             } else if (this.kind === "singer" || this.kind === "beluga") {
                 flags = roll < 0.4 ? { pink: true } : roll < 0.7 ? { grower: true } : { rainbow: true };
             } else if (this.kind === "axolotl") {
@@ -16449,13 +16624,25 @@ class PacifistVisitor {
                     );
                 }
             }
-        } else if (this.kind === "garden") {
-            drop({ green: true }, 2);
+        } else if (this.kind === "garden" || this.kind === "lumen") {
+            drop({ green: true }, this.kind === "lumen" ? 1 : 2);
+            if (this.kind === "lumen") drop({ rainbow: true }, 1);
             for (const f of fishes) {
                 if (f.dead || !f.isPredator || f.isMonster || f.redeemed || f.isHero) continue;
                 if (Math.hypot(f.x - this.x, f.y - this.y) > this.size * 2.6) continue;
                 f.evilPetProgress = CONFIG.evilSootheTime;
                 if (typeof f.redeem === "function") f.redeem();
+            }
+            if (this.kind === "lumen") {
+                const calm = (ent) => {
+                    if (!ent || ent.dead || ent.isHero || ent.tamed) return;
+                    ent.huntTarget = null;
+                    ent.target = null;
+                    ent.huntLockT = 0;
+                    if (typeof ent.clearApexWrap === "function") ent.clearApexWrap();
+                };
+                calm(crystalMantle);
+                calm(crystalSerpent);
             }
             if (typeof makePondPlant === "function" && pondPlants.length < 18) {
                 pondPlants.push(makePondPlant(this.x, this.y, 26 + Math.random() * 18));
@@ -16562,7 +16749,7 @@ class PacifistVisitor {
             // Soft patrol / kind-specific roam.
             desired = this.dir + Math.sin(this.phase * 0.7) * 0.55;
             if (this.kind === "ribbon") desired += Math.sin(this.phase * 2.2) * 0.35;
-            if (this.kind === "garden") desired += Math.sin(this.phase * 0.4) * 0.25;
+            if (this.kind === "garden" || this.kind === "lumen") desired += Math.sin(this.phase * 0.4) * 0.25;
             if (this.rainbowMood > 0 && this.kind === "ribbon") {
                 desired += Math.sin(this.phase * 3.4) * 0.55;
             }
@@ -16578,12 +16765,13 @@ class PacifistVisitor {
             this.y = Math.max(20, Math.min(viewH - 20, this.y));
         }
 
-        // Garden octopus arm tips ease outward.
-        if (this.kind === "garden") {
+        // Garden / lumen arm tips ease outward (octopus-like crawl).
+        if (this.kind === "garden" || this.kind === "lumen") {
             for (let i = 0; i < this.legs.length; i++) {
                 const leg = this.legs[i];
                 leg.phase += dt * (1.2 + i * 0.05);
-                const ang = this.dir + Math.PI + leg.baseAng * 0.55 + Math.sin(leg.phase) * 0.25;
+                const sway = this.kind === "lumen" ? 0.35 : 0.25;
+                const ang = this.dir + Math.PI + leg.baseAng * 0.55 + Math.sin(leg.phase) * sway;
                 const rad = leg.len * (0.75 + 0.15 * Math.sin(leg.phase * 0.8));
                 const gx = this.x + Math.cos(ang) * rad;
                 const gy = this.y + Math.sin(ang) * rad * 0.85;
@@ -16669,6 +16857,13 @@ class PacifistVisitor {
                 octopus.y += Math.sin(ang) * (38 * rush) * dt;
                 octopus.huntTarget = null;
             }
+            if (crystalMantle && isWildNightPredator(crystalMantle)
+                && Math.hypot(crystalMantle.x - this.x, crystalMantle.y - this.y) < reach) {
+                const ang = Math.atan2(crystalMantle.y - this.y, crystalMantle.x - this.x);
+                crystalMantle.x += Math.cos(ang) * (38 * rush) * dt;
+                crystalMantle.y += Math.sin(ang) * (38 * rush) * dt;
+                crystalMantle.huntTarget = null;
+            }
         } else if (this.kind === "singer") {
             for (const f of fishes) {
                 if (!canBreedFish(f)) continue;
@@ -16682,7 +16877,7 @@ class PacifistVisitor {
                     if (Math.random() < 0.015 && typeof f.turnPink === "function") f.turnPink();
                 }
             }
-        } else if (this.kind === "garden") {
+        } else if (this.kind === "garden" || this.kind === "lumen") {
             for (const f of fishes) {
                 if (f.dead || !f.isPredator || f.isMonster || f.redeemed || f.isHero) continue;
                 if (Math.hypot(f.x - this.x, f.y - this.y) > this.size * (1.9 + rush * 0.4)) continue;
@@ -16691,6 +16886,17 @@ class PacifistVisitor {
                 if (f.evilPetProgress >= CONFIG.evilSootheTime && typeof f.redeem === "function") {
                     f.redeem();
                 }
+            }
+            if (this.kind === "lumen") {
+                const soothe = (ent) => {
+                    if (!ent || ent.dead || ent.isHero || ent.tamed) return;
+                    if (Math.hypot(ent.x - this.x, ent.y - this.y) > this.size * (2.2 + rush * 0.5)) return;
+                    ent.huntLockT = Math.max(0, (ent.huntLockT || 0) - dt * 0.85 * rush);
+                    if (ent.huntLockT <= 0.2) ent.huntTarget = null;
+                    if (ent.petTimer != null) ent.petTimer = Math.max(ent.petTimer, 0.35);
+                };
+                soothe(crystalMantle);
+                soothe(crystalSerpent);
             }
             if (typeof whirlpools !== "undefined") {
                 for (const w of whirlpools) {
@@ -16786,7 +16992,7 @@ class PacifistVisitor {
         if (this.dead) return;
         const L = this.size;
         const W = this.size * (this.kind === "axolotl" ? 0.42
-            : this.kind === "garden" ? 0.38
+            : this.kind === "garden" || this.kind === "lumen" ? 0.38
             : this.kind === "lotus" ? 0.36
             : this.kind === "ribbon" ? 0.28
             : this.kind === "beluga" ? 0.34
@@ -16808,7 +17014,7 @@ class PacifistVisitor {
             ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
         }
 
-        if (this.kind === "garden") {
+        if (this.kind === "garden" || this.kind === "lumen") {
             // Arms under mantle.
             for (const leg of this.legs) {
                 const lx = (leg.tipX || this.x) - this.x;
@@ -16817,13 +17023,21 @@ class PacifistVisitor {
                 const ca = Math.cos(-this.dir), sa = Math.sin(-this.dir);
                 const localX = lx * ca - ly * sa;
                 const localY = lx * sa + ly * ca;
-                ctx.strokeStyle = this.tamed ? "rgba(90,160,140,0.75)" : "rgba(70,120,110,0.7)";
+                ctx.strokeStyle = this.kind === "lumen"
+                    ? (this.tamed ? "rgba(180,140,255,0.8)" : "rgba(140,100,220,0.75)")
+                    : (this.tamed ? "rgba(90,160,140,0.75)" : "rgba(70,120,110,0.7)");
                 ctx.lineWidth = Math.max(2, L * 0.06);
                 ctx.lineCap = "round";
                 ctx.beginPath();
                 ctx.moveTo(-L * 0.1, 0);
                 ctx.quadraticCurveTo(localX * 0.45, localY * 0.45, localX, localY);
                 ctx.stroke();
+                if (this.kind === "lumen") {
+                    ctx.fillStyle = "rgba(230,210,255,0.55)";
+                    ctx.beginPath();
+                    ctx.arc(localX, localY, Math.max(1.5, L * 0.04), 0, Math.PI * 2);
+                    ctx.fill();
+                }
             }
         }
 
@@ -16861,6 +17075,10 @@ class PacifistVisitor {
             body.addColorStop(0, "#70c8e8");
             body.addColorStop(0.45, this.tamed ? "#40a0d0" : "#2a88b8");
             body.addColorStop(1, "#184868");
+        } else if (this.kind === "lumen") {
+            body.addColorStop(0, "#f0e8ff");
+            body.addColorStop(0.45, this.tamed ? "#c8a0f0" : "#a070d8");
+            body.addColorStop(1, "#503088");
         } else {
             body.addColorStop(0, "#80c8b0");
             body.addColorStop(0.5, this.tamed ? "#48a888" : "#388870");
@@ -17020,19 +17238,29 @@ class PacifistVisitor {
             ctx.closePath();
             ctx.fill();
         } else {
-            // Garden octopus mantle.
+            // Garden octopus / lumen bloom mantle.
             ctx.ellipse(0, 0, L * 0.42, W, 0, 0, Math.PI * 2);
             ctx.fill();
-            ctx.fillStyle = "rgba(255,255,255,0.18)";
+            ctx.fillStyle = this.kind === "lumen" ? "rgba(230,210,255,0.28)" : "rgba(255,255,255,0.18)";
             for (let i = 0; i < 5; i++) {
                 ctx.beginPath();
                 ctx.arc(
                     Math.cos(i * 1.4 + this.phase) * L * 0.18,
                     Math.sin(i * 1.7) * W * 0.35,
-                    L * 0.05,
+                    L * (this.kind === "lumen" ? 0.055 : 0.05),
                     0, Math.PI * 2
                 );
                 ctx.fill();
+            }
+            if (this.kind === "lumen") {
+                ctx.strokeStyle = "rgba(255,255,255,0.35)";
+                ctx.lineWidth = 1.1;
+                for (let i = 0; i < 3; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(-L * 0.1 + i * L * 0.12, -W * 0.55);
+                    ctx.lineTo(-L * 0.16 + i * L * 0.12, W * 0.45);
+                    ctx.stroke();
+                }
             }
         }
 
@@ -17171,6 +17399,11 @@ class CrystalSerpent {
 
     update(dt) {
         if (this.dead) return;
+        if (this.octopusWrap) {
+            this.tailPhase += dt * 2.4;
+            this.phase += dt * 1.1;
+            return;
+        }
         this.tailPhase += dt * (this.leaving ? 5.5 : 3.6);
         this.phase += dt * 1.3;
         if (this.petTimer > 0) this.petTimer = Math.max(0, this.petTimer - dt);
@@ -17411,8 +17644,17 @@ function manageEcosystem(dt) {
         if (!whale && !wildSharkBlocks && !repopulating && !pondFinaleActive() && !apexDuel
             && countable.length > 2) {
             if (crystalMode) {
-                if (!crystalSerpent && Math.random() < CONFIG.crystalPredatorChance) {
-                    crystalSerpent = new CrystalSerpent();
+                const needSerpent = !crystalSerpent;
+                const needMantle = !crystalMantle;
+                const canSpawn = (needSerpent || needMantle)
+                    && !(crystalSerpent && !crystalSerpent.dead && !crystalSerpent.isHero && !crystalSerpent.tamed)
+                    && !(crystalMantle && isWildNightPredator(crystalMantle));
+                if (canSpawn && Math.random() < CONFIG.crystalPredatorChance) {
+                    if (needSerpent && needMantle) {
+                        if (Math.random() < 0.5) crystalSerpent = new CrystalSerpent();
+                        else crystalMantle = new Octopus({ crystal: true });
+                    } else if (needSerpent) crystalSerpent = new CrystalSerpent();
+                    else crystalMantle = new Octopus({ crystal: true });
                 }
             } else if (nightMode) {
                 const needSf = !swordfish;
@@ -17475,6 +17717,13 @@ function manageEcosystem(dt) {
             octopus = null;
         }
     }
+    if (crystalMantle) {
+        crystalMantle.update(dt);
+        if (crystalMantle.dead) {
+            if (typeof crystalMantle.clearApexWrap === "function") crystalMantle.clearApexWrap();
+            crystalMantle = null;
+        }
+    }
     if (crystalSerpent) {
         crystalSerpent.update(dt);
         if (crystalSerpent.dead) crystalSerpent = null;
@@ -17501,8 +17750,13 @@ function manageEcosystem(dt) {
     if (crystalMode) {
         if (swordfish && !swordfish.dead && !swordfish.isHero && !swordfish.tamed) swordfish.leaving = true;
         if (octopus && !octopus.dead && !octopus.isHero && !octopus.tamed) octopus.leaving = true;
-    } else if (crystalSerpent && !crystalSerpent.dead && !crystalSerpent.isHero) {
-        crystalSerpent.leaving = true;
+    } else {
+        if (crystalSerpent && !crystalSerpent.dead && !crystalSerpent.isHero && !crystalSerpent.tamed) {
+            crystalSerpent.leaving = true;
+        }
+        if (crystalMantle && !crystalMantle.dead && !crystalMantle.isHero && !crystalMantle.tamed) {
+            crystalMantle.leaving = true;
+        }
     }
     // Wild croc/alligator cleared the pond: summon the shark for a fight to the death.
     // Glow fish do not count, so the duel still starts while they float unharmed.
@@ -17567,7 +17821,7 @@ function manageEcosystem(dt) {
         });
     } else if (!repopulating && !shark && !whale && !pondFinaleActive() && !apexDuel && !rainbowExiting
         && countable.length === 0 && livingReptiles.length === 0 && !sharkBusyWithGlow
-        && !octopus && !swordfish && !crystalSerpent) {
+        && !octopus && !swordfish && !crystalSerpent && !crystalMantle) {
         // Restock when no countable swimmers remain (glow / gold do not block this).
         repopulating = true;
         repopTimer = 0.8;
@@ -18021,7 +18275,7 @@ function goldenFishAt(x, y) {
             bd = d; best = r; isReptile = true; isNightPredator = false;
         }
     }
-    for (const np of [swordfish, octopus]) {
+    for (const np of [swordfish, octopus, crystalMantle]) {
         if (!np || !np.golden || np.dead || np.lifting) continue;
         if ((np.sinkDepth || 0) < 0.85) continue;
         const d = Math.hypot(x - np.x, y - np.y);
@@ -18107,6 +18361,7 @@ function collectGoldFish(fish) {
         goldCollected += GOLD_NIGHT_PREDATOR_AWARD;
         if (fish === swordfish) swordfish = null;
         if (fish === octopus) octopus = null;
+        if (fish === crystalMantle) crystalMantle = null;
     } else if (isReptile) {
         goldCollected += GOLD_CROCODILE_AWARD;
     } else {
@@ -18412,6 +18667,18 @@ function tryScareReptileAt(x, y) {
 
 // Right-click pets: whale and shark first, then reptiles, frogs, then ordinary fish.
 function petPondLifeAt(x, y, quiet) {
+    if (crystalMantle && !crystalMantle.dead && !crystalMantle.golden && !crystalMantle.plantMorph) {
+        const d = Math.hypot(x - crystalMantle.x, y - crystalMantle.y);
+        if (d < crystalMantle.size * 0.7) {
+            if (quiet && crystalMantle.petTimer > 0.6) {
+                crystalMantle.petTimer = 1.4;
+                return;
+            }
+            crystalMantle.pet(quiet);
+            markFirstInteraction();
+            return;
+        }
+    }
     if (crystalSerpent && !crystalSerpent.dead) {
         const d = Math.hypot(x - crystalSerpent.x, y - crystalSerpent.y);
         if (d < crystalSerpent.size * 0.55) {
@@ -19131,6 +19398,15 @@ function clearPondEntitiesForLoad() {
         if (typeof octopus.clearApexWrap === "function") octopus.clearApexWrap();
         octopus.dead = true;
         octopus = null;
+    }
+    if (crystalMantle) {
+        if (typeof crystalMantle.clearApexWrap === "function") crystalMantle.clearApexWrap();
+        crystalMantle.dead = true;
+        crystalMantle = null;
+    }
+    if (crystalSerpent) {
+        crystalSerpent.dead = true;
+        crystalSerpent = null;
     }
     povAttack = null;
     giantEnding = null;
@@ -20137,6 +20413,14 @@ function tryCatchRainbowInCircle(cx, cy, r, dragMeta) {
             nightKind = "octopus";
         }
     }
+    if (crystalMantle && !crystalMantle.dead && crystalMantle.isRainbow) {
+        const d = Math.hypot(crystalMantle.x - cx, crystalMantle.y - cy);
+        if (d <= r && d < bestD) {
+            bestD = d;
+            best = crystalMantle;
+            nightKind = "mantle";
+        }
+    }
     if (!best) {
         water.disturb(cx, cy, r * 0.35, 35);
         return false;
@@ -20157,6 +20441,7 @@ function tryCatchRainbowInCircle(cx, cy, r, dragMeta) {
     best.isRainbow = false;
     if (nightKind === "swordfish") swordfish = null;
     if (nightKind === "octopus") octopus = null;
+    if (nightKind === "mantle") crystalMantle = null;
     rainbowCaughtCount++;
     saveMarketState();
     maybeUnlockPlatinum();
@@ -20531,6 +20816,15 @@ function devKillAt(x, y) {
         octopus.dead = true;
         octopus = null;
     });
+    consider(crystalMantle, crystalMantle ? crystalMantle.size * 0.7 : 0, () => {
+        if (typeof crystalMantle.clearApexWrap === "function") crystalMantle.clearApexWrap();
+        crystalMantle.dead = true;
+        crystalMantle = null;
+    });
+    consider(crystalSerpent, crystalSerpent ? crystalSerpent.size * 0.55 : 0, () => {
+        crystalSerpent.dead = true;
+        crystalSerpent = null;
+    });
     consider(shark, shark ? shark.size * 0.55 : 0, () => {
         const wasOrca = !!shark.isOrca;
         shark.dead = true;
@@ -20724,6 +21018,10 @@ function devClearFinales() {
     }
     if (swordfish) swordfish.octopusWrap = null;
     if (whale) whale.octopusWrap = null;
+    if (crystalSerpent) crystalSerpent.octopusWrap = null;
+    if (crystalMantle && typeof crystalMantle.clearApexWrap === "function") {
+        crystalMantle.clearApexWrap();
+    }
     for (const r of reptiles) {
         r.duelMode = false;
         r.octopusWrap = null;
@@ -21183,6 +21481,19 @@ function buildDevMenu() {
         const p = devSpawnPoint();
         crystalSerpent.x = p.x;
         crystalSerpent.y = p.y;
+    });
+    btn(apex, "Crystal mantle", () => {
+        devEnsurePond();
+        crystalUnlocked = true;
+        setCrystalMode(true);
+        if (crystalMantle && !crystalMantle.dead) {
+            if (typeof crystalMantle.clearApexWrap === "function") crystalMantle.clearApexWrap();
+            crystalMantle.dead = true;
+        }
+        crystalMantle = new Octopus({ crystal: true, quiet: true });
+        const p = devSpawnPoint();
+        crystalMantle.x = p.x;
+        crystalMantle.y = p.y;
     });
     btn(apex, "Prism shark", () => {
         devEnsurePond();
@@ -21906,6 +22217,15 @@ function buildDevMenu() {
             if (typeof octopus.clearApexWrap === "function") octopus.clearApexWrap();
             octopus.dead = true;
             octopus = null;
+        }
+        if (crystalMantle) {
+            if (typeof crystalMantle.clearApexWrap === "function") crystalMantle.clearApexWrap();
+            crystalMantle.dead = true;
+            crystalMantle = null;
+        }
+        if (crystalSerpent) {
+            crystalSerpent.dead = true;
+            crystalSerpent = null;
         }
         for (const r of reptiles) r.dead = true;
         reptiles.length = 0;
@@ -24295,6 +24615,7 @@ function frame(now) {
         for (const r of reptiles) r.draw(ctx);
         if (swordfish) swordfish.draw(ctx);
         if (octopus) octopus.draw(ctx);
+        if (crystalMantle) crystalMantle.draw(ctx);
         if (crystalSerpent) crystalSerpent.draw(ctx);
         if (shark) shark.draw(ctx);
         if (whale) whale.draw(ctx);
