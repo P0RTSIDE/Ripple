@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Ripple</title>
-    <link rel="stylesheet" href="style.css?v=20260812l" />
+    <link rel="stylesheet" href="style.css?v=20260812o" />
 </head>
 <body>
     <!-- The whole experience is a single full-viewport canvas surface. -->
@@ -63,6 +63,10 @@
                 <button type="button" id="night-btn" class="scenery-btn locked" title="Moon pond: unlock by making a platinum fish" aria-pressed="false" aria-disabled="true">
                     <span class="ico ico-moon"></span>
                     <span id="night-lock">Pt</span>
+                </button>
+                <button type="button" id="crystal-btn" class="scenery-btn locked" title="Crystal Depths: unlock moon pond first, then make platinum fish under moonlight" aria-pressed="false" aria-disabled="true">
+                    <span class="ico ico-crystal"></span>
+                    <span id="crystal-lock">3Pt</span>
                 </button>
                 <button type="button" class="scenery-btn on" data-scenery="frogs" title="Swimming frogs and tadpoles" aria-pressed="true">
                     <span class="ico ico-frog"></span>
@@ -139,6 +143,6 @@
     <!-- On-load hint that fades out after the first interaction and never returns. -->
     <div id="hint">click anywhere</div>
 
-    <script src="main.js?v=20260812l"></script>
+    <script src="main.js?v=20260812o"></script>
 </body>
 </html>
