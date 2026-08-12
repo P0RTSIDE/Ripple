@@ -6250,6 +6250,11 @@ class Fish {
         // Tiny affectionate ripple.
         water.disturb(this.x, this.y, this.size * 0.4, 40);
         if (typeof queuePetEcho === "function") queuePetEcho(this);
+        if (typeof emitBreathBubbles === "function") emitBreathBubbles(this.x, this.y, 4);
+        if (typeof rememberPetSpot === "function") rememberPetSpot(this.x, this.y);
+        if (typeof emitSonicRing === "function") {
+            emitSonicRing(this.x, this.y, (this.type.petFreq || 320));
+        }
 
         // Affection soothes evil fish (discrete pets plus continuous stroke time).
         if (this.isMonster && !this.tamedMonster && !this.isRainbow && !this.redeemed) {
@@ -7617,6 +7622,14 @@ class Fish {
                           this.y - Math.sin(this.dir) * this.size * 0.5,
                           this.isRainbow ? 8 : 4, this.isRainbow ? 40 : 18);
             if (typeof emitColoredWake === "function") emitColoredWake(this, speed);
+            if (typeof emitBiolumWake === "function") emitBiolumWake(this);
+        }
+        if (this.size > 70 && Math.random() < 0.04 && typeof emitSiltCloud === "function") {
+            emitSiltCloud(
+                this.x - Math.cos(this.dir) * this.size * 0.3,
+                this.y - Math.sin(this.dir) * this.size * 0.3,
+                this.size
+            );
         }
         if (typeof applyCurrentToEntity === "function") applyCurrentToEntity(this, dt, 0.85);
         // Large hero rings soften evil chase speed inside the territory.
@@ -7736,6 +7749,10 @@ class Fish {
         this.grow(chunk * (food.carcass ? 0.55 : 0.22), food.carcass ? { huge: true } : null);
         if (typeof playSchoolingHarmony === "function" && Math.random() < 0.45) {
             playSchoolingHarmony(this);
+        }
+        if (typeof emitBreathBubbles === "function") emitBreathBubbles(this.x, this.y, 2);
+        if (typeof emitSonicRing === "function") {
+            emitSonicRing(this.x, this.y, 220 * (this.type.register || 1));
         }
         // Evil fish get faster with every food bite.
         if (this.isPredator && !this.isRainbow) {
@@ -16371,6 +16388,7 @@ function updateMarketUI() {
         goldfood: document.getElementById("market-buy-goldfood"),
         recipeMirror: document.getElementById("market-buy-recipe-mirror"),
         recipeStorm: document.getElementById("market-buy-recipe-storm"),
+        recipeNight: document.getElementById("market-buy-recipe-night"),
         platinum: document.getElementById("market-buy-platinum"),
     };
     if (rows.magnet) {
@@ -16451,6 +16469,13 @@ function updateMarketUI() {
         rows.recipeStorm.disabled = !marketUnlocked || !ok;
         rows.recipeStorm.textContent = "Storm craft · rainbow + grower";
         rows.recipeStorm.title = "Spend rainbow and grower food to start a weather mood";
+    }
+    if (rows.recipeNight) {
+        const ok = countStashVariant("platinum") >= 1 && countStashVariant("rainbow") >= 1;
+        rows.recipeNight.hidden = !nightUnlocked;
+        rows.recipeNight.disabled = !marketUnlocked || !nightUnlocked || !ok;
+        rows.recipeNight.textContent = "Night bloom · platinum + rainbow";
+        rows.recipeNight.title = "Spend platinum and rainbow food for fireflies and ice skims";
     }
     if (rows.platinum) {
         const rainbowFood = availableRainbowFood();
@@ -16760,6 +16785,7 @@ if (marketPanel) {
     const buyGoldFood = document.getElementById("market-buy-goldfood");
     const buyRecipeMirror = document.getElementById("market-buy-recipe-mirror");
     const buyRecipeStorm = document.getElementById("market-buy-recipe-storm");
+    const buyRecipeNight = document.getElementById("market-buy-recipe-night");
     const buyPlatinum = document.getElementById("market-buy-platinum");
     if (buyMagnet) buyMagnet.addEventListener("click", (e) => { e.stopPropagation(); marketBuyMagnet(); });
     if (buyCatcher) buyCatcher.addEventListener("click", (e) => { e.stopPropagation(); marketBuyCatcher(); });
@@ -16770,6 +16796,7 @@ if (marketPanel) {
     if (buyGoldFood) buyGoldFood.addEventListener("click", (e) => { e.stopPropagation(); marketBuyGoldFood(); });
     if (buyRecipeMirror) buyRecipeMirror.addEventListener("click", (e) => { e.stopPropagation(); marketCraftMirrorFood(); });
     if (buyRecipeStorm) buyRecipeStorm.addEventListener("click", (e) => { e.stopPropagation(); marketCraftStormFood(); });
+    if (buyRecipeNight) buyRecipeNight.addEventListener("click", (e) => { e.stopPropagation(); marketCraftNightBloom(); });
     if (buyPlatinum) buyPlatinum.addEventListener("click", (e) => { e.stopPropagation(); marketBuyPlatinumFood(); });
 }
 
@@ -17957,6 +17984,10 @@ function drawCurrentLanes(ctx) {
 function beginWeatherMood(forceKind) {
     const kinds = ["mist", "pollen", "fireflies"];
     const kind = forceKind || kinds[Math.floor(Math.random() * kinds.length)];
+    if (kind === "mist" && Math.random() < 0.45 && typeof maybeSpawnIcePatch === "function") {
+        maybeSpawnIcePatch();
+        maybeSpawnIcePatch();
+    }
     weatherMood = {
         kind: kind,
         t: 0,
@@ -18340,6 +18371,442 @@ function marketCraftStormFood() {
     markFirstInteraction();
 }
 
+
+// ===========================================================================
+// FLAVOR PACK 2: night glow, bubbles, silt, whirlpools, memory, comet, dusk
+// ===========================================================================
+const breathBubbles = [];
+const siltClouds = [];
+const sonicRings = [];
+const petMemories = [];
+const whirlpools = [];
+let cometVisitor = null;
+let duskBlend = 0; // 0 day, 1 dusk-ish (driven by sunPhase)
+let icePatches = [];
+
+function emitBreathBubbles(x, y, n, col) {
+    if (gfxQuality <= 0) return;
+    const count = Math.min(n || 3, gfxQuality >= 2 ? 8 : 5);
+    for (let i = 0; i < count; i++) {
+        if (breathBubbles.length > 90) breathBubbles.shift();
+        breathBubbles.push({
+            x: x + (Math.random() - 0.5) * 10,
+            y: y + (Math.random() - 0.5) * 6,
+            r: 1.2 + Math.random() * 2.4,
+            vy: -(18 + Math.random() * 28),
+            vx: (Math.random() - 0.5) * 10,
+            age: 0,
+            life: 0.7 + Math.random() * 0.6,
+            col: col || "rgba(210,235,255,0.55)",
+        });
+    }
+}
+
+function updateBreathBubbles(dt) {
+    for (let i = breathBubbles.length - 1; i >= 0; i--) {
+        const b = breathBubbles[i];
+        b.age += dt;
+        b.x += b.vx * dt;
+        b.y += b.vy * dt;
+        b.vy *= 0.98;
+        if (b.age >= b.life) breathBubbles.splice(i, 1);
+    }
+}
+
+function drawBreathBubbles(ctx) {
+    if (!breathBubbles.length) return;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (const b of breathBubbles) {
+        const u = 1 - b.age / b.life;
+        ctx.globalAlpha = Math.max(0, u * 0.7);
+        ctx.strokeStyle = b.col;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r * (0.8 + u * 0.4), 0, Math.PI * 2);
+        ctx.stroke();
+    }
+    ctx.restore();
+}
+
+function emitSiltCloud(x, y, size) {
+    if (gfxQuality <= 0 || !scenery.bed) return;
+    if (siltClouds.length > 40) siltClouds.shift();
+    siltClouds.push({
+        x: x, y: y,
+        r: Math.min(90, 18 + size * 0.35),
+        age: 0,
+        life: 1.4 + Math.min(1.2, size * 0.01),
+    });
+}
+
+function updateSiltClouds(dt) {
+    for (let i = siltClouds.length - 1; i >= 0; i--) {
+        siltClouds[i].age += dt;
+        if (siltClouds[i].age >= siltClouds[i].life) siltClouds.splice(i, 1);
+    }
+}
+
+function drawSiltClouds(ctx) {
+    if (!siltClouds.length) return;
+    ctx.save();
+    for (const s of siltClouds) {
+        const u = 1 - s.age / s.life;
+        const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r * (1.1 - u * 0.2));
+        g.addColorStop(0, "rgba(90,70,45," + (0.16 * u) + ")");
+        g.addColorStop(0.55, "rgba(70,55,35," + (0.08 * u) + ")");
+        g.addColorStop(1, "rgba(50,40,25,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r * (1.1 - u * 0.2), 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.restore();
+}
+
+function emitSonicRing(x, y, freq) {
+    if (gfxQuality <= 0) return;
+    if (sonicRings.length > 24) sonicRings.shift();
+    const pitch = Math.max(0, Math.min(1, (freq - 150) / 900));
+    sonicRings.push({
+        x: x, y: y,
+        age: 0,
+        life: 0.85,
+        hue: 180 + pitch * 140,
+        maxR: 28 + pitch * 55,
+    });
+}
+
+function updateSonicRings(dt) {
+    for (let i = sonicRings.length - 1; i >= 0; i--) {
+        sonicRings[i].age += dt;
+        if (sonicRings[i].age >= sonicRings[i].life) sonicRings.splice(i, 1);
+    }
+}
+
+function drawSonicRings(ctx) {
+    if (!sonicRings.length) return;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (const r of sonicRings) {
+        const u = r.age / r.life;
+        const rad = r.maxR * (0.15 + u * 0.85);
+        ctx.strokeStyle = "hsla(" + r.hue + ",70%,70%," + ((1 - u) * 0.35) + ")";
+        ctx.lineWidth = 1.4 + (1 - u) * 1.6;
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, rad, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+    ctx.restore();
+}
+
+function rememberPetSpot(x, y) {
+    petMemories.push({ x: x, y: y, age: 0, life: 22 + Math.random() * 10 });
+    if (petMemories.length > 12) petMemories.shift();
+}
+
+function updatePetMemories(dt) {
+    for (let i = petMemories.length - 1; i >= 0; i--) {
+        petMemories[i].age += dt;
+        if (petMemories[i].age >= petMemories[i].life) petMemories.splice(i, 1);
+    }
+}
+
+function drawPetMemories(ctx) {
+    if (!petMemories.length) return;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (const m of petMemories) {
+        const u = 1 - m.age / m.life;
+        const pulse = 0.5 + 0.5 * Math.sin(m.age * 3);
+        const g = ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, 26);
+        g.addColorStop(0, "rgba(255,210,160," + (0.12 * u * pulse) + ")");
+        g.addColorStop(1, "rgba(255,180,120,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, 26, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.restore();
+}
+
+function nearestPetMemory(x, y, range) {
+    let best = null, bd = range || 160;
+    for (const m of petMemories) {
+        const d = Math.hypot(m.x - x, m.y - y);
+        if (d < bd) { bd = d; best = m; }
+    }
+    return best;
+}
+
+function spawnWhirlpool(x, y, power, life) {
+    if (whirlpools.length > 6) whirlpools.shift();
+    whirlpools.push({
+        x: x, y: y,
+        power: power || 40,
+        age: 0,
+        life: life || 5,
+        spin: Math.random() < 0.5 ? 1 : -1,
+    });
+}
+
+function updateWhirlpools(dt) {
+    for (let i = whirlpools.length - 1; i >= 0; i--) {
+        const w = whirlpools[i];
+        w.age += dt;
+        if (w.age >= w.life) {
+            whirlpools.splice(i, 1);
+            continue;
+        }
+        const u = 1 - w.age / w.life;
+        const reach = 50 + w.power * 0.6;
+        const pull = w.power * u * dt;
+        for (const f of foods) {
+            if (f.eaten) continue;
+            const dx = w.x - f.x, dy = w.y - f.y;
+            const d = Math.hypot(dx, dy) || 1;
+            if (d > reach) continue;
+            f.x += dx / d * pull * 0.55;
+            f.y += dy / d * pull * 0.55;
+            // Spiral aside.
+            f.x += -dy / d * pull * 0.35 * w.spin;
+            f.y += dx / d * pull * 0.35 * w.spin;
+        }
+        for (const o of obstacles) {
+            const dx = w.x - o.x, dy = w.y - o.y;
+            const d = Math.hypot(dx, dy) || 1;
+            if (d > reach * 1.1) continue;
+            o.vx = (o.vx || 0) + dx / d * pull * 0.8;
+            o.vy = (o.vy || 0) + dy / d * pull * 0.8;
+            o.spin = (o.spin || 0) + w.spin * 0.4 * dt;
+        }
+        if (Math.random() < 0.12) water.disturb(w.x, w.y, 8, 30 * u);
+    }
+}
+
+function drawWhirlpools(ctx) {
+    if (!whirlpools.length) return;
+    ctx.save();
+    for (const w of whirlpools) {
+        const u = 1 - w.age / w.life;
+        const reach = 50 + w.power * 0.6;
+        ctx.strokeStyle = "rgba(140,190,220," + (0.14 * u) + ")";
+        ctx.lineWidth = 1.5;
+        for (let k = 0; k < 3; k++) {
+            const a0 = w.age * 2.2 * w.spin + k * 2.1;
+            ctx.beginPath();
+            for (let i = 0; i <= 18; i++) {
+                const t = i / 18;
+                const ang = a0 + t * Math.PI * 2;
+                const rad = reach * (0.2 + t * 0.75);
+                const x = w.x + Math.cos(ang) * rad;
+                const y = w.y + Math.sin(ang) * rad * 0.72;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+        }
+    }
+    ctx.restore();
+}
+
+function drawMoonBedCaustics(ctx) {
+    if (!nightMode || gfxQuality <= 0) return;
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    const t = sunPhase;
+    const n = gfxQuality >= 2 ? 14 : 7;
+    for (let i = 0; i < n; i++) {
+        const x = ((i * 151.3 + Math.sin(t * 0.3 + i) * 60) % viewW + viewW) % viewW;
+        const y = ((i * 97.7 + Math.cos(t * 0.26 + i * 1.2) * 50) % viewH + viewH) % viewH;
+        const tw = 0.4 + 0.6 * Math.abs(Math.sin(t * 0.8 + i));
+        const rr = 20 + tw * 26;
+        const g = ctx.createRadialGradient(x, y, 0, x, y, rr);
+        g.addColorStop(0, "rgba(160,200,255," + (0.045 * tw) + ")");
+        g.addColorStop(0.5, "rgba(100,150,220," + (0.02 * tw) + ")");
+        g.addColorStop(1, "rgba(60,100,180,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.ellipse(x, y, rr, rr * 0.6, i, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.restore();
+}
+
+function drawDuskWash(ctx) {
+    // Slow day warmth shift from sunPhase so afternoon feels different from morning.
+    if (nightMode) return;
+    duskBlend = 0.5 + 0.5 * Math.sin(sunPhase * 0.05);
+    if (duskBlend < 0.55) return;
+    const a = (duskBlend - 0.55) / 0.45;
+    ctx.save();
+    ctx.globalCompositeOperation = "soft-light";
+    const g = ctx.createLinearGradient(0, 0, 0, viewH);
+    g.addColorStop(0, "rgba(255,170,110," + (0.08 * a) + ")");
+    g.addColorStop(0.5, "rgba(255,140,90," + (0.04 * a) + ")");
+    g.addColorStop(1, "rgba(60,40,50," + (0.06 * a) + ")");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, viewW, viewH);
+    ctx.restore();
+}
+
+function emitBiolumWake(f) {
+    if (!nightMode || !f || f.dead || f.golden || gfxQuality <= 0) return;
+    if (coloredWakes.length > 200) coloredWakes.shift();
+    const hue = f.isHero ? 200 : f.isPredator ? 350 : f.isRainbow ? ((f.age || 0) * 140) % 360 : 160;
+    coloredWakes.push({
+        x: f.x - Math.cos(f.dir) * f.size * 0.4,
+        y: f.y - Math.sin(f.dir) * f.size * 0.4,
+        vx: -Math.cos(f.dir) * 8,
+        vy: -Math.sin(f.dir) * 8,
+        life: 0.9,
+        age: 0,
+        r: 4 + f.size * 0.05,
+        col: "hsla(" + hue + ", 85%, 70%, 0.4)",
+    });
+}
+
+function updateSchoolOrbit(dt) {
+    // Tiny peaceful fish ease into soft orbits around large heroes.
+    for (const hero of fishes) {
+        if (hero.dead || !(hero.isHero || hero.redeemed) || hero.size < 55) continue;
+        for (const f of fishes) {
+            if (f === hero || f.dead || f.isPredator || f.isMonster || f.isRainbow || f.isHero) continue;
+            if (f.size > hero.size * 0.45) continue;
+            const d = Math.hypot(f.x - hero.x, f.y - hero.y);
+            if (d < 40 || d > hero.size * 1.6) continue;
+            const ang = Math.atan2(f.y - hero.y, f.x - hero.x) + 0.55 * dt;
+            const wantR = Math.min(d, hero.size * 0.95);
+            const tx = hero.x + Math.cos(ang) * wantR;
+            const ty = hero.y + Math.sin(ang) * wantR;
+            const k = 1 - Math.exp(-1.2 * dt);
+            f.x += (tx - f.x) * k * 0.35;
+            f.y += (ty - f.y) * k * 0.35;
+        }
+    }
+}
+
+function updateMemorySeek(dt) {
+    // Calm fish occasionally ease toward recent pet glows.
+    for (const f of fishes) {
+        if (f.dead || f.isPredator || f.isMonster || f.isRainbow || f.petTimer > 0) continue;
+        if (Math.random() > 0.01) continue;
+        const m = nearestPetMemory(f.x, f.y, 150);
+        if (!m) continue;
+        const want = Math.atan2(m.y - f.y, m.x - f.x);
+        f.dir += normAngle(want - f.dir) * Math.min(1, 1.5 * dt);
+    }
+}
+
+function maybeSpawnComet(dt) {
+    if (cometVisitor) {
+        cometVisitor.t += dt;
+        const k = 1 - Math.exp(-3 * dt);
+        cometVisitor.x += (cometVisitor.tx - cometVisitor.x) * k;
+        cometVisitor.y += (cometVisitor.ty - cometVisitor.y) * k;
+        if (Math.random() < 0.35) {
+            water.disturb(cometVisitor.x, cometVisitor.y, 6, 40);
+            emitColoredWake({
+                x: cometVisitor.x, y: cometVisitor.y, dir: cometVisitor.dir,
+                size: 24, age: cometVisitor.t, isRainbow: true, dead: false, golden: false,
+            }, 80);
+        }
+        if (cometVisitor.t > cometVisitor.life) cometVisitor = null;
+        return;
+    }
+    if (pondFinaleActive() || Math.random() > 0.00035) return;
+    const side = Math.floor(Math.random() * 4);
+    let x, y, tx, ty;
+    if (side === 0) { x = -40; y = Math.random() * viewH; tx = viewW + 40; ty = Math.random() * viewH; }
+    else if (side === 1) { x = viewW + 40; y = Math.random() * viewH; tx = -40; ty = Math.random() * viewH; }
+    else if (side === 2) { x = Math.random() * viewW; y = -40; tx = Math.random() * viewW; ty = viewH + 40; }
+    else { x = Math.random() * viewW; y = viewH + 40; tx = Math.random() * viewW; ty = -40; }
+    cometVisitor = {
+        x: x, y: y, tx: tx, ty: ty,
+        dir: Math.atan2(ty - y, tx - x),
+        t: 0, life: 3.2 + Math.random() * 1.4,
+    };
+    if (Audio.rainbowChime) Audio.rainbowChime(0);
+}
+
+function drawCometVisitor(ctx) {
+    if (!cometVisitor) return;
+    const c = cometVisitor;
+    const u = Math.min(1, c.t * 2) * Math.min(1, (c.life - c.t) * 2);
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.translate(c.x, c.y);
+    ctx.rotate(c.dir);
+    const g = ctx.createLinearGradient(-40, 0, 20, 0);
+    g.addColorStop(0, "rgba(255,180,255,0)");
+    g.addColorStop(0.6, "rgba(180,220,255," + (0.45 * u) + ")");
+    g.addColorStop(1, "rgba(255,255,255," + (0.8 * u) + ")");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(-40, 0);
+    ctx.quadraticCurveTo(-10, -8, 18, 0);
+    ctx.quadraticCurveTo(-10, 8, -40, 0);
+    ctx.fill();
+    ctx.restore();
+}
+
+function maybeSpawnIcePatch() {
+    if (icePatches.length >= 3) return;
+    icePatches.push({
+        x: viewW * (0.2 + Math.random() * 0.6),
+        y: viewH * (0.2 + Math.random() * 0.6),
+        r: 40 + Math.random() * 50,
+        age: 0,
+        life: 10 + Math.random() * 8,
+    });
+}
+
+function updateIcePatches(dt) {
+    for (let i = icePatches.length - 1; i >= 0; i--) {
+        const p = icePatches[i];
+        p.age += dt;
+        if (p.age >= p.life) {
+            icePatches.splice(i, 1);
+            continue;
+        }
+        for (const f of fishes) {
+            if (f.dead) continue;
+            if (Math.hypot(f.x - p.x, f.y - p.y) < p.r) {
+                // Skim: slight speed ease, less turn friction feel via dir hold.
+                f.x += Math.cos(f.dir) * 12 * dt;
+                f.y += Math.sin(f.dir) * 12 * dt;
+            }
+        }
+    }
+}
+
+function drawIcePatches(ctx) {
+    if (!icePatches.length) return;
+    ctx.save();
+    for (const p of icePatches) {
+        const u = Math.min(1, p.age * 0.5, (p.life - p.age) * 0.4);
+        ctx.fillStyle = "rgba(200,230,245," + (0.1 * u) + ")";
+        ctx.strokeStyle = "rgba(230,245,255," + (0.25 * u) + ")";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.ellipse(p.x, p.y, p.r, p.r * 0.7, 0.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+    }
+    ctx.restore();
+}
+
+function marketCraftNightBloom() {
+    if (!marketUnlocked || !nightUnlocked) return;
+    if (!spendStashVariants({ platinum: 1, rainbow: 1 })) return;
+    beginWeatherMood("fireflies");
+    for (let i = 0; i < 3; i++) maybeSpawnIcePatch();
+    pendingGlassRain = Math.min(2.8, pendingGlassRain + 0.8);
+    if (Audio.goldChime) Audio.goldChime(0);
+    updateMarketUI();
+    markFirstInteraction();
+}
+
 function updateFlavorSystems(dt) {
     updateColoredWakes(dt);
     updateCurrentLanes(dt);
@@ -18347,8 +18814,34 @@ function updateFlavorSystems(dt) {
     updateWeather(dt);
     updateGlassCrossover(dt);
     updateGuardianPairs(dt);
+    updateBreathBubbles(dt);
+    updateSiltClouds(dt);
+    updateSonicRings(dt);
+    updatePetMemories(dt);
+    updateWhirlpools(dt);
+    updateSchoolOrbit(dt);
+    updateMemorySeek(dt);
+    maybeSpawnComet(dt);
+    updateIcePatches(dt);
+    if (weatherMood && weatherMood.kind === "mist" && Math.random() < 0.002) {
+        maybeSpawnIcePatch();
+    }
+    // Spinning debris can birth a soft whirlpool.
+    if (Math.random() < 0.01) {
+        for (const o of obstacles) {
+            if (Math.abs(o.spin || 0) > 1.2) {
+                spawnWhirlpool(o.x, o.y, 35 + Math.abs(o.spin) * 8, 4);
+                break;
+            }
+        }
+    }
+    if (octopus && !octopus.dead && !octopus.golden && Math.random() < 0.004) {
+        spawnWhirlpool(octopus.x, octopus.y, 55, 6);
+    }
     if (giantEnding) {
         giantBedReveal = Math.min(1, giantBedReveal + dt * 0.22);
+        const f = giantEnding.fish;
+        if (f && Math.random() < 0.08) emitSiltCloud(f.x, f.y, f.size);
     } else {
         giantBedReveal = Math.max(0, giantBedReveal - dt * 0.5);
     }
@@ -18375,7 +18868,10 @@ function frame(now) {
         // Floor first, caustics on the stones, then translucent water.
         drawPondBed(ctx);
         drawBedCaustics(ctx);
+        if (typeof drawMoonBedCaustics === "function") drawMoonBedCaustics(ctx);
         if (typeof drawGiantCausticSpotlight === "function") drawGiantCausticSpotlight(ctx);
+        if (typeof drawSiltClouds === "function") drawSiltClouds(ctx);
+        if (typeof drawIcePatches === "function") drawIcePatches(ctx);
         water.render(ctx);
         if (typeof drawGiantBedReveal === "function") drawGiantBedReveal(ctx);
         if (gfxQuality >= 1) drawSunContactShadows(ctx);
@@ -18421,8 +18917,13 @@ function frame(now) {
         if (gfxQuality >= 1) drawSunCreatureShadows(ctx);
         if (typeof drawTerritoryRings === "function") drawTerritoryRings(ctx);
         if (typeof drawCurrentLanes === "function") drawCurrentLanes(ctx);
+        if (typeof drawWhirlpools === "function") drawWhirlpools(ctx);
+        if (typeof drawPetMemories === "function") drawPetMemories(ctx);
         if (typeof drawColoredWakes === "function") drawColoredWakes(ctx);
         if (typeof drawGuardianPairs === "function") drawGuardianPairs(ctx);
+        if (typeof drawSonicRings === "function") drawSonicRings(ctx);
+        if (typeof drawBreathBubbles === "function") drawBreathBubbles(ctx);
+        if (typeof drawCometVisitor === "function") drawCometVisitor(ctx);
         // Draw resting gold first (lakebed), then swimmers above them.
         for (const fish of fishes) {
             if (fish.golden) fish.draw(ctx);
@@ -18461,6 +18962,7 @@ function frame(now) {
 
         // Day sun or night moon wash sits above the pond life.
         drawLightAmbience(ctx);
+        if (typeof drawDuskWash === "function") drawDuskWash(ctx);
         if (typeof drawWeather === "function") drawWeather(ctx);
         if (typeof drawGlassRainOverlay === "function") drawGlassRainOverlay(ctx);
 
