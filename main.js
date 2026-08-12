@@ -47,6 +47,9 @@ const CONFIG = {
     maxFishSize: 240,       // raised so fish can outgrow night predators and keep growing
     sharkSize: 96,          // the shark's body length (day last-fish event)
     orcaSize: 178,          // night last-fish: much larger than the day shark
+    crystalSize: 148,       // crystal depths last-fish: prism shark
+    crystalSerpentSize: [88, 118], // crystal apex visitor
+    crystalPredatorChance: 0.36, // roll chance for crystal serpent
     fleeRange: 210,         // px within which prey flee a predator/shark
     huntRange: 340,         // px within which a predator/shark spots prey
     repopInterval: 1.1,     // seconds between new fish swimming in
@@ -109,7 +112,14 @@ const CONFIG = {
     currentLaneLife: 9.5,   // seconds a carved current lane persists
     territoryHeroSize: 70,  // heroes this large claim a soft safe ring
     lineageFadeGens: 4,     // generations a breeding family tint lasts
+    // Pacifist apex counterparts: rare helpers that grow the pond instead of clearing it.
+    pacifistInterval: 52,   // seconds between pacifist encounter rolls
+    pacifistChance: 0.28,   // chance a helper arrives on each roll
+    pacifistMax: 2,         // max living pacifist visitors at once
+    petsToTamePacifist: 16, // discrete pets to befriend a pacifist visitor
+    pacifistSootheTime: 7,  // continuous stroke time that also tames
 };
+
 
 const RECIPE_MIRROR_COST = { golden: 1, pink: 1 }; // craft mirror food
 const RECIPE_STORM_COST = { rainbow: 1, grower: 1 }; // craft storm food
@@ -490,7 +500,8 @@ const MAGNET_HOLD_MULT = 0.32; // magnet: lift gold much faster
 const CATCHER_BASE_MAX_RADIUS = 44; // starting catcher radius
 const CATCHER_RADIUS_STEP = 10; // radius gained per rainbow-food upgrade
 const CATCHER_LEVEL_MAX = 4;
-const RAINBOWS_FOR_PLATINUM = 10; // caught rainbow fish needed to unlock platinum + night
+const RAINBOWS_FOR_PLATINUM = 10; // caught rainbow fish needed to unlock platinum food
+const PLATINUMS_FOR_CRYSTAL = 3; // platinum fish made under moonlight unlock Crystal Depths
 // Gold payout scales with settled fish size: 1 at tiny spawn size, 10 at half-screen.
 const GOLD_AWARD_MIN = 1;
 const GOLD_AWARD_MAX = 10;
@@ -514,6 +525,9 @@ let catcherLevel = 0; // 0..CATCHER_LEVEL_MAX wider catcher upgrades
 let rainbowCaughtCount = 0;
 let platinumUnlocked = false;
 let nightUnlocked = false;
+let crystalUnlocked = false;
+let crystalMode = false;
+let crystalMoonPlats = 0; // platinum fish made while moon pond is on
 let nightMode = false;
 let looksPanelOpen = false;
 
@@ -633,6 +647,30 @@ const NIGHT_FISH_TYPES = [
     { name: "tideglass", night: true, shape: "slim", body: "#6890b0", belly: "#d8ecff", pattern: null, patternColor: null, size: [11, 16], speed: [34, 52], wave: "sine", register: 1.7, bite: 3, dur: 0.22, turn: 5.8, wiggle: 1.7, slim: 0.48, scale: PENTATONIC, petWave: "sine", petFreq: 520, petDur: 0.22, bitePartial: 0.45, biteBright: 1.4, ghost: 0.6 },
     { name: "voidperch", night: true, shape: "oval", body: "#303848", belly: "#98a0b8", pattern: "bands", patternColor: "#181c28", size: [15, 22], speed: [20, 32], wave: "triangle", register: 0.95, bite: 5, dur: 0.4, turn: 2.8, wiggle: 1.0, scale: MINOR_PENT, petWave: "triangle", petFreq: 290, petDur: 0.38, bitePartial: 0.22, biteBright: 0.95 },
 ];
+
+// Crystal Depths: prismatic gemstone pond after moon + platinum progression.
+const CRYSTAL_FISH_TYPES = [
+    { name: "gemkoi", crystal: true, shape: "koi", koi: true, body: "#c8a0e8", belly: "#f0e8ff", pattern: "hi", patternColor: "#70d0e8", size: [20, 30], speed: [17, 28], wave: "sine", register: 1.05, bite: 5, dur: 0.42, turn: 2.3, wiggle: 1.0, scale: PENTATONIC, petWave: "sine", petFreq: 340, petDur: 0.42, bitePartial: 0.26, biteBright: 1.2, whiskers: true },
+    { name: "amethyst", crystal: true, shape: "oval", body: "#7a48b0", belly: "#e0c8f8", pattern: "scales", patternColor: "#b080e0", size: [16, 24], speed: [18, 30], wave: "triangle", register: 1.2, bite: 4, dur: 0.38, turn: 2.8, wiggle: 1.1, scale: PENTATONIC, petWave: "triangle", petFreq: 380, petDur: 0.38, bitePartial: 0.3, biteBright: 1.25 },
+    { name: "opalminnow", crystal: true, shape: "slim", body: "#e8f0ff", belly: "#ffffff", pattern: "stripe", patternColor: "#90c0e8", size: [9, 13], speed: [42, 62], wave: "sine", register: 2.0, bite: 3, dur: 0.2, turn: 5.6, wiggle: 1.55, dart: true, slim: 0.48, scale: PENTATONIC, petWave: "sine", petFreq: 560, petDur: 0.2, bitePartial: 0.45, biteBright: 1.5, ghost: 0.65 },
+    { name: "prismatic", crystal: true, shape: "longfin", body: "#48c0c8", belly: "#e0fff8", pattern: "blotches", patternColor: "#e080d0", size: [13, 18], speed: [20, 32], wave: "triangle", register: 1.4, bite: 4, dur: 0.4, turn: 3.4, wiggle: 1.55, scale: PENTATONIC, petWave: "sine", petFreq: 420, petDur: 0.42, bitePartial: 0.34, biteBright: 1.3 },
+    { name: "quartzangel", crystal: true, shape: "angel", body: "#d0e0f0", belly: "#ffffff", pattern: "spots", patternColor: "#a070d0", size: [15, 21], speed: [18, 28], wave: "triangle", register: 1.25, bite: 4, dur: 0.48, turn: 2.7, wiggle: 0.95, scale: PENTATONIC, petWave: "triangle", petFreq: 360, petDur: 0.46, bitePartial: 0.28, biteBright: 1.15 },
+    { name: "jadeel", crystal: true, shape: "eel", body: "#2a8058", belly: "#a0e0c0", pattern: "bands", patternColor: "#104030", size: [24, 34], speed: [14, 24], wave: "sawtooth", register: 0.72, bite: 6, dur: 0.7, turn: 2.2, wiggle: 2.2, scale: MINOR_PENT, petWave: "sawtooth", petFreq: 210, petDur: 0.6, bitePartial: 0.1, biteBright: 0.65 },
+    { name: "rubygill", crystal: true, shape: "round", body: "#c04058", belly: "#ffd0d8", pattern: "bands", patternColor: "#801828", size: [13, 18], speed: [24, 36], wave: "sine", register: 1.18, bite: 4, dur: 0.34, turn: 3.3, wiggle: 1.1, scale: PENTATONIC, petWave: "sine", petFreq: 370, petDur: 0.32, bitePartial: 0.28, biteBright: 1.2 },
+    { name: "sapphire", crystal: true, shape: "slim", body: "#2858b0", belly: "#c8dcff", pattern: "stripe", patternColor: "#f0e080", size: [14, 20], speed: [28, 44], wave: "triangle", register: 1.35, bite: 4, dur: 0.32, turn: 4.2, wiggle: 1.35, slim: 0.52, scale: PENTATONIC, petWave: "triangle", petFreq: 440, petDur: 0.3, bitePartial: 0.35, biteBright: 1.3 },
+    { name: "topazkoi", crystal: true, shape: "koi", koi: true, body: "#e8b040", belly: "#fff4d0", pattern: "blotches", patternColor: "#f0e8a0", size: [19, 28], speed: [16, 26], wave: "sine", register: 1.0, bite: 5, dur: 0.44, turn: 2.2, wiggle: 0.98, scale: PENTATONIC, petWave: "sine", petFreq: 320, petDur: 0.44, bitePartial: 0.24, biteBright: 1.15, whiskers: true },
+    { name: "obsidian", crystal: true, shape: "oval", body: "#1a1828", belly: "#6870a0", pattern: "scales", patternColor: "#404060", size: [17, 25], speed: [16, 28], wave: "sawtooth", register: 0.8, bite: 5, dur: 0.45, turn: 2.4, wiggle: 0.95, scale: MINOR_PENT, petWave: "triangle", petFreq: 240, petDur: 0.45, bitePartial: 0.16, biteBright: 0.85 },
+    { name: "fluorite", crystal: true, shape: "discus", body: "#60a088", belly: "#d0f0e8", pattern: "bands", patternColor: "#a070d0", size: [15, 22], speed: [15, 25], wave: "sine", register: 1.15, bite: 4, dur: 0.42, turn: 3.0, wiggle: 1.05, scale: PENTATONIC, petWave: "sine", petFreq: 350, petDur: 0.4, bitePartial: 0.26, biteBright: 1.15 },
+];
+
+const CRYSTAL_EXOTIC_TYPES = [
+    { name: "geode", crystal: true, exotic: true, odd: "spiral", shape: "round", body: "#4a3868", belly: "#e8c070", pattern: "spots", patternColor: "#90e0f0", size: [14, 20], speed: [12, 22], wave: "triangle", register: 1.1, bite: 4, dur: 0.5, turn: 3.2, wiggle: 1.2, scale: MINOR_PENT, petWave: "triangle", petFreq: 300, petDur: 0.5, bitePartial: 0.22, biteBright: 1.1 },
+    { name: "prismglass", crystal: true, exotic: true, odd: "jitter", shape: "slim", body: "#c8e8ff", belly: "#ffffff", pattern: null, patternColor: null, size: [11, 16], speed: [36, 56], wave: "sine", register: 1.85, bite: 3, dur: 0.22, turn: 6.2, wiggle: 1.85, slim: 0.46, scale: PENTATONIC, petWave: "sine", petFreq: 540, petDur: 0.22, bitePartial: 0.48, biteBright: 1.55, ghost: 0.5 },
+    { name: "facetray", crystal: true, exotic: true, odd: "glide", shape: "ray", body: "#70a0d0", belly: "#e8f4ff", pattern: "blotches", patternColor: "#d080e0", size: [18, 26], speed: [14, 24], wave: "sine", register: 0.7, bite: 5, dur: 0.58, turn: 2.0, wiggle: 0.85, scale: MINOR_PENT, petWave: "sine", petFreq: 220, petDur: 0.55, bitePartial: 0.12, biteBright: 0.75 },
+    { name: "aurorafin", crystal: true, exotic: true, odd: "drift", shape: "longfin", body: "#5080c8", belly: "#f0c0e8", pattern: "blotches", patternColor: "#70e0c0", size: [14, 20], speed: [16, 28], wave: "triangle", register: 1.35, bite: 4, dur: 0.45, turn: 3.5, wiggle: 1.5, scale: PENTATONIC, petWave: "triangle", petFreq: 400, petDur: 0.45, bitePartial: 0.32, biteBright: 1.25 },
+    { name: "shardpike", crystal: true, exotic: true, odd: "zigzag", shape: "arrow", body: "#a0c8e8", belly: "#f0f8ff", pattern: "bands", patternColor: "#6070a0", size: [22, 32], speed: [26, 42], wave: "sawtooth", register: 0.75, bite: 6, dur: 0.48, turn: 2.6, wiggle: 1.15, scale: MINOR_PENT, petWave: "sawtooth", petFreq: 250, petDur: 0.42, bitePartial: 0.16, biteBright: 0.9 },
+];
+
 
 // ---------------------------------------------------------------------------
 // Canvas setup with devicePixelRatio scaling for crisp rendering
@@ -2008,6 +2046,8 @@ function updateSoftMovables(dt) {
         if (!o.vx) o.vx = 0;
         if (!o.vy) o.vy = 0;
         if (o.spin == null) o.spin = 0;
+        if (o.settleT == null) o.settleT = 0;
+        if (o.settleT > 0) o.settleT = Math.max(0, o.settleT - dt);
         if (o === grabbedSoft && grabAim) {
             const dx = grabAim.x - o.x;
             const dy = grabAim.y - o.y;
@@ -2018,13 +2058,17 @@ function updateSoftMovables(dt) {
             o.vy *= damp;
             o.spin += (dx * 0.002 - o.spin) * Math.min(1, 3 * dt);
         } else {
-            const damp = Math.exp(-1.6 * dt);
+            // Float and coast like lily pads: strong water damping, no thrash.
+            const damp = Math.exp(-2.4 * dt);
             o.vx *= damp;
             o.vy *= damp;
-            o.spin *= Math.exp(-1.2 * dt);
+            o.spin *= Math.exp(-2.0 * dt);
+            if (Math.abs(o.vx) < 0.8) o.vx = 0;
+            if (Math.abs(o.vy) < 0.8) o.vy = 0;
+            if (Math.abs(o.spin) < 0.01) o.spin = 0;
         }
         const spd = Math.hypot(o.vx, o.vy);
-        const maxSpd = 170;
+        const maxSpd = o.settleT > 0 ? 40 : 110;
         if (spd > maxSpd) {
             o.vx *= maxSpd / spd;
             o.vy *= maxSpd / spd;
@@ -2038,65 +2082,63 @@ function updateSoftMovables(dt) {
             water.disturb(o.x, o.y, softPropRadius(o) * 0.45, 28);
         }
     }
-    // Ease stacked ornaments apart so center piles do not keep fighting.
+    // Ease stacked ornaments apart with velocity, never random teleports.
     for (let i = 0; i < list.length; i++) {
         for (let j = i + 1; j < list.length; j++) {
             const a = list[i];
             const b = list[j];
-            const minDist = softPropRadius(a) * 0.7 + softPropRadius(b) * 0.7;
+            if ((a.settleT > 0 || b.settleT > 0) && a !== grabbedSoft && b !== grabbedSoft) {
+                // Fresh green ornaments settle in place before soft-stacking.
+                if (a.soft === "plant" || b.soft === "plant") continue;
+            }
+            const minDist = softPropRadius(a) * 0.62 + softPropRadius(b) * 0.62;
             let dx = b.x - a.x;
             let dy = b.y - a.y;
             let dist = Math.hypot(dx, dy);
             if (dist >= minDist) continue;
             if (dist < 0.001) {
-                const ang = Math.random() * Math.PI * 2;
+                // Stable push axis from positions (no per-frame random flip).
+                const ang = Math.abs(Math.sin(a.x * 12.9898 + a.y * 78.233 + b.x * 37.719)) * Math.PI * 2;
                 dx = Math.cos(ang);
                 dy = Math.sin(ang);
                 dist = 1;
             }
-            const push = (minDist - dist) * 0.5;
             const nx = dx / dist;
             const ny = dy / dist;
-            const k = Math.min(1, 4 * dt);
-            a.x -= nx * push * k;
-            a.y -= ny * push * k;
-            b.x += nx * push * k;
-            b.y += ny * push * k;
-            a.x = Math.max(pad, Math.min(viewW - pad, a.x));
-            a.y = Math.max(pad, Math.min(viewH - pad, a.y));
-            b.x = Math.max(pad, Math.min(viewW - pad, b.x));
-            b.y = Math.max(pad, Math.min(viewH - pad, b.y));
+            const overlap = minDist - dist;
+            const impulse = overlap * 18;
+            a.vx -= nx * impulse * dt;
+            a.vy -= ny * impulse * dt;
+            b.vx += nx * impulse * dt;
+            b.vy += ny * impulse * dt;
         }
     }
-    // Soft plant / debris separation so shore piles do not look broken.
+    // Soft plant / debris separation: drift away, do not pin-bounce.
     if (scenery.debris && obstacles.length) {
         for (const soft of list) {
-            const sr = softPropRadius(soft) * 0.75;
+            if (soft.settleT > 0 && soft !== grabbedSoft) continue;
+            const sr = softPropRadius(soft) * 0.55;
             for (const o of obstacles) {
-                const or = obstacleRadius(o) * 0.85;
+                const or = obstacleRadius(o) * 0.7;
                 let dx = soft.x - o.x;
                 let dy = soft.y - o.y;
                 let dist = Math.hypot(dx, dy);
                 const minD = sr + or;
                 if (dist >= minD) continue;
                 if (dist < 0.001) {
-                    const ang = Math.random() * Math.PI * 2;
+                    const ang = (soft.x * 0.17 + soft.y * 0.31 + (o.x || 0)) || 1.1;
                     dx = Math.cos(ang);
                     dy = Math.sin(ang);
                     dist = 1;
                 }
-                const push = (minD - dist) * 0.45;
                 const nx = dx / dist;
                 const ny = dy / dist;
-                const k = Math.min(1, 3.2 * dt);
-                soft.x += nx * push * k;
-                soft.y += ny * push * k;
-                // Light debris yields a little; heavy rocks barely budge.
-                const give = (o.kind === "boulder" || o.kind === "mossrock") ? 0.08 : 0.35;
-                o.x -= nx * push * k * give;
-                o.y -= ny * push * k * give;
-                soft.x = Math.max(pad, Math.min(viewW - pad, soft.x));
-                soft.y = Math.max(pad, Math.min(viewH - pad, soft.y));
+                const overlap = minD - dist;
+                soft.vx += nx * overlap * 14 * dt;
+                soft.vy += ny * overlap * 14 * dt;
+                const give = (o.kind === "boulder" || o.kind === "mossrock") ? 0.04 : 0.18;
+                o.vx = (o.vx || 0) - nx * overlap * 8 * dt * give;
+                o.vy = (o.vy || 0) - ny * overlap * 8 * dt * give;
             }
         }
     }
@@ -2392,6 +2434,10 @@ function drawPondBed(ctx) {
 }
 
 function skyShadowDir() {
+    if (crystalMode) {
+        // Prism glow from high center; short violet shadows fall down-left.
+        return { x: -0.42, y: 0.62 };
+    }
     if (nightMode) {
         // Moon sits upper-right; longer cool shadows fall left and a bit down.
         return { x: -0.72, y: 0.48 };
@@ -2405,23 +2451,24 @@ function sunShadowDir() {
 }
 
 function lightCastsFloorShadows() {
-    return nightMode || !!scenery.sun;
+    return crystalMode || nightMode || !!scenery.sun;
 }
 
 // Transform to the sky-offset floor contact and slightly squash so the silhouette sits on the bed.
 function withFloorShadow(ctx, x, y, sizeHint, alpha, rot, drawFn) {
     const d = skyShadowDir();
-    const stretch = nightMode ? 1.28 : 1.08;
-    const len = (nightMode ? 34 : 26) + Math.max(8, sizeHint) * stretch;
-    const a = Math.min(0.92, alpha * (nightMode ? 1.25 : 1.35));
+    const stretch = crystalMode ? 1.12 : nightMode ? 1.28 : 1.08;
+    const len = (crystalMode ? 28 : nightMode ? 34 : 26) + Math.max(8, sizeHint) * stretch;
+    const a = Math.min(0.92, alpha * (crystalMode ? 1.2 : nightMode ? 1.25 : 1.35));
     ctx.save();
     ctx.translate(x + d.x * len, y + d.y * len);
-    ctx.scale(1, nightMode ? 0.5 : 0.55);
+    ctx.scale(1, crystalMode ? 0.52 : nightMode ? 0.5 : 0.55);
     if (rot != null) ctx.rotate(rot);
     // Soft penumbra, then a darker core that keeps the silhouette readable.
     ctx.save();
     ctx.globalAlpha = Math.min(1, a * 0.45);
-    ctx.fillStyle = nightMode ? "rgba(4, 8, 18, 1)" : "rgba(10, 8, 6, 1)";
+    ctx.fillStyle = crystalMode ? "rgba(18, 8, 28, 1)"
+        : nightMode ? "rgba(4, 8, 18, 1)" : "rgba(10, 8, 6, 1)";
     ctx.scale(1.12, 1.18);
     drawFn(ctx);
     ctx.restore();
@@ -3021,6 +3068,35 @@ function drawSunCreatureShadows(ctx) {
             fillWhaleShadowPaths(c, L, W);
         });
     }
+    if (crystalSerpent && !crystalSerpent.dead) {
+        withFloorShadow(ctx, crystalSerpent.x, crystalSerpent.y, crystalSerpent.size, 0.74, crystalSerpent.dir, (c) => {
+            c.beginPath();
+            c.ellipse(0, 0, crystalSerpent.size * 0.48, crystalSerpent.size * 0.16, 0, 0, Math.PI * 2);
+            c.fill();
+        });
+    }
+    for (const p of pacifistVisitors || []) {
+        if (!p || p.dead) continue;
+        withFloorShadow(ctx, p.x, p.y, p.size, 0.72, p.dir, (c) => {
+            if (p.kind === "ribbon") {
+                fillFishShadowPaths(c, p.size, p.size * 0.28, "arrow");
+            } else if (p.kind === "garden") {
+                c.beginPath();
+                c.ellipse(0, 0, p.size * 0.42, p.size * 0.34, 0, 0, Math.PI * 2);
+                c.fill();
+            } else if (p.kind === "lotus") {
+                c.beginPath();
+                c.ellipse(0, 0, p.size * 0.42, p.size * 0.4, 0, 0, Math.PI * 2);
+                c.fill();
+            } else if (p.kind === "axolotl") {
+                c.beginPath();
+                c.ellipse(0, 0, p.size * 0.48, p.size * 0.28, 0, 0, Math.PI * 2);
+                c.fill();
+            } else {
+                fillWhaleShadowPaths(c, p.size, p.size * 0.32);
+            }
+        });
+    }
     if (scenery.frogs) {
         for (const g of frogGroups) {
             const frog = g.frog;
@@ -3157,8 +3233,64 @@ function drawMoonAmbience(ctx) {
     ctx.restore();
 }
 
+function drawCrystalAmbience(ctx) {
+    if (!crystalMode) return;
+    const shimmer = 0.5 + 0.5 * Math.sin(sunPhase * 0.55);
+    ctx.save();
+    ctx.globalCompositeOperation = "soft-light";
+    const wash = ctx.createLinearGradient(0, 0, viewW, viewH);
+    wash.addColorStop(0, `rgba(120, 70, 180, ${0.18 + shimmer * 0.04})`);
+    wash.addColorStop(0.45, "rgba(40, 120, 140, 0.14)");
+    wash.addColorStop(1, "rgba(20, 30, 70, 0.24)");
+    ctx.fillStyle = wash;
+    ctx.fillRect(0, 0, viewW, viewH);
+
+    ctx.globalCompositeOperation = "screen";
+    const prism = ctx.createRadialGradient(
+        viewW * 0.5, viewH * 0.12, 8,
+        viewW * 0.5, viewH * 0.45, Math.max(viewW, viewH) * 0.7
+    );
+    prism.addColorStop(0, `rgba(220, 180, 255, ${0.14 + shimmer * 0.04})`);
+    prism.addColorStop(0.35, "rgba(120, 220, 230, 0.06)");
+    prism.addColorStop(1, "rgba(40, 20, 80, 0)");
+    ctx.fillStyle = prism;
+    ctx.fillRect(0, 0, viewW, viewH);
+
+    // Soft facet sparkles.
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = 0.35 + shimmer * 0.15;
+    for (let i = 0; i < 10; i++) {
+        const px = ((i * 97 + sunPhase * 18) % viewW);
+        const py = ((i * 53 + sunPhase * 11) % viewH);
+        const r = 1.2 + (i % 3);
+        const hue = (i * 37 + sunPhase * 40) % 360;
+        ctx.fillStyle = `hsla(${hue}, 80%, 75%, 0.55)`;
+        ctx.beginPath();
+        ctx.moveTo(px, py - r);
+        ctx.lineTo(px + r * 0.7, py);
+        ctx.lineTo(px, py + r);
+        ctx.lineTo(px - r * 0.7, py);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    ctx.globalCompositeOperation = "multiply";
+    ctx.globalAlpha = 0.42;
+    const shade = ctx.createRadialGradient(
+        viewW * 0.5, viewH * 0.25, viewH * 0.1,
+        viewW * 0.5, viewH * 0.55, Math.max(viewW, viewH) * 0.8
+    );
+    shade.addColorStop(0, "rgba(220, 200, 255, 1)");
+    shade.addColorStop(0.5, "rgba(80, 90, 140, 1)");
+    shade.addColorStop(1, "rgba(18, 10, 32, 1)");
+    ctx.fillStyle = shade;
+    ctx.fillRect(0, 0, viewW, viewH);
+    ctx.restore();
+}
+
 function drawLightAmbience(ctx) {
-    if (nightMode) drawMoonAmbience(ctx);
+    if (crystalMode) drawCrystalAmbience(ctx);
+    else if (nightMode) drawMoonAmbience(ctx);
     else drawSunAmbience(ctx);
 }
 
@@ -5324,20 +5456,54 @@ function makePondPlant(x, y, size, forceKind) {
             : GREEN_POND_SPECIALS[Math.floor(Math.random() * GREEN_POND_SPECIALS.length)]);
     // Larger fish leave larger lasting pond ornaments.
     const mapped = Math.max(18, Math.min(120, size * 1.25));
+    // Ease into a free pocket so the new piece does not pin against debris.
+    let px = x;
+    let py = y;
+    for (let tries = 0; tries < 8; tries++) {
+        let blocked = false;
+        const probeR = greenOrnamentRadius(kind, mapped) + 8;
+        if (scenery.debris) {
+            for (const o of obstacles) {
+                if (Math.hypot(px - o.x, py - o.y) < probeR + obstacleRadius(o) * 0.55) {
+                    blocked = true;
+                    break;
+                }
+            }
+        }
+        for (const p of pondPlants) {
+            if (Math.hypot(px - p.x, py - p.y) < probeR + softPropRadius(p) * 0.5) {
+                blocked = true;
+                break;
+            }
+        }
+        if (!blocked) break;
+        const ang = tries * 0.9 + mapped * 0.01;
+        px = x + Math.cos(ang) * (14 + tries * 10);
+        py = y + Math.sin(ang) * (14 + tries * 10);
+        px = Math.max(24, Math.min(viewW - 24, px));
+        py = Math.max(24, Math.min(viewH - 24, py));
+    }
     return {
         soft: "plant",
         kind,
-        x, y,
+        x: px,
+        y: py,
         size: mapped,
         r: greenOrnamentRadius(kind, mapped),
         rot: Math.random() * Math.PI * 2,
         sway: Math.random() * Math.PI * 2,
+        bob: Math.random() * Math.PI * 2,
         green: 0.45 + Math.random() * 0.4,
         age: 0,
         vx: 0,
         vy: 0,
         spin: 0,
         tone: 0.35 + Math.random() * 0.4,
+        bobLift: 0,
+        tipBob: 0,
+        refrX: 0,
+        refrY: 0,
+        settleT: 1.6, // quiet settle before soft collisions engage
     };
 }
 
@@ -5387,8 +5553,8 @@ function updatePlantMorph(ent, dt) {
     }
     if (u >= 1) {
         pondPlants.push(makePondPlant(m.originX, m.originY, m.plantSize));
-        spawnSplash(m.originX, m.originY, Math.min(22, m.plantSize * 0.2), 0.4);
-        water.disturb(m.originX, m.originY, m.plantSize * 0.35, 180);
+        spawnSplash(m.originX, m.originY, Math.min(16, m.plantSize * 0.14), 0.28);
+        water.disturb(m.originX, m.originY, Math.min(28, m.plantSize * 0.22), 70);
         ent.dead = true;
         ent.plantMorph = null;
         ent._morphAlpha = 1;
@@ -5469,15 +5635,25 @@ function drawWoodenFishOrnament(ctx, p, sway) {
 }
 
 function drawPondPlants(ctx, t, dt) {
+    const step = dt || 0.016;
     for (const p of pondPlants) {
-        p.age += dt || 0.016;
+        p.age += step;
+        // Same quiet float as lily pads: wake bob, soft tip sway, no raw refraction thrash.
         const wake = sceneryWake(p.x, p.y);
-        const lift = smoothBob(p, wake * 2.2, dt || 0.016);
-        const sway = Math.sin(t * 1.05 + p.sway) * 0.14 + lift * 0.035;
-        ctx.save();
-        const refr = typeof plantRefractionOffset === "function"
+        const lift = smoothBob(p, wake * 1.8, step);
+        const tip = (p.tipBob || 0) + ((wake * 0.08) - (p.tipBob || 0)) * Math.min(1, step * 3.0);
+        p.tipBob = tip;
+        const sway = Math.sin(t * 0.9 + (p.sway || 0)) * 0.1
+            + Math.sin(t * 0.55 + (p.bob || 0)) * 0.04
+            + tip;
+        // Ease refraction so water noise cannot shake the ornament.
+        const raw = typeof plantRefractionOffset === "function"
             ? plantRefractionOffset(p.x, p.y) : { x: 0, y: 0 };
-        ctx.translate(p.x + refr.x, p.y - lift * 0.85 + refr.y);
+        const rk = 1 - Math.exp(-2.4 * step);
+        p.refrX = (p.refrX || 0) + (raw.x * 0.35 - (p.refrX || 0)) * rk;
+        p.refrY = (p.refrY || 0) + (raw.y * 0.35 - (p.refrY || 0)) * rk;
+        ctx.save();
+        ctx.translate(p.x + (p.refrX || 0), p.y - lift * 0.85 + (p.refrY || 0));
         ctx.globalAlpha = 0.9;
 
         if (p.kind === "woodenfish") {
@@ -7072,6 +7248,11 @@ class Fish {
         water.disturb(this.x, this.y, this.size * 1.3, 300);
         spawnSplash(this.x, this.y, this.size * 0.55, 0.65);
         unlockMoonPond();
+        if (nightMode && nightUnlocked) {
+            crystalMoonPlats++;
+            maybeUnlockCrystalDepths();
+            updateCrystalButtonUI();
+        }
     }
 
     // Eating pink breeding food: soft blush; stays pink after breeding.
@@ -9753,6 +9934,7 @@ let whale = null;
 let reptiles = [];
 let swordfish = null; // night-mode spear hunter
 let octopus = null; // night-mode tentacle hunter
+let crystalSerpent = null; // crystal depths prism serpent
 let octopusWhaleFight = null; // { t, phase: "wrap"|"eat"|"ship", shipY, shipAlpha }
 let pirateShipDrop = null; // leftover alias during ship phase
 let povAttack = null; // { fish, t }
@@ -9768,6 +9950,8 @@ let repopTimer = 0;
 let whaleCheckTimer = 0;
 let reptileCheckTimer = 0;
 let exoticCheckTimer = 0;
+let pacifistCheckTimer = 0;
+let pacifistVisitors = []; // helpful apex counterparts (nurse, beluga, singer, ...)
 
 function pondFinaleActive() {
     // Soft return fades are not hard lockouts: life can swim under the curtain.
@@ -13647,14 +13831,32 @@ function placeNearBurst(cx, cy, ang, rad) {
     };
 }
 
-// Current pond environment key (day / night; future modes can extend this).
+// Current pond environment key (day / night / crystal).
 function environmentModeKey() {
+    if (crystalMode) return "crystal";
     return nightMode ? "night" : "day";
 }
 
 // Fish and apex sets for the active environment. Plug in new modes here.
 function environmentRoster(mode) {
     const key = mode || environmentModeKey();
+    if (key === "crystal") {
+        return {
+            mode: "crystal",
+            commons: CRYSTAL_FISH_TYPES,
+            exotics: CRYSTAL_EXOTIC_TYPES,
+            apex: {
+                reptiles: [],
+                shark: false,
+                orca: false,
+                crystal: true,
+                swordfish: false,
+                octopus: false,
+                whale: false,
+                serpent: true,
+            },
+        };
+    }
     if (key === "night") {
         return {
             mode: "night",
@@ -13667,6 +13869,7 @@ function environmentRoster(mode) {
                 swordfish: true,
                 octopus: true,
                 whale: false,
+                serpent: false,
             },
         };
     }
@@ -13682,6 +13885,7 @@ function environmentRoster(mode) {
             swordfish: false,
             octopus: false,
             whale: false,
+            serpent: false,
         },
     };
 }
@@ -13717,9 +13921,9 @@ function spawnEnvironmentHeroApex(cx, cy, roster) {
         reptiles.push(reptile);
     }
 
-    if (apex.shark || apex.orca) {
+    if (apex.shark || apex.orca || apex.crystal) {
         if (shark && !shark.dead) shark.dead = true;
-        shark = new Shark(null, { orca: !!apex.orca });
+        shark = new Shark(null, { orca: !!apex.orca, crystal: !!apex.crystal });
         shark.isHero = true;
         shark.leaving = false;
         shark.duelMode = false;
@@ -13754,6 +13958,18 @@ function spawnEnvironmentHeroApex(cx, cy, roster) {
         octopus.x = op.x;
         octopus.y = op.y;
         octopus.dir = Math.atan2(cy - octopus.y, cx - octopus.x);
+    }
+
+    if (apex.serpent) {
+        if (crystalSerpent && !crystalSerpent.dead) crystalSerpent.dead = true;
+        crystalSerpent = new CrystalSerpent({ quiet: true });
+        crystalSerpent.isHero = true;
+        crystalSerpent.tamed = true;
+        crystalSerpent.target = null;
+        const cp = placeNearBurst(cx, cy, 1.2, 115);
+        crystalSerpent.x = cp.x;
+        crystalSerpent.y = cp.y;
+        crystalSerpent.dir = Math.atan2(cy - crystalSerpent.y, cx - crystalSerpent.x);
     }
 
     if (apex.whale) {
@@ -14231,6 +14447,9 @@ function resetPond(opts) {
     whale = null;
     swordfish = null;
     octopus = null;
+    crystalSerpent = null;
+    pacifistVisitors.length = 0;
+    pacifistCheckTimer = 0;
     reptiles.length = 0;
     frogGroups.length = 0;
     hungryTadpoles.length = 0;
@@ -14263,18 +14482,21 @@ function resetPond(opts) {
 class Shark {
     constructor(target, opts) {
         this.isOrca = !!(opts && opts.orca);
-        // Night last-fish event uses a much larger orca; day keeps the classic shark.
+        this.isCrystal = !!(opts && opts.crystal) && !this.isOrca;
+        // Night last-fish: orca. Crystal depths: prism shark. Day: classic shark.
         this.size = this.isOrca
             ? Math.max(CONFIG.orcaSize, Math.min(viewW, viewH) * 0.24)
-            : CONFIG.sharkSize;
+            : this.isCrystal
+                ? Math.max(CONFIG.crystalSize, Math.min(viewW, viewH) * 0.2)
+                : CONFIG.sharkSize;
         this.tailPhase = 0;
         this.leaving = false;
         this.dead = false;
         this.duelMode = false;
         this.isHero = false; // remorse guardian: does not hunt fish
-        this.hp = this.isOrca ? 10 : 6;
+        this.hp = this.isOrca ? 10 : this.isCrystal ? 8 : 6;
         this.rollTimer = 0;
-        this.rollDur = this.isOrca ? 1.45 : 1.15;
+        this.rollDur = this.isOrca ? 1.45 : this.isCrystal ? 1.3 : 1.15;
         this.wanderTimer = 0;
         this._wanderDir = 0;
         // Glow fish swallow gag: { fish, t, phase: "hold"|"deliver" }
@@ -14493,6 +14715,10 @@ class Shark {
             this.drawOrca(ctx);
             return;
         }
+        if (this.isCrystal) {
+            this.drawCrystalShark(ctx);
+            return;
+        }
         const L = this.size;
         const W = this.size * 0.38;
         const wig = Math.sin(this.tailPhase) * 0.35;
@@ -14613,6 +14839,83 @@ class Shark {
         ctx.arc(L * 0.27, -W * 0.24, Math.max(0.6, L * 0.01), 0, Math.PI * 2);
         ctx.fill();
         drawCreatureHat(ctx, L, W, 0.82);
+        ctx.restore();
+    }
+
+    drawCrystalShark(ctx) {
+        const L = this.size;
+        const W = this.size * 0.36;
+        const wig = Math.sin(this.tailPhase) * 0.3;
+        const rollT = this.rollTimer > 0 ? 1 - this.rollTimer / this.rollDur : 0;
+        const roll = rollT * Math.PI * 2;
+        const flatten = Math.max(0.18, Math.abs(Math.cos(roll)));
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.dir);
+        ctx.scale(1, flatten);
+        ctx.globalAlpha = 0.9;
+        ctx.shadowColor = this.isHero ? "rgba(200,160,255,0.8)" : "rgba(140,100,220,0.55)";
+        ctx.shadowBlur = this.isHero ? 22 : 16;
+
+        // Faceted caudal.
+        const tail = ctx.createLinearGradient(-L * 0.4, 0, -L * 0.95, 0);
+        tail.addColorStop(0, "#b090e0");
+        tail.addColorStop(1, "#503878");
+        ctx.fillStyle = tail;
+        ctx.beginPath();
+        ctx.moveTo(-L * 0.42, 0);
+        ctx.lineTo(-L * 0.92, -W * (1.05 + wig));
+        ctx.lineTo(-L * 0.7, 0);
+        ctx.lineTo(-L * 0.92, W * (0.9 + wig * 0.5));
+        ctx.closePath();
+        ctx.fill();
+
+        const g = ctx.createLinearGradient(0, -W, 0, W);
+        if (this.isHero) {
+            g.addColorStop(0, "#e8d8ff");
+            g.addColorStop(0.5, "#9060c8");
+            g.addColorStop(1, "#70d0e0");
+        } else {
+            g.addColorStop(0, "#c8b0f0");
+            g.addColorStop(0.45, "#6848a0");
+            g.addColorStop(1, "#40a0b8");
+        }
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(L * 0.55, 0);
+        ctx.bezierCurveTo(L * 0.25, -W * 0.9, -L * 0.05, -W * 1.05, -L * 0.4, -W * 0.4);
+        ctx.quadraticCurveTo(-L * 0.48, 0, -L * 0.4, W * 0.4);
+        ctx.bezierCurveTo(-L * 0.05, W * 1.05, L * 0.25, W * 0.9, L * 0.55, 0);
+        ctx.fill();
+
+        // Prism ridges.
+        ctx.strokeStyle = "rgba(255,255,255,0.35)";
+        ctx.lineWidth = Math.max(1, L * 0.015);
+        for (let i = 0; i < 4; i++) {
+            const gx = L * (0.2 - i * 0.08);
+            ctx.beginPath();
+            ctx.moveTo(gx, -W * 0.45);
+            ctx.lineTo(gx - L * 0.04, W * 0.35);
+            ctx.stroke();
+        }
+
+        // Crystal dorsal fin.
+        ctx.fillStyle = "rgba(180,220,255,0.55)";
+        ctx.beginPath();
+        ctx.moveTo(-L * 0.05, -W * 0.7);
+        ctx.lineTo(L * 0.08, -W * 1.7);
+        ctx.lineTo(L * 0.22, -W * 0.65);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = "rgba(250,252,255,0.95)";
+        ctx.beginPath();
+        ctx.ellipse(L * 0.28, -W * 0.28, Math.max(2.2, L * 0.04), Math.max(2.5, L * 0.05), 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(40,20,70,0.95)";
+        ctx.beginPath();
+        ctx.arc(L * 0.3, -W * 0.28, Math.max(1.1, L * 0.02), 0, Math.PI * 2);
+        ctx.fill();
         ctx.restore();
     }
 
@@ -14944,7 +15247,13 @@ class Whale {
 // Create a fish at a random bank, swimming inward (for repopulation).
 function edgeFish(forceExotic) {
     let type;
-    if (nightMode) {
+    if (crystalMode) {
+        if (forceExotic || Math.random() < 0.4) {
+            type = CRYSTAL_EXOTIC_TYPES[Math.floor(Math.random() * CRYSTAL_EXOTIC_TYPES.length)];
+        } else {
+            type = CRYSTAL_FISH_TYPES[Math.floor(Math.random() * CRYSTAL_FISH_TYPES.length)];
+        }
+    } else if (nightMode) {
         if (forceExotic || Math.random() < 0.35) {
             type = NIGHT_FISH_TYPES[Math.floor(Math.random() * NIGHT_FISH_TYPES.length)];
         } else if (Math.random() < 0.25) {
@@ -14965,6 +15274,942 @@ function edgeFish(forceExotic) {
     else { f.x = Math.random() * viewW; f.y = viewH + 20; f.dir = -Math.PI / 2; }
     return f;
 }
+
+
+// ===========================================================================
+// PACIFIST APEX COUNTERPARTS
+// Rare helpers that mirror each apex: nurse (shark), beluga (orca), singer (whale),
+// lotus (crocodile), axolotl (alligator), ribbon (swordfish), garden (octopus).
+// Pet to tame; each gains a unique pond-growing behavior when befriended.
+// ===========================================================================
+const PACIFIST_KIND_META = {
+    nurse:   { apex: "shark", day: true,  night: false, crystal: false, size: [72, 98],  label: "nurse shark" },
+    beluga:  { apex: "orca",  day: false, night: true,  crystal: false, size: [95, 125], label: "moon beluga" },
+    singer:  { apex: "whale", day: true,  night: true,  crystal: true,  size: [110, 150], label: "song whale" },
+    lotus:   { apex: "crocodile", day: true, night: false, crystal: false, size: [78, 102], label: "lotus softshell" },
+    axolotl: { apex: "alligator", day: true, night: false, crystal: false, size: [52, 72], label: "pond axolotl" },
+    ribbon:  { apex: "swordfish", day: false, night: true, crystal: false, size: [95, 125], label: "ribbon sail" },
+    garden:  { apex: "octopus", day: false, night: true, crystal: false, size: [58, 84], label: "garden octopus" },
+    shard:   { apex: "crystal", day: false, night: false, crystal: true, size: [78, 105], label: "shard nurse" },
+    prism:   { apex: "serpent", day: false, night: false, crystal: true, size: [70, 96], label: "prism softshell" },
+};
+
+function pickPacifistKind() {
+    const mode = environmentModeKey();
+    const pool = Object.keys(PACIFIST_KIND_META).filter((k) => {
+        const m = PACIFIST_KIND_META[k];
+        if (mode === "crystal") {
+            if (!m.crystal) return false;
+        } else if (mode === "night") {
+            if (!m.night) return false;
+        } else if (!m.day) {
+            return false;
+        }
+        // Avoid duplicate living kinds.
+        if (pacifistVisitors.some((p) => p && !p.dead && p.kind === k)) return false;
+        return true;
+    });
+    if (!pool.length) return null;
+    return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function spawnPacifistVisitor(forceKind) {
+    if (pacifistVisitors.filter((p) => p && !p.dead).length >= CONFIG.pacifistMax) return null;
+    const kind = forceKind || pickPacifistKind();
+    if (!kind) return null;
+    const p = new PacifistVisitor(kind);
+    pacifistVisitors.push(p);
+    water.disturb(p.x, p.y, p.size * 0.45, 140);
+    spawnSplash(p.x, p.y, p.size * 0.25, 0.35);
+    if (Audio.fishNote) {
+        Audio.fishNote({
+            freq: 280,
+            wave: "sine",
+            pan: Math.max(-1, Math.min(1, (p.x / viewW) * 2 - 1)),
+            dur: 0.5,
+            level: 0.08,
+            partialAmt: 0.25,
+            bright: 1.15,
+        });
+    }
+    return p;
+}
+
+function updatePacifistVisitors(dt) {
+    for (const p of pacifistVisitors) {
+        if (p && !p.dead) p.update(dt);
+    }
+    for (let i = pacifistVisitors.length - 1; i >= 0; i--) {
+        if (!pacifistVisitors[i] || pacifistVisitors[i].dead) pacifistVisitors.splice(i, 1);
+    }
+}
+
+function drawPacifistVisitors(ctx) {
+    for (const p of pacifistVisitors) {
+        if (p && !p.dead) p.draw(ctx);
+    }
+}
+
+function pacifistAt(x, y) {
+    let best = null;
+    let bestD = Infinity;
+    for (const p of pacifistVisitors) {
+        if (!p || p.dead) continue;
+        const hitR = p.kind === "garden" ? p.size * 0.75 : p.size * 0.55;
+        const d = Math.hypot(x - p.x, y - p.y);
+        if (d < hitR && d < bestD) { bestD = d; best = p; }
+    }
+    return best;
+}
+
+class PacifistVisitor {
+    constructor(kind) {
+        const meta = PACIFIST_KIND_META[kind] || PACIFIST_KIND_META.nurse;
+        this.kind = kind;
+        this.meta = meta;
+        this.size = rand(meta.size[0], meta.size[1]);
+        this.dead = false;
+        this.leaving = false;
+        this.tamed = false;
+        this.isHero = false; // after tame: soft hero ally (never hunts fish)
+        this.isPacifist = true;
+        this.petCount = 0;
+        this.petProgress = 0;
+        this.petTimer = 0;
+        this.life = 55 + Math.random() * 40;
+        this.age = 0;
+        this.phase = Math.random() * Math.PI * 2;
+        this.tailPhase = Math.random() * Math.PI * 2;
+        this.giftCd = 2 + Math.random() * 3;
+        this.jobCd = 1.5;
+        this.foodTarget = null;
+        this.legs = [];
+        const side = Math.floor(Math.random() * 4);
+        if (side === 0) { this.x = -this.size; this.y = Math.random() * viewH; }
+        else if (side === 1) { this.x = viewW + this.size; this.y = Math.random() * viewH; }
+        else if (side === 2) { this.x = Math.random() * viewW; this.y = -this.size; }
+        else { this.x = Math.random() * viewW; this.y = viewH + this.size; }
+        this.dir = Math.atan2(viewH * 0.5 - this.y, viewW * 0.5 - this.x);
+        this.speed = 28 + Math.random() * 14;
+        if (kind === "singer") this.speed *= 0.75;
+        if (kind === "ribbon") this.speed *= 1.15;
+        if (kind === "axolotl") this.speed *= 0.85;
+        if (kind === "garden") {
+            for (let i = 0; i < 8; i++) {
+                const ang = (i / 8) * Math.PI * 2;
+                const len = this.size * (0.9 + Math.random() * 0.4);
+                const baseAng = ang;
+                const tipAng = this.dir + Math.PI + baseAng * 0.55;
+                this.legs.push({
+                    phase: Math.random() * Math.PI * 2,
+                    tipX: this.x + Math.cos(tipAng) * len * 0.8,
+                    tipY: this.y + Math.sin(tipAng) * len * 0.7,
+                    len,
+                    baseAng,
+                });
+            }
+        }
+    }
+
+    pet(quiet) {
+        if (this.dead || this.leaving) return;
+        if (quiet && this.petTimer > 0.55) {
+            this.petTimer = 1.4;
+            return;
+        }
+        this.petTimer = 1.4;
+        const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+        Audio.fishNote({
+            freq: this.tamed ? 320 : 240,
+            wave: "sine",
+            pan,
+            dur: 0.4,
+            level: 0.07,
+            partialAmt: 0.22,
+            bright: 1.1,
+        });
+        water.disturb(this.x, this.y, this.size * 0.35, 50);
+        if (this.tamed) {
+            this.giftCd = Math.min(this.giftCd, 0.8);
+            return;
+        }
+        this.petCount++;
+        if (this.petCount >= CONFIG.petsToTamePacifist
+            || this.petProgress >= CONFIG.pacifistSootheTime) {
+            this.tame();
+        }
+    }
+
+    tame() {
+        if (this.tamed || this.dead) return;
+        this.tamed = true;
+        this.isHero = true;
+        this.leaving = false;
+        this.life = Math.max(this.life, 90);
+        this.petCount = 0;
+        this.petProgress = 0;
+        this.petTimer = Math.max(this.petTimer, 1.8);
+        const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+        if (Audio.goldChime) Audio.goldChime(pan);
+        Audio.fishNote({
+            freq: 360,
+            wave: "triangle",
+            pan,
+            dur: 0.55,
+            level: 0.1,
+            partialAmt: 0.3,
+            bright: 1.25,
+        });
+        water.disturb(this.x, this.y, this.size * 0.7, 180);
+        spawnSplash(this.x, this.y, this.size * 0.3, 0.45);
+        // Immediate friendship gift.
+        this.dropGift(true);
+    }
+
+    dropGift(strong) {
+        const n = strong ? 2 + Math.floor(Math.random() * 2) : 1;
+        for (let i = 0; i < n; i++) {
+            const ang = Math.random() * Math.PI * 2;
+            const rad = 12 + Math.random() * 22;
+            let flags = {};
+            const roll = Math.random();
+            if (this.kind === "lotus" || this.kind === "garden") {
+                flags = roll < 0.55 ? { green: true } : { grower: true };
+            } else if (this.kind === "singer" || this.kind === "beluga") {
+                flags = roll < 0.4 ? { pink: true } : roll < 0.7 ? { grower: true } : { rainbow: true };
+            } else if (this.kind === "axolotl") {
+                flags = roll < 0.6 ? { pink: true } : { hero: true };
+            } else if (this.kind === "ribbon") {
+                flags = roll < 0.5 ? { rainbow: true } : { grower: true };
+            } else {
+                flags = roll < 0.45 ? { grower: true } : roll < 0.75 ? { pink: true } : {};
+            }
+            foods.push(new Food(
+                this.x + Math.cos(ang) * rad,
+                this.y + Math.sin(ang) * rad,
+                7 + Math.random() * 5,
+                flags
+            ));
+        }
+        water.disturb(this.x, this.y, 12, 60);
+    }
+
+    update(dt) {
+        if (this.dead) return;
+        this.age += dt;
+        this.phase += dt * 1.4;
+        this.tailPhase += dt * (3.2 + (this.tamed ? 0.8 : 0));
+        if (this.petTimer > 0) this.petTimer = Math.max(0, this.petTimer - dt);
+        if (this.petTimer > 0 && !this.tamed) {
+            this.petProgress += dt;
+            if (this.petProgress >= CONFIG.pacifistSootheTime) this.tame();
+        }
+
+        // Untamed visitors eventually leave; tamed ones stay much longer.
+        if (!this.tamed) {
+            this.life -= dt;
+            if (this.life <= 0) this.leaving = true;
+        } else {
+            this.life -= dt * 0.15;
+            if (this.life <= 0) this.leaving = true;
+        }
+        // Wrong sky mode: untamed visitors drift out; tamed helpers stay.
+        if (!this.tamed) {
+            const mode = environmentModeKey();
+            if (mode === "crystal" && !this.meta.crystal) this.leaving = true;
+            else if (mode === "night" && !this.meta.night) this.leaving = true;
+            else if (mode === "day" && !this.meta.day) this.leaving = true;
+        }
+
+        this.giftCd -= dt;
+        this.jobCd -= dt;
+
+        let desired = this.dir;
+        let spd = this.speed * (this.petTimer > 0 ? 0.35 : 1);
+
+        if (this.leaving) {
+            const edgeX = this.x < viewW * 0.5 ? -this.size : viewW + this.size;
+            const edgeY = this.y < viewH * 0.5 ? -this.size : viewH + this.size;
+            desired = Math.atan2(edgeY - this.y, edgeX - this.x);
+            spd = this.speed * 1.35;
+            if (this.x < -this.size * 1.2 || this.x > viewW + this.size * 1.2
+                || this.y < -this.size * 1.2 || this.y > viewH + this.size * 1.2) {
+                this.dead = true;
+                return;
+            }
+        } else if (!this.foodTarget || this.foodTarget.eaten) {
+            this.foodTarget = nearestFood(this.x, this.y, CONFIG.perception * 1.4);
+        }
+
+        if (!this.leaving && this.foodTarget && !this.foodTarget.eaten) {
+            const f = this.foodTarget;
+            desired = Math.atan2(f.y - this.y, f.x - this.x);
+            spd = this.speed * 1.15;
+            if (Math.hypot(f.x - this.x, f.y - this.y) < this.size * 0.4 + f.radius() + 6) {
+                f.eaten = true;
+                this.foodTarget = null;
+                this.size = Math.min(this.size + 1.2, this.meta.size[1] * 1.15);
+                const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+                Audio.fishNote({
+                    freq: 260 * (0.9 + Math.random() * 0.2),
+                    wave: "triangle",
+                    pan,
+                    dur: 0.28,
+                    level: 0.05,
+                    partialAmt: 0.2,
+                    bright: 1.05,
+                });
+            }
+        } else if (!this.leaving) {
+            // Soft patrol / kind-specific roam.
+            desired = this.dir + Math.sin(this.phase * 0.7) * 0.55;
+            if (this.kind === "ribbon") desired += Math.sin(this.phase * 2.2) * 0.35;
+            if (this.kind === "garden") desired += Math.sin(this.phase * 0.4) * 0.25;
+        }
+
+        const diff = normAngle(desired - this.dir);
+        const turn = (this.kind === "singer" ? 1.1 : 2.0) * dt;
+        this.dir += Math.max(-turn, Math.min(turn, diff));
+        this.x += Math.cos(this.dir) * spd * dt;
+        this.y += Math.sin(this.dir) * spd * dt;
+        if (!this.leaving) {
+            this.x = Math.max(20, Math.min(viewW - 20, this.x));
+            this.y = Math.max(20, Math.min(viewH - 20, this.y));
+        }
+
+        // Garden octopus arm tips ease outward.
+        if (this.kind === "garden") {
+            for (let i = 0; i < this.legs.length; i++) {
+                const leg = this.legs[i];
+                leg.phase += dt * (1.2 + i * 0.05);
+                const ang = this.dir + Math.PI + leg.baseAng * 0.55 + Math.sin(leg.phase) * 0.25;
+                const rad = leg.len * (0.75 + 0.15 * Math.sin(leg.phase * 0.8));
+                const gx = this.x + Math.cos(ang) * rad;
+                const gy = this.y + Math.sin(ang) * rad * 0.85;
+                const k = 1 - Math.exp(-2.2 * dt);
+                leg.tipX += (gx - leg.tipX) * k;
+                leg.tipY += (gy - leg.tipY) * k;
+            }
+        }
+
+        if (this.giftCd <= 0 && !this.leaving) {
+            this.giftCd = this.tamed ? (7 + Math.random() * 5) : (14 + Math.random() * 10);
+            if (this.tamed || Math.random() < 0.45) this.dropGift(false);
+        }
+
+        // Continuous tamed auras (ease each frame).
+        if (this.tamed && !this.leaving) this.runTamedAura(dt);
+
+        if (this.tamed && this.jobCd <= 0 && !this.leaving) {
+            this.jobCd = 2.4 + Math.random() * 2.6;
+            this.runTamedPulse();
+        }
+
+        if (Math.random() < 0.06) {
+            water.disturb(this.x, this.y, 5 + this.size * 0.04, 18);
+        }
+        if (this.kind === "beluga" && typeof emitBiolumWake === "function" && Math.random() < 0.12) {
+            emitBiolumWake(this);
+        }
+        if (typeof applyCurrentToEntity === "function") applyCurrentToEntity(this, dt, 0.5);
+    }
+
+    runTamedAura(dt) {
+        if (this.kind === "nurse" || this.kind === "shard") {
+            const cx = viewW * (0.35 + 0.1 * Math.sin(this.age * 0.3));
+            const cy = viewH * 0.55;
+            const herdK = 1 - Math.exp(-1.2 * dt);
+            for (const f of fishes) {
+                if (f.dead || f.isPredator || f.isMonster || f.isRainbow || f.size > 36) continue;
+                if (Math.hypot(f.x - this.x, f.y - this.y) > this.size * 2.4) continue;
+                f.x += (cx - f.x) * herdK * 0.1;
+                f.y += (cy - f.y) * herdK * 0.1;
+            }
+            for (const f of fishes) {
+                if (f.dead || !(f.isPredator || f.isMonster) || f.isHero || f.redeemed) continue;
+                const d = Math.hypot(f.x - this.x, f.y - this.y);
+                if (d > this.size * 2 || d < 8) continue;
+                const ang = Math.atan2(f.y - this.y, f.x - this.x);
+                f.x += Math.cos(ang) * 28 * dt;
+                f.y += Math.sin(ang) * 28 * dt;
+            }
+        } else if (this.kind === "beluga") {
+            if (crystalSerpent && !crystalSerpent.dead && !crystalSerpent.isHero
+                && Math.hypot(crystalSerpent.x - this.x, crystalSerpent.y - this.y) < 170) {
+                const ang = Math.atan2(crystalSerpent.y - this.y, crystalSerpent.x - this.x);
+                crystalSerpent.x += Math.cos(ang) * 36 * dt;
+                crystalSerpent.y += Math.sin(ang) * 36 * dt;
+                crystalSerpent.target = null;
+            }
+            if (swordfish && isWildNightPredator(swordfish)
+                && Math.hypot(swordfish.x - this.x, swordfish.y - this.y) < 170) {
+                const ang = Math.atan2(swordfish.y - this.y, swordfish.x - this.x);
+                swordfish.x += Math.cos(ang) * 42 * dt;
+                swordfish.y += Math.sin(ang) * 42 * dt;
+                swordfish.target = null;
+            }
+            if (octopus && isWildNightPredator(octopus)
+                && Math.hypot(octopus.x - this.x, octopus.y - this.y) < 170) {
+                const ang = Math.atan2(octopus.y - this.y, octopus.x - this.x);
+                octopus.x += Math.cos(ang) * 38 * dt;
+                octopus.y += Math.sin(ang) * 38 * dt;
+                octopus.huntTarget = null;
+            }
+        } else if (this.kind === "singer") {
+            for (const f of fishes) {
+                if (!canBreedFish(f)) continue;
+                if (Math.hypot(f.x - this.x, f.y - this.y) > this.size * 2.2) continue;
+                f.breedCooldown = Math.max(0, (f.breedCooldown || 0) - dt * 3.2);
+            }
+        } else if (this.kind === "garden") {
+            for (const f of fishes) {
+                if (f.dead || !f.isPredator || f.isMonster || f.redeemed || f.isHero) continue;
+                if (Math.hypot(f.x - this.x, f.y - this.y) > this.size * 1.9) continue;
+                f.evilPetProgress = (f.evilPetProgress || 0) + dt * 0.55;
+                f.petTimer = Math.max(f.petTimer || 0, 0.5);
+                if (f.evilPetProgress >= CONFIG.evilSootheTime && typeof f.redeem === "function") {
+                    f.redeem();
+                }
+            }
+            if (typeof whirlpools !== "undefined") {
+                for (const w of whirlpools) {
+                    if (Math.hypot(w.x - this.x, w.y - this.y) < this.size * 1.1) {
+                        w.power = Math.max(4, (w.power || 20) - 18 * dt);
+                        w.life = Math.max(0.15, (w.life || 1) - 0.55 * dt);
+                    }
+                }
+            }
+        }
+    }
+
+    runTamedPulse() {
+        if (this.kind === "beluga") {
+            if (!weatherMood || weatherMood.kind !== "fireflies") beginWeatherMood("fireflies");
+            else weatherMood.life = Math.max(weatherMood.life, 8);
+        } else if (this.kind === "singer") {
+            if (Audio.whalePurr && Math.random() < 0.45) Audio.whalePurr(0);
+            else if (Audio.fishNote) {
+                Audio.fishNote({
+                    freq: 180 + Math.sin(this.age) * 40,
+                    wave: "sine",
+                    pan: 0,
+                    dur: 0.6,
+                    level: 0.04,
+                    partialAmt: 0.15,
+                    bright: 0.8,
+                });
+            }
+        } else if (this.kind === "lotus" || this.kind === "prism") {
+            if (pondPlants.length < 14 && typeof makePondPlant === "function") {
+                const ang = Math.random() * Math.PI * 2;
+                pondPlants.push(makePondPlant(
+                    this.x + Math.cos(ang) * (30 + Math.random() * 40),
+                    this.y + Math.sin(ang) * (20 + Math.random() * 30),
+                    22 + Math.random() * 18
+                ));
+            }
+        } else if (this.kind === "axolotl") {
+            for (const f of fishes) {
+                if (f.dead || f.golden || f.isPredator || f.isMonster) continue;
+                if (f.size > 28) continue;
+                if (Math.hypot(f.x - this.x, f.y - this.y) > this.size * 1.7) continue;
+                f.size = Math.min((f.type.size[1] || 24), f.size + 0.55);
+                if (!f.isPink && Math.random() < 0.12) f.isPink = true;
+            }
+        } else if (this.kind === "ribbon") {
+            const back = this.size * 0.55;
+            foods.push(new Food(
+                this.x - Math.cos(this.dir) * back,
+                this.y - Math.sin(this.dir) * back,
+                6 + Math.random() * 3,
+                Math.random() < 0.2 ? { rainbow: true } : {}
+            ));
+            if (typeof pushRainbowTrail === "function") {
+                pushRainbowTrail(this.x, this.y, 2.2, Math.floor(this.age * 10));
+            }
+        } else if (this.kind === "garden") {
+            if (pondPlants.length < 16 && typeof makePondPlant === "function") {
+                pondPlants.push(makePondPlant(this.x, this.y, 20 + Math.random() * 16));
+            }
+        }
+    }
+
+    draw(ctx) {
+        if (this.dead) return;
+        const L = this.size;
+        const W = this.size * (this.kind === "axolotl" ? 0.42
+            : this.kind === "garden" ? 0.38
+            : this.kind === "lotus" ? 0.36
+            : this.kind === "ribbon" ? 0.28
+            : this.kind === "beluga" ? 0.34
+            : this.kind === "singer" ? 0.32
+            : 0.36);
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.dir);
+        ctx.globalAlpha = this.leaving ? 0.55 : 0.94;
+        if (this.tamed) {
+            ctx.shadowColor = "rgba(160,220,255,0.7)";
+            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
+        }
+
+        if (this.kind === "garden") {
+            // Arms under mantle.
+            for (const leg of this.legs) {
+                const lx = (leg.tipX || this.x) - this.x;
+                const ly = (leg.tipY || this.y) - this.y;
+                // Rotate into local space.
+                const ca = Math.cos(-this.dir), sa = Math.sin(-this.dir);
+                const localX = lx * ca - ly * sa;
+                const localY = lx * sa + ly * ca;
+                ctx.strokeStyle = this.tamed ? "rgba(90,160,140,0.75)" : "rgba(70,120,110,0.7)";
+                ctx.lineWidth = Math.max(2, L * 0.06);
+                ctx.lineCap = "round";
+                ctx.beginPath();
+                ctx.moveTo(-L * 0.1, 0);
+                ctx.quadraticCurveTo(localX * 0.45, localY * 0.45, localX, localY);
+                ctx.stroke();
+            }
+        }
+
+        // Body fills by kind.
+        const body = ctx.createLinearGradient(0, -W, 0, W);
+        if (this.kind === "shard") {
+            body.addColorStop(0, this.tamed ? "#e8d8ff" : "#c8b0f0");
+            body.addColorStop(0.55, this.tamed ? "#9060c8" : "#6848a0");
+            body.addColorStop(1, "#40a0b8");
+        } else if (this.kind === "nurse") {
+            body.addColorStop(0, this.tamed ? "#d8c49a" : "#b89a6a");
+            body.addColorStop(0.55, this.tamed ? "#a88858" : "#8a6a40");
+            body.addColorStop(1, "#5a4830");
+        } else if (this.kind === "beluga") {
+            body.addColorStop(0, "#f4f8ff");
+            body.addColorStop(0.5, this.tamed ? "#d0e8f8" : "#c0d4e8");
+            body.addColorStop(1, "#8aa8c0");
+        } else if (this.kind === "singer") {
+            body.addColorStop(0, "#6a8aa0");
+            body.addColorStop(0.45, this.tamed ? "#4a7088" : "#3a5a70");
+            body.addColorStop(1, "#1a3040");
+        } else if (this.kind === "prism") {
+            body.addColorStop(0, "#d0e8ff");
+            body.addColorStop(0.5, this.tamed ? "#90c0e8" : "#70a0d0");
+            body.addColorStop(1, "#4060a0");
+        } else if (this.kind === "lotus") {
+            body.addColorStop(0, "#c8d8a8");
+            body.addColorStop(0.5, this.tamed ? "#88a868" : "#6a8850");
+            body.addColorStop(1, "#3a5028");
+        } else if (this.kind === "axolotl") {
+            body.addColorStop(0, "#f8c0d0");
+            body.addColorStop(0.5, this.tamed ? "#f090b0" : "#e07098");
+            body.addColorStop(1, "#a04868");
+        } else if (this.kind === "ribbon") {
+            body.addColorStop(0, "#70c8e8");
+            body.addColorStop(0.45, this.tamed ? "#40a0d0" : "#2a88b8");
+            body.addColorStop(1, "#184868");
+        } else {
+            body.addColorStop(0, "#80c8b0");
+            body.addColorStop(0.5, this.tamed ? "#48a888" : "#388870");
+            body.addColorStop(1, "#1a5040");
+        }
+        ctx.fillStyle = body;
+
+        // Silhouette families.
+        ctx.beginPath();
+        if (this.kind === "nurse" || this.kind === "shard" || this.kind === "beluga" || this.kind === "singer") {
+            ctx.ellipse(0, 0, L * 0.5, W, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Tail fluke.
+            ctx.beginPath();
+            ctx.moveTo(-L * 0.42, 0);
+            ctx.quadraticCurveTo(-L * 0.7, -W * 1.1, -L * 0.95, -W * 0.35);
+            ctx.quadraticCurveTo(-L * 0.7, 0, -L * 0.95, W * 0.35);
+            ctx.quadraticCurveTo(-L * 0.7, W * 1.1, -L * 0.42, 0);
+            ctx.fill();
+            if (this.kind === "shard") {
+                // Prism ridges + crystal dorsal.
+                ctx.strokeStyle = "rgba(255,255,255,0.4)";
+                ctx.lineWidth = 1.3;
+                for (let i = 0; i < 4; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(L * (0.2 - i * 0.08), -W * 0.5);
+                    ctx.lineTo(L * (0.14 - i * 0.08), W * 0.45);
+                    ctx.stroke();
+                }
+                ctx.fillStyle = "rgba(180,220,255,0.5)";
+                ctx.beginPath();
+                ctx.moveTo(-L * 0.05, -W * 0.7);
+                ctx.lineTo(L * 0.1, -W * 1.65);
+                ctx.lineTo(L * 0.22, -W * 0.65);
+                ctx.closePath();
+                ctx.fill();
+            } else if (this.kind === "nurse") {
+                // Broad pectorals + spotted nurse markings.
+                ctx.beginPath();
+                ctx.ellipse(L * 0.05, W * 0.85, L * 0.22, W * 0.55, 0.4, 0, Math.PI * 2);
+                ctx.ellipse(L * 0.05, -W * 0.85, L * 0.22, W * 0.55, -0.4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = "rgba(40,30,18,0.35)";
+                for (let i = 0; i < 7; i++) {
+                    const px = (i / 6 - 0.5) * L * 0.7;
+                    const py = Math.sin(i * 1.7 + this.phase) * W * 0.35;
+                    ctx.beginPath();
+                    ctx.ellipse(px, py, L * 0.04, L * 0.03, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            } else if (this.kind === "beluga") {
+                // Melon forehead + soft dorsal ridge.
+                ctx.fillStyle = body;
+                ctx.beginPath();
+                ctx.ellipse(L * 0.28, -W * 0.15, L * 0.22, W * 0.55, -0.2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = "rgba(180,210,230,0.55)";
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(-L * 0.1, -W * 0.85);
+                ctx.quadraticCurveTo(L * 0.1, -W * 1.15, L * 0.25, -W * 0.7);
+                ctx.stroke();
+            } else if (this.kind === "singer") {
+                // Tall scalloped dorsal + throat grooves.
+                ctx.beginPath();
+                ctx.moveTo(-L * 0.05, -W * 0.7);
+                ctx.quadraticCurveTo(L * 0.05, -W * 1.8, L * 0.25, -W * 0.85);
+                ctx.quadraticCurveTo(L * 0.1, -W * 0.9, -L * 0.05, -W * 0.7);
+                ctx.fill();
+                ctx.strokeStyle = "rgba(200,220,235,0.35)";
+                ctx.lineWidth = 1.2;
+                for (let i = 0; i < 4; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(L * 0.05, W * (0.15 + i * 0.18));
+                    ctx.quadraticCurveTo(L * 0.35, W * (0.2 + i * 0.18), L * 0.48, W * (0.12 + i * 0.15));
+                    ctx.stroke();
+                }
+            }
+        } else if (this.kind === "prism" || this.kind === "lotus") {
+            // Softshell disc + long neck snout (prism uses cooler facet shell).
+            ctx.ellipse(0, 0, L * 0.42, W * 1.15, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(L * 0.3, -W * 0.15);
+            ctx.quadraticCurveTo(L * 0.7, -W * 0.25, L * 0.95, 0);
+            ctx.quadraticCurveTo(L * 0.7, W * 0.25, L * 0.3, W * 0.15);
+            ctx.fill();
+            // Shell patterning.
+            ctx.strokeStyle = "rgba(40,60,30,0.35)";
+            ctx.lineWidth = 1.3;
+            for (let i = 0; i < 5; i++) {
+                const a = (i / 5) * Math.PI * 2;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(Math.cos(a) * L * 0.35, Math.sin(a) * W * 0.9);
+                ctx.stroke();
+            }
+        } else if (this.kind === "axolotl") {
+            ctx.ellipse(0, 0, L * 0.48, W, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // External gill fronds.
+            ctx.strokeStyle = this.tamed ? "rgba(255,140,180,0.85)" : "rgba(220,100,140,0.8)";
+            ctx.lineWidth = Math.max(1.5, L * 0.04);
+            ctx.lineCap = "round";
+            for (const side of [-1, 1]) {
+                for (let i = 0; i < 3; i++) {
+                    const base = -0.2 + i * 0.25;
+                    ctx.beginPath();
+                    ctx.moveTo(L * 0.15, side * W * 0.3);
+                    ctx.quadraticCurveTo(
+                        L * (0.35 + i * 0.05),
+                        side * W * (1.1 + i * 0.25 + Math.sin(this.phase + i) * 0.15),
+                        L * 0.2,
+                        side * W * (1.6 + i * 0.2)
+                    );
+                    ctx.stroke();
+                }
+            }
+            // Soft legs.
+            ctx.fillStyle = body;
+            for (const side of [-1, 1]) {
+                ctx.beginPath();
+                ctx.ellipse(-L * 0.05, side * W * 1.05, L * 0.14, W * 0.35, side * 0.3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        } else if (this.kind === "ribbon") {
+            // Slim sailfish with tall luminous sail.
+            ctx.moveTo(L * 0.55, 0);
+            ctx.bezierCurveTo(L * 0.3, -W * 0.9, -L * 0.1, -W, -L * 0.45, -W * 0.35);
+            ctx.bezierCurveTo(-L * 0.55, 0, -L * 0.45, W * 0.35, -L * 0.1, W * 0.85);
+            ctx.bezierCurveTo(L * 0.3, W * 0.7, L * 0.5, W * 0.25, L * 0.55, 0);
+            ctx.closePath();
+            ctx.fill();
+            // Bill.
+            ctx.beginPath();
+            ctx.moveTo(L * 0.5, -W * 0.08);
+            ctx.lineTo(L * 1.05, 0);
+            ctx.lineTo(L * 0.5, W * 0.08);
+            ctx.fill();
+            // Sail.
+            const sail = ctx.createLinearGradient(0, -W * 2.4, 0, -W);
+            sail.addColorStop(0, "rgba(120,220,255,0.55)");
+            sail.addColorStop(1, "rgba(40,120,180,0.35)");
+            ctx.fillStyle = sail;
+            ctx.beginPath();
+            ctx.moveTo(-L * 0.15, -W * 0.6);
+            ctx.quadraticCurveTo(L * 0.05, -W * (2.4 + Math.sin(this.tailPhase) * 0.2), L * 0.4, -W * 0.5);
+            ctx.quadraticCurveTo(L * 0.1, -W * 1.1, -L * 0.15, -W * 0.6);
+            ctx.fill();
+            // Tail.
+            ctx.fillStyle = body;
+            ctx.beginPath();
+            ctx.moveTo(-L * 0.4, 0);
+            ctx.lineTo(-L * 0.85, -W * 1.1);
+            ctx.lineTo(-L * 0.65, 0);
+            ctx.lineTo(-L * 0.85, W * 1.1);
+            ctx.closePath();
+            ctx.fill();
+        } else {
+            // Garden octopus mantle.
+            ctx.ellipse(0, 0, L * 0.42, W, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "rgba(255,255,255,0.18)";
+            for (let i = 0; i < 5; i++) {
+                ctx.beginPath();
+                ctx.arc(
+                    Math.cos(i * 1.4 + this.phase) * L * 0.18,
+                    Math.sin(i * 1.7) * W * 0.35,
+                    L * 0.05,
+                    0, Math.PI * 2
+                );
+                ctx.fill();
+            }
+        }
+
+        // Eye.
+        ctx.fillStyle = "rgba(250,252,255,0.95)";
+        const eyeX = this.kind === "lotus" ? L * 0.55
+            : this.kind === "ribbon" ? L * 0.28
+            : L * 0.22;
+        const eyeY = this.kind === "beluga" ? -W * 0.05 : -W * 0.22;
+        ctx.beginPath();
+        ctx.ellipse(eyeX, eyeY, Math.max(2.2, L * 0.045), Math.max(2.5, L * 0.055), 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = this.tamed ? "rgba(40,90,120,0.95)" : "rgba(20,30,40,0.95)";
+        ctx.beginPath();
+        ctx.arc(eyeX + L * 0.01, eyeY, Math.max(1.1, L * 0.022), 0, Math.PI * 2);
+        ctx.fill();
+        if (this.petTimer > 0) {
+            ctx.strokeStyle = "rgba(20,30,40,0.7)";
+            ctx.lineWidth = Math.max(1, L * 0.02);
+            ctx.beginPath();
+            ctx.moveTo(eyeX - L * 0.04, eyeY);
+            ctx.quadraticCurveTo(eyeX, eyeY + L * 0.03, eyeX + L * 0.04, eyeY);
+            ctx.stroke();
+        }
+
+        // Tamed crest glow.
+        if (this.tamed) {
+            ctx.globalCompositeOperation = "lighter";
+            ctx.fillStyle = "rgba(180,230,255,0.18)";
+            ctx.beginPath();
+            ctx.ellipse(0, 0, L * 0.55, W * 1.2, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
+    }
+}
+
+
+
+// Crystal Depths apex visitor: long prismatic serpent that hunts smaller fish.
+class CrystalSerpent {
+    constructor(opts) {
+        this.size = rand(CONFIG.crystalSerpentSize[0], CONFIG.crystalSerpentSize[1]);
+        this.dead = false;
+        this.leaving = false;
+        this.tamed = false;
+        this.isHero = false;
+        this.tailPhase = Math.random() * Math.PI * 2;
+        this.phase = Math.random() * Math.PI * 2;
+        this.huntTimer = 0;
+        this.wanderTimer = 0;
+        this._wanderDir = 0;
+        this.target = null;
+        this.petTimer = 0;
+        this.segments = 7;
+        const side = Math.floor(Math.random() * 4);
+        if (side === 0) { this.x = -this.size; this.y = Math.random() * viewH; }
+        else if (side === 1) { this.x = viewW + this.size; this.y = Math.random() * viewH; }
+        else if (side === 2) { this.x = Math.random() * viewW; this.y = -this.size; }
+        else { this.x = Math.random() * viewW; this.y = viewH + this.size; }
+        this.dir = Math.atan2(viewH * 0.5 - this.y, viewW * 0.5 - this.x);
+        this.speed = 48 + Math.random() * 18;
+        if (!(opts && opts.quiet)) {
+            Audio.predatorEat(this.x < viewW * 0.5 ? -0.28 : 0.28);
+        }
+    }
+
+    pet() {
+        if (this.dead || this.leaving) return;
+        this.petTimer = 1.4;
+        const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+        Audio.fishNote({
+            freq: this.isHero ? 300 : 210,
+            wave: "triangle",
+            pan,
+            dur: 0.4,
+            level: 0.07,
+            partialAmt: 0.22,
+            bright: 1.15,
+        });
+        water.disturb(this.x, this.y, this.size * 0.4, 80);
+    }
+
+    findPrey() {
+        let best = null;
+        let bd = CONFIG.huntRange * 1.6;
+        for (const f of fishes) {
+            if (f.dead || f.golden || f.isRainbow || f.isPlatinum || f.isMonster) continue;
+            if (f.size >= this.size * 0.92) continue;
+            const d = Math.hypot(f.x - this.x, f.y - this.y);
+            if (d < bd) { bd = d; best = f; }
+        }
+        return best;
+    }
+
+    update(dt) {
+        if (this.dead) return;
+        this.tailPhase += dt * (this.leaving ? 5.5 : 3.6);
+        this.phase += dt * 1.3;
+        if (this.petTimer > 0) this.petTimer = Math.max(0, this.petTimer - dt);
+
+        if (!crystalMode && !this.isHero) this.leaving = true;
+
+        if (this.leaving) {
+            this.x += Math.cos(this.dir) * this.speed * 1.4 * dt;
+            this.y += Math.sin(this.dir) * this.speed * 1.4 * dt;
+            const m = this.size * 1.8;
+            if (this.x < -m || this.x > viewW + m || this.y < -m || this.y > viewH + m) {
+                this.dead = true;
+            }
+            return;
+        }
+
+        let desired = this.dir;
+        let spd = this.speed * (this.petTimer > 0 ? 0.4 : 1);
+
+        if (this.isHero) {
+            this.target = null;
+            this.wanderTimer -= dt;
+            if (this.wanderTimer <= 0) {
+                this.wanderTimer = 1.5 + Math.random() * 2;
+                this._wanderDir = this.dir + (Math.random() - 0.5) * 1.2;
+            }
+            desired = this._wanderDir;
+            const margin = 60;
+            if (this.x < margin) desired = 0;
+            else if (this.x > viewW - margin) desired = Math.PI;
+            if (this.y < margin) desired = Math.PI / 2;
+            else if (this.y > viewH - margin) desired = -Math.PI / 2;
+            spd *= 0.75;
+        } else {
+            this.huntTimer -= dt;
+            if (!this.target || this.target.dead || this.huntTimer <= 0) {
+                this.target = this.findPrey();
+                this.huntTimer = 1.2 + Math.random() * 1.8;
+            }
+            if (this.target && !this.target.dead) {
+                desired = Math.atan2(this.target.y - this.y, this.target.x - this.x);
+                spd = this.speed * 1.25;
+                if (Math.hypot(this.target.x - this.x, this.target.y - this.y) < this.size * 0.42 + this.target.size * 0.35) {
+                    const prey = this.target;
+                    prey.dead = true;
+                    this.target = null;
+                    this.size = Math.min(this.size + 2.5, CONFIG.crystalSerpentSize[1] * 1.25);
+                    Audio.predatorEat(Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1)));
+                    water.disturb(this.x, this.y, this.size * 0.5, 160);
+                    spawnSplash(this.x, this.y, 14, 0.55);
+                }
+            } else {
+                this.wanderTimer -= dt;
+                if (this.wanderTimer <= 0) {
+                    this.wanderTimer = 1.4 + Math.random() * 2.2;
+                    this._wanderDir = this.dir + (Math.random() - 0.5) * 1.4;
+                }
+                desired = this._wanderDir + Math.sin(this.phase) * 0.25;
+            }
+        }
+
+        const diff = normAngle(desired - this.dir);
+        const turn = 2.2 * dt;
+        this.dir += Math.max(-turn, Math.min(turn, diff));
+        this.x += Math.cos(this.dir) * spd * dt;
+        this.y += Math.sin(this.dir) * spd * dt;
+        if (!this.leaving) {
+            this.x = Math.max(16, Math.min(viewW - 16, this.x));
+            this.y = Math.max(16, Math.min(viewH - 16, this.y));
+        }
+        if (Math.random() < 0.08) water.disturb(this.x, this.y, 6, 20);
+        if (typeof applyCurrentToEntity === "function") applyCurrentToEntity(this, dt, 0.55);
+    }
+
+    draw(ctx) {
+        if (this.dead) return;
+        const L = this.size;
+        const W = this.size * 0.22;
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.dir);
+        ctx.globalAlpha = this.leaving ? 0.5 : 0.92;
+        if (this.isHero) {
+            ctx.shadowColor = "rgba(180,140,255,0.75)";
+            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 16;
+        } else {
+            ctx.shadowColor = "rgba(100,60,160,0.45)";
+            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 12;
+        }
+
+        // Segmented crystal body with facet ridges.
+        for (let i = this.segments - 1; i >= 0; i--) {
+            const t = i / (this.segments - 1);
+            const along = -L * 0.42 + t * L * 0.95;
+            const sway = Math.sin(this.tailPhase + i * 0.55) * W * (0.35 + t * 0.8);
+            const rw = W * (0.55 + (1 - t) * 0.7);
+            const rh = W * (0.7 + (1 - t) * 0.5);
+            const g = ctx.createLinearGradient(along, sway - rh, along, sway + rh);
+            const hue = 260 + t * 80 + Math.sin(this.phase + i) * 20;
+            g.addColorStop(0, `hsl(${hue}, 55%, ${this.isHero ? 72 : 62}%)`);
+            g.addColorStop(0.5, `hsl(${hue + 30}, 50%, ${this.isHero ? 48 : 38}%)`);
+            g.addColorStop(1, `hsl(${hue - 20}, 45%, 28%)`);
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.ellipse(along, sway, rw, rh, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = "rgba(255,255,255,0.28)";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(along - rw * 0.4, sway);
+            ctx.lineTo(along + rw * 0.4, sway - rh * 0.4);
+            ctx.stroke();
+        }
+
+        // Faceted head.
+        ctx.fillStyle = this.isHero ? "#e8d0ff" : "#c0a0e8";
+        ctx.beginPath();
+        ctx.moveTo(L * 0.55, 0);
+        ctx.lineTo(L * 0.28, -W * 0.95);
+        ctx.lineTo(L * 0.12, 0);
+        ctx.lineTo(L * 0.28, W * 0.95);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "rgba(250,252,255,0.95)";
+        ctx.beginPath();
+        ctx.ellipse(L * 0.32, -W * 0.35, Math.max(2, L * 0.035), Math.max(2.2, L * 0.04), 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(40,20,60,0.9)";
+        ctx.beginPath();
+        ctx.arc(L * 0.34, -W * 0.35, Math.max(1, L * 0.018), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+}
+
 
 function manageEcosystem(dt) {
     if (povAttack) {
@@ -15015,8 +16260,8 @@ function manageEcosystem(dt) {
             && swimmers.length > 0 && Math.random() < CONFIG.whaleChance) {
             whale = new Whale();
         }
-        // Blobfish: same apex cadence, smaller chance, night only.
-        if (nightMode && !whale && !shark && !repopulating && !rainbowExiting && !pondFinaleActive()
+        // Blobfish: same apex cadence, smaller chance, moon pond only.
+        if (nightMode && !crystalMode && !whale && !shark && !repopulating && !rainbowExiting && !pondFinaleActive()
             && swimmers.length > 0) {
             const blobCount = swimmers.filter((f) => f.type && f.type.blobfish).length;
             if (blobCount < 1 && Math.random() < CONFIG.blobfishChance) {
@@ -15054,7 +16299,11 @@ function manageEcosystem(dt) {
         );
         if (!whale && !wildSharkBlocks && !repopulating && !pondFinaleActive() && !apexDuel
             && countable.length > 2) {
-            if (nightMode) {
+            if (crystalMode) {
+                if (!crystalSerpent && Math.random() < CONFIG.crystalPredatorChance) {
+                    crystalSerpent = new CrystalSerpent();
+                }
+            } else if (nightMode) {
                 const needSf = !swordfish;
                 const needOc = !octopus;
                 // Allow the missing night predator beside a tamed/hero ally of the other kind.
@@ -15074,6 +16323,18 @@ function manageEcosystem(dt) {
             }
         }
     }
+
+    // Pacifist apex counterparts: rare helpers on their own cadence.
+    pacifistCheckTimer += dt;
+    if (pacifistCheckTimer >= CONFIG.pacifistInterval) {
+        pacifistCheckTimer = 0;
+        if (!repopulating && !pondFinaleActive() && !apexDuel
+            && countable.length > 1
+            && Math.random() < CONFIG.pacifistChance) {
+            spawnPacifistVisitor();
+        }
+    }
+    updatePacifistVisitors(dt);
 
     // Background frogs along the lower bank with tadpole clusters.
     frogCheckTimer += dt;
@@ -15103,6 +16364,10 @@ function manageEcosystem(dt) {
             octopus = null;
         }
     }
+    if (crystalSerpent) {
+        crystalSerpent.update(dt);
+        if (crystalSerpent.dead) crystalSerpent = null;
+    }
 
     if (whale) {
         whale.update(dt);
@@ -15116,21 +16381,27 @@ function manageEcosystem(dt) {
     }
 
     const livingReptiles = reptiles.filter((r) => !r.dead && !r.leaving && !r.tamed && !r.golden);
-    // At night, day reptiles must not drive ecosystem events; ease them off-screen.
-    if (nightMode && livingReptiles.length > 0) {
+    // Wrong sky mode: ease day reptiles / night hunters / crystal serpent off-screen.
+    if ((nightMode || crystalMode) && livingReptiles.length > 0) {
         for (const r of livingReptiles) {
             if (!r.leaving) r.leaving = true;
         }
     }
+    if (crystalMode) {
+        if (swordfish && !swordfish.dead && !swordfish.isHero && !swordfish.tamed) swordfish.leaving = true;
+        if (octopus && !octopus.dead && !octopus.isHero && !octopus.tamed) octopus.leaving = true;
+    } else if (crystalSerpent && !crystalSerpent.dead && !crystalSerpent.isHero) {
+        crystalSerpent.leaving = true;
+    }
     // Wild croc/alligator cleared the pond: summon the shark for a fight to the death.
     // Glow fish do not count, so the duel still starts while they float unharmed.
-    // Day only: never steal night orca / swordfish stories into a croc duel.
-    if (!nightMode && !apexDuel && !pondFinaleActive() && !whale && !rainbowExiting
+    // Day only: never steal night/crystal stories into a croc duel.
+    if (!nightMode && !crystalMode && !apexDuel && !pondFinaleActive() && !whale && !rainbowExiting
         && livingReptiles.length > 0 && countable.length === 0) {
         beginApexDuel();
     }
     if (apexDuel) {
-        if (nightMode) {
+        if (nightMode || crystalMode) {
             // Soft abort: never run the day croc/shark duel under moonlight.
             apexDuel = null;
             if (shark && !shark.isHero) {
@@ -15147,8 +16418,17 @@ function manageEcosystem(dt) {
     }
 
     if (shark) {
-        // Day shark must not linger after a switch to night; orca replaces last-fish role.
+        // Wrong-mode last-fish sharks ease out when the sky changes.
         if (nightMode && !shark.isOrca && !shark.isHero && !shark.duelMode && !shark.glowSwallow) {
+            shark.leaving = true;
+        }
+        if (crystalMode && !shark.isCrystal && !shark.isHero && !shark.duelMode && !shark.glowSwallow) {
+            shark.leaving = true;
+        }
+        if (!crystalMode && shark.isCrystal && !shark.isHero && !shark.duelMode && !shark.glowSwallow) {
+            shark.leaving = true;
+        }
+        if (!nightMode && shark.isOrca && !shark.isHero && !shark.duelMode && !shark.glowSwallow) {
             shark.leaving = true;
         }
         shark.update(dt);
@@ -15169,11 +16449,14 @@ function manageEcosystem(dt) {
         beginRainbowNinjaFight();
     } else if (!shark && !whale && !repopulating && !rainbowExiting && !pondFinaleActive() && !apexDuel
         && countable.length === 1) {
-        // Last countable swimmer: day shark, night orca (much larger).
-        shark = new Shark(countable[0], { orca: !!nightMode });
+        // Last countable swimmer: day shark, night orca, crystal prism shark.
+        shark = new Shark(countable[0], {
+            orca: !!nightMode && !crystalMode,
+            crystal: !!crystalMode,
+        });
     } else if (!repopulating && !shark && !whale && !pondFinaleActive() && !apexDuel && !rainbowExiting
         && countable.length === 0 && livingReptiles.length === 0 && !sharkBusyWithGlow
-        && !octopus && !swordfish) {
+        && !octopus && !swordfish && !crystalSerpent) {
         // Restock when no countable swimmers remain (glow / gold do not block this).
         repopulating = true;
         repopTimer = 0.8;
@@ -16003,6 +17286,28 @@ function tryScareReptileAt(x, y) {
 
 // Right-click pets: whale and shark first, then reptiles, frogs, then ordinary fish.
 function petPondLifeAt(x, y, quiet) {
+    if (crystalSerpent && !crystalSerpent.dead) {
+        const d = Math.hypot(x - crystalSerpent.x, y - crystalSerpent.y);
+        if (d < crystalSerpent.size * 0.55) {
+            if (quiet && crystalSerpent.petTimer > 0.6) {
+                crystalSerpent.petTimer = 1.4;
+                return;
+            }
+            crystalSerpent.pet();
+            markFirstInteraction();
+            return;
+        }
+    }
+    const pac = pacifistAt(x, y);
+    if (pac) {
+        if (quiet && pac.petTimer > 0.6) {
+            pac.petTimer = 1.4;
+            return;
+        }
+        pac.pet();
+        markFirstInteraction();
+        return;
+    }
     if (whale && !whale.dead) {
         const d = Math.hypot(x - whale.x, y - whale.y);
         if (d < whale.size * 0.48) {
@@ -16239,6 +17544,10 @@ document.querySelectorAll(".scenery-btn[data-scenery]").forEach((btn) => {
         if (!key || !(key in scenery)) return;
         // Sun pond: leaving moon returns to day; in day it toggles the sun wash.
         if (key === "sun") {
+            if (crystalMode) {
+                setCrystalMode(false);
+                return;
+            }
             if (nightMode) {
                 setNightMode(false);
                 return;
@@ -16394,6 +17703,9 @@ function resetMarketUnlocks() {
     platinumUnlocked = false;
     nightUnlocked = false;
     nightMode = false;
+    crystalUnlocked = false;
+    crystalMode = false;
+    crystalMoonPlats = 0;
     catcherMode = false;
     pickerMode = false;
     catcherDrag = null;
@@ -16413,7 +17725,11 @@ function applyMarketData(data) {
     rainbowCaughtCount = Math.max(0, Math.floor(data.rainbowCaught || 0));
     platinumUnlocked = !!data.platinum || rainbowCaughtCount >= RAINBOWS_FOR_PLATINUM;
     nightUnlocked = !!data.moonPond;
+    crystalMoonPlats = Math.max(0, Math.floor(data.crystalMoonPlats || 0));
+    crystalUnlocked = !!data.crystalPond
+        || (nightUnlocked && crystalMoonPlats >= PLATINUMS_FOR_CRYSTAL);
     nightMode = false;
+    crystalMode = false;
 }
 
 function loadMarketState() {
@@ -16453,6 +17769,7 @@ function serializeFishType(type) {
         koi: !!type.koi,
         exotic: !!type.exotic,
         night: !!type.night,
+        crystal: !!type.crystal,
         odd: type.odd || null,
         dart: !!type.dart,
         ghost: type.ghost,
@@ -16490,6 +17807,7 @@ function reviveFishType(data) {
     if (data.koi) type.koi = true;
     if (data.exotic) type.exotic = true;
     if (data.night) type.night = true;
+    if (data.crystal) type.crystal = true;
     if (data.odd) type.odd = data.odd;
     if (data.dart) type.dart = true;
     if (data.ghost != null) type.ghost = data.ghost;
@@ -16605,6 +17923,8 @@ function buildProgressSnapshot() {
             rainbowCaught: rainbowCaughtCount,
             platinum: platinumUnlocked,
             moonPond: nightUnlocked,
+            crystalPond: crystalUnlocked,
+            crystalMoonPlats: crystalMoonPlats,
         },
         food: {
             items: foodStash.slice(0, CONFIG.foodStashMax),
@@ -16653,11 +17973,13 @@ function applyProgressSnapshot(data) {
     }
     if (!fishes.length) initFish();
     nightMode = false;
+    crystalMode = false;
     setMarketOpen(false);
     setProgressOpen(false);
     updateHatsButtonUI();
     updateGoldCountUI();
     updateNightButtonUI();
+    updateCrystalButtonUI();
     updateCatcherButtonUI();
     updatePickerButtonUI();
     updateMarketButtonUI();
@@ -17061,8 +18383,46 @@ function unlockMoonPond() {
     nightUnlocked = true;
     saveMarketState();
     updateNightButtonUI();
+    updateCrystalButtonUI();
     updateMarketUI();
     if (Audio.goldChime) Audio.goldChime(0);
+}
+
+function maybeUnlockCrystalDepths() {
+    if (crystalUnlocked || !nightUnlocked) return;
+    if (crystalMoonPlats < PLATINUMS_FOR_CRYSTAL) return;
+    crystalUnlocked = true;
+    saveMarketState();
+    updateCrystalButtonUI();
+    updateMarketUI();
+    if (Audio.rainbowChime) Audio.rainbowChime(0);
+    if (Audio.goldChime) Audio.goldChime(0);
+}
+
+function updateCrystalButtonUI() {
+    const btn = document.getElementById("crystal-btn");
+    if (!btn) return;
+    btn.hidden = false;
+    btn.classList.toggle("locked", !crystalUnlocked);
+    btn.classList.toggle("on", !!crystalMode && crystalUnlocked);
+    btn.setAttribute("aria-disabled", crystalUnlocked ? "false" : "true");
+    btn.setAttribute("aria-pressed", crystalMode && crystalUnlocked ? "true" : "false");
+    const lock = document.getElementById("crystal-lock");
+    if (!crystalUnlocked) {
+        const left = Math.max(0, PLATINUMS_FOR_CRYSTAL - crystalMoonPlats);
+        if (lock) lock.textContent = left > 0 ? String(left) + "Pt" : "Pt";
+        btn.title = nightUnlocked
+            ? ("Crystal Depths: make " + PLATINUMS_FOR_CRYSTAL
+                + " platinum fish under moonlight (" + crystalMoonPlats + "/"
+                + PLATINUMS_FOR_CRYSTAL + ")")
+            : "Crystal Depths: unlock moon pond first, then make platinum fish under moonlight";
+    } else {
+        if (lock) lock.textContent = "";
+        btn.title = crystalMode
+            ? "Crystal Depths on: prism water and gemstone fish"
+            : "Crystal Depths: prism water and gemstone fish";
+    }
+    syncSunPondButtonUI();
 }
 
 function updateNightButtonUI() {
@@ -17087,24 +18447,41 @@ function updateNightButtonUI() {
 function syncSunPondButtonUI() {
     const sunBtn = document.querySelector('.scenery-btn[data-scenery="sun"]');
     if (!sunBtn) return;
-    // Day is the default. While moon pond is on, sun reads as off.
-    const sunOn = !nightMode && !!scenery.sun;
+    // Day is the default. While moon or crystal sky is on, sun reads as off.
+    const sunOn = !nightMode && !crystalMode && !!scenery.sun;
     sunBtn.classList.toggle("on", sunOn);
     sunBtn.setAttribute("aria-pressed", sunOn ? "true" : "false");
-    sunBtn.title = nightMode
+    sunBtn.title = crystalMode
         ? "Sun pond: return to daylight"
-        : (scenery.sun ? "Sun pond on" : "Sun pond: daylight and sun wash");
+        : nightMode
+            ? "Sun pond: return to daylight"
+            : (scenery.sun ? "Sun pond on" : "Sun pond: daylight and sun wash");
 }
 
 function setNightMode(on) {
     if (!nightUnlocked) return;
     nightMode = !!on;
     if (nightMode) {
+        crystalMode = false;
         // Moon pond owns the sky; keep sun scenery ready for when day returns.
         scenery.sun = true;
     }
     saveMarketState();
     updateNightButtonUI();
+    updateCrystalButtonUI();
+    markFirstInteraction();
+}
+
+function setCrystalMode(on) {
+    if (!crystalUnlocked) return;
+    crystalMode = !!on;
+    if (crystalMode) {
+        nightMode = false;
+        scenery.sun = true;
+    }
+    saveMarketState();
+    updateNightButtonUI();
+    updateCrystalButtonUI();
     markFirstInteraction();
 }
 
@@ -17750,7 +19127,17 @@ if (nightBtn) {
     });
 }
 
+const crystalBtn = document.getElementById("crystal-btn");
+if (crystalBtn) {
+    crystalBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!crystalUnlocked) return;
+        setCrystalMode(!crystalMode);
+    });
+}
+
 updateNightButtonUI();
+updateCrystalButtonUI();
 updateMarketUI();
 
 // ===========================================================================
@@ -17941,6 +19328,8 @@ function findFishTypeByName(name) {
     return FISH_TYPES.find((t) => t.name === name)
         || EXOTIC_TYPES.find((t) => t.name === name)
         || NIGHT_FISH_TYPES.find((t) => t.name === name)
+        || CRYSTAL_FISH_TYPES.find((t) => t.name === name)
+        || CRYSTAL_EXOTIC_TYPES.find((t) => t.name === name)
         || null;
 }
 
@@ -18015,6 +19404,7 @@ function devRefreshChrome() {
     updateHatsButtonUI();
     updateMarketUI();
     updateNightButtonUI();
+    updateCrystalButtonUI();
     updateCatcherButtonUI();
     if (typeof renderFoodStashUI === "function") renderFoodStashUI();
     if (netBtn) {
@@ -18031,6 +19421,7 @@ function refreshDevMenuToggles() {
         const key = btn.dataset.devToggle;
         let on = false;
         if (key === "night") on = nightMode;
+        else if (key === "crystal") on = crystalMode;
         else if (key === "hats") on = hatsOn;
         else if (key === "net") on = netMode;
         else if (key === "catcher") on = catcherMode;
@@ -18240,6 +19631,18 @@ function buildDevMenu() {
         nightUnlocked = true;
         rainbowCaughtCount = Math.max(rainbowCaughtCount, RAINBOWS_FOR_PLATINUM);
         saveMarketState();
+        updateNightButtonUI();
+        updateCrystalButtonUI();
+    });
+    btn(unlocks, "Crystal unlock", () => {
+        platinumUnlocked = true;
+        nightUnlocked = true;
+        crystalUnlocked = true;
+        crystalMoonPlats = PLATINUMS_FOR_CRYSTAL;
+        rainbowCaughtCount = Math.max(rainbowCaughtCount, RAINBOWS_FOR_PLATINUM);
+        saveMarketState();
+        updateNightButtonUI();
+        updateCrystalButtonUI();
     });
 
     const modes = section("Modes");
@@ -18254,6 +19657,14 @@ function buildDevMenu() {
         saveMarketState();
         setNightMode(!nightMode);
     }, { toggle: "night" });
+    btn(modes, "Crystal", () => {
+        nightUnlocked = true;
+        platinumUnlocked = true;
+        crystalUnlocked = true;
+        crystalMoonPlats = PLATINUMS_FOR_CRYSTAL;
+        saveMarketState();
+        setCrystalMode(!crystalMode);
+    }, { toggle: "crystal" });
     btn(modes, "Net", () => {
         netMode = !netMode;
         netSweeping = false;
@@ -18329,6 +19740,21 @@ function buildDevMenu() {
     for (const t of NIGHT_FISH_TYPES) {
         btn(nightGrid, t.name, () => { devSpawnTypedFish(t); });
     }
+
+    const crystalGrid = section("Crystal fish");
+    for (const t of CRYSTAL_FISH_TYPES) {
+        btn(crystalGrid, t.name, () => { devSpawnTypedFish(t); });
+    }
+    for (const t of CRYSTAL_EXOTIC_TYPES) {
+        btn(crystalGrid, t.name, () => { devSpawnTypedFish(t); });
+    }
+    btn(crystalGrid, "Unlock + enter crystal", () => {
+        nightUnlocked = true;
+        crystalUnlocked = true;
+        crystalMoonPlats = PLATINUMS_FOR_CRYSTAL;
+        setCrystalMode(true);
+        devRefreshChrome();
+    });
 
     const special = section("Special fish");
     btn(special, "Hero", () => {
@@ -18464,6 +19890,50 @@ function buildDevMenu() {
         devEnsurePond();
         const p = devSpawnPoint();
         spawnEnvironmentHeroApex(p.x, p.y, environmentRoster());
+    });
+    for (const kind of Object.keys(PACIFIST_KIND_META)) {
+        const label = PACIFIST_KIND_META[kind].label;
+        btn(apex, "Help: " + label, () => {
+            devEnsurePond();
+            const p = spawnPacifistVisitor(kind);
+            if (p) {
+                const sp = devSpawnPoint();
+                p.x = sp.x;
+                p.y = sp.y;
+            }
+        });
+    }
+    btn(apex, "Crystal serpent", () => {
+        devEnsurePond();
+        crystalUnlocked = true;
+        setCrystalMode(true);
+        if (crystalSerpent && !crystalSerpent.dead) crystalSerpent.dead = true;
+        crystalSerpent = new CrystalSerpent({ quiet: true });
+        const p = devSpawnPoint();
+        crystalSerpent.x = p.x;
+        crystalSerpent.y = p.y;
+    });
+    btn(apex, "Prism shark", () => {
+        devEnsurePond();
+        crystalUnlocked = true;
+        setCrystalMode(true);
+        if (shark && !shark.dead) shark.dead = true;
+        shark = new Shark(null, { crystal: true });
+        const p = devSpawnPoint();
+        shark.x = p.x;
+        shark.y = p.y;
+    });
+    btn(apex, "Tame nearest helper", () => {
+        let best = null;
+        let bd = Infinity;
+        const px = (lastCanvasPointer && lastCanvasPointer.x) || viewW * 0.5;
+        const py = (lastCanvasPointer && lastCanvasPointer.y) || viewH * 0.5;
+        for (const p of pacifistVisitors) {
+            if (!p || p.dead || p.tamed) continue;
+            const d = Math.hypot(p.x - px, p.y - py);
+            if (d < bd) { bd = d; best = p; }
+        }
+        if (best) best.tame();
     });
 
     const food = section("Food");
@@ -19250,12 +20720,10 @@ function plantRefractionOffset(x, y) {
     if (typeof water === "undefined" || !water.gradientAt) return { x: 0, y: 0 };
     const g = water.gradientAt(x, y);
     if (!g) return { x: 0, y: 0 };
-    // Stronger local bend near wakes; far field stays quiet via clamp.
-    const mag = Math.hypot(g.gx || 0, g.gy || 0);
-    const boost = 18 + Math.min(22, mag * 40);
+    // Quiet local bend only: noisy wakes must not shake ornaments each frame.
     return {
-        x: Math.max(-10, Math.min(10, (g.gx || 0) * boost)),
-        y: Math.max(-10, Math.min(10, (g.gy || 0) * boost)),
+        x: Math.max(-3.5, Math.min(3.5, (g.gx || 0) * 8)),
+        y: Math.max(-3.5, Math.min(3.5, (g.gy || 0) * 8)),
     };
 }
 
@@ -20572,8 +22040,10 @@ function frame(now) {
         for (const r of reptiles) r.draw(ctx);
         if (swordfish) swordfish.draw(ctx);
         if (octopus) octopus.draw(ctx);
+        if (crystalSerpent) crystalSerpent.draw(ctx);
         if (shark) shark.draw(ctx);
         if (whale) whale.draw(ctx);
+        if (typeof drawPacifistVisitors === "function") drawPacifistVisitors(ctx);
 
         // Surface greens float above the fish.
         drawDuckweed(ctx, sceneryTime, dt);

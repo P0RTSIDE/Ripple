@@ -274,7 +274,8 @@ body.pond #pond-controls {
 
 #looks-panel .scenery-btn,
 #looks-panel #hats-btn,
-#looks-panel #night-btn {
+#looks-panel #night-btn,
+#looks-panel #crystal-btn {
     flex: 0 0 34px;
 }
 
@@ -354,7 +355,8 @@ body.pond #pond-controls {
 
 #hats-btn.locked,
 #market-btn.locked,
-#night-btn.locked {
+#night-btn.locked,
+#crystal-btn.locked {
     opacity: 0.42;
     border-style: dashed;
     border-color: rgba(200, 170, 80, 0.35);
@@ -376,7 +378,8 @@ body.pond #pond-controls {
 
 #hats-cost,
 #market-cost,
-#night-lock {
+#night-lock,
+#crystal-lock {
     font: 300 9px/1 "Segoe UI", Roboto, sans-serif;
     letter-spacing: 0.06em;
     color: rgba(235, 200, 90, 0.95);
@@ -384,7 +387,8 @@ body.pond #pond-controls {
 
 #hats-btn:not(.locked) #hats-cost,
 #market-btn:not(.locked) #market-cost,
-#night-btn:not(.locked) #night-lock {
+#night-btn:not(.locked) #night-lock,
+#crystal-btn:not(.locked) #crystal-lock {
     display: none;
 }
 
@@ -542,6 +546,16 @@ body.pond #pond-controls {
     border-radius: 50%;
     box-shadow: inset -3px -1px 0 -1px currentColor;
     background: transparent;
+}
+
+.ico-crystal {
+    width: 10px;
+    height: 12px;
+    border: 1.3px solid currentColor;
+    clip-path: polygon(50% 0%, 100% 35%, 80% 100%, 20% 100%, 0% 35%);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: inset 0 -2px 0 -1px currentColor;
 }
 
 .ico-frog {
