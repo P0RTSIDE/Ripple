@@ -286,6 +286,7 @@ body.pond #pond-controls {
 }
 
 .scenery-btn,
+#ambient-btn,
 #drop-sound-btn,
 #looks-btn,
 #hats-btn,
@@ -311,6 +312,7 @@ body.pond #pond-controls {
 }
 
 .scenery-btn:hover,
+#ambient-btn:hover,
 #drop-sound-btn:hover,
 #looks-btn:hover,
 #hats-btn:hover,
@@ -320,6 +322,7 @@ body.pond #pond-controls {
 #picker-btn:hover,
 #net-btn:hover,
 .scenery-btn:focus-visible,
+#ambient-btn:focus-visible,
 #drop-sound-btn:focus-visible,
 #looks-btn:focus-visible,
 #hats-btn:focus-visible,
@@ -1085,4 +1088,32 @@ body.pond #food-stash.has-items {
     padding: 0 2px 2px;
     font: 300 10px/1.35 "Segoe UI", Roboto, sans-serif;
     color: rgba(170, 195, 185, 0.45);
+}
+
+
+.ico-ambient::before,
+.ico-ambient::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    border: 1.5px solid currentColor;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    opacity: 0.85;
+}
+.ico-ambient::before {
+    width: 8px;
+    height: 8px;
+}
+.ico-ambient::after {
+    width: 14px;
+    height: 14px;
+    opacity: 0.45;
+}
+#ambient-btn.on {
+    opacity: 0.95;
+}
+#ambient-btn.on .ico-ambient {
+    color: #7ec8e8;
 }
