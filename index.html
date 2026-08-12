@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Ripple</title>
-    <link rel="stylesheet" href="style.css?v=20260812x" />
+    <link rel="stylesheet" href="style.css?v=20260812ad" />
 </head>
 <body>
     <!-- The whole experience is a single full-viewport canvas surface. -->
@@ -93,6 +93,9 @@
         <button type="button" id="picker-btn" class="scenery-btn" title="Fish picker" aria-pressed="false" hidden>
             <span class="ico ico-picker"></span>
         </button>
+        <button type="button" id="tunes-btn" class="scenery-btn" title="Tunes" aria-pressed="false" aria-expanded="false" aria-controls="tunes-panel">
+            <span class="ico ico-tunes"></span>
+        </button>
         <button type="button" id="ambient-btn" class="scenery-btn" title="Ambient bed off" aria-label="Toggle ambient bed" aria-pressed="false">
             <span class="ico ico-ambient"></span>
         </button>
@@ -104,6 +107,47 @@
             <span class="ico ico-sound"></span>
             <span id="drop-sound-label">soft</span>
         </button>
+    </div>
+
+    <!-- Window mode: rhythm studio for glass loops you can save and play in the pond. -->
+    <div id="window-controls" aria-label="Window options">
+        <button type="button" id="rhythm-btn" class="scenery-btn" title="Rhythm studio" aria-pressed="false" aria-expanded="false" aria-controls="rhythm-panel">
+            <span class="ico ico-rhythm"></span>
+        </button>
+    </div>
+
+    <div id="rhythm-panel" aria-label="Rhythm studio" aria-hidden="true">
+        <div class="market-meta">
+            <span>Rhythm studio</span>
+            <span id="rhythm-step-label">1 / 16</span>
+        </div>
+        <div class="rhythm-transport">
+            <button type="button" id="rhythm-play" class="market-row rhythm-mini">Play</button>
+            <button type="button" id="rhythm-stop" class="market-row rhythm-mini">Stop</button>
+            <button type="button" id="rhythm-record" class="market-row rhythm-mini" aria-pressed="false">Record</button>
+            <button type="button" id="rhythm-clear" class="market-row rhythm-mini">Clear</button>
+        </div>
+        <label class="rhythm-bpm-wrap" title="Tempo">
+            <span>Tempo</span>
+            <input type="range" id="rhythm-bpm" min="60" max="140" value="96" step="1" aria-label="Tempo" />
+            <span id="rhythm-bpm-val">96</span>
+        </label>
+        <div id="rhythm-grid" class="rhythm-grid" aria-label="Step grid"></div>
+        <div class="rhythm-save-row">
+            <input type="text" id="rhythm-name" maxlength="28" placeholder="Tune name" aria-label="Tune name" />
+            <button type="button" id="rhythm-save" class="market-row rhythm-mini">Save</button>
+        </div>
+        <div id="rhythm-library" class="rhythm-library" aria-label="Saved tunes"></div>
+    </div>
+
+    <!-- Pond: play saved window tunes softly under the pond. -->
+    <div id="tunes-panel" aria-label="Tunes" aria-hidden="true">
+        <div class="market-meta">
+            <span>Saved tunes</span>
+            <button type="button" id="tunes-stop" class="market-row rhythm-mini">Stop</button>
+        </div>
+        <div id="tunes-library" class="rhythm-library" aria-label="Pond tune list"></div>
+        <p id="tunes-empty" class="rhythm-empty">No saved tunes yet. Make one on the glass surface.</p>
     </div>
 
     <!-- Quiet market: few buy rows, same faint corner feel as other pond chrome. -->
@@ -147,6 +191,6 @@
     <!-- On-load hint that fades out after the first interaction and never returns. -->
     <div id="hint">click anywhere</div>
 
-    <script src="main.js?v=20260812x"></script>
+    <script src="main.js?v=20260812ad"></script>
 </body>
 </html>

@@ -129,8 +129,11 @@ body.ui-hidden .ico-ui {
 body.ui-hidden #mode-toggle,
 body.ui-hidden #gold-counter,
 body.ui-hidden #pond-controls,
+body.ui-hidden #window-controls,
 body.ui-hidden #market-panel,
 body.ui-hidden #progress-panel,
+body.ui-hidden #tunes-panel,
+body.ui-hidden #rhythm-panel,
 body.ui-hidden #food-stash,
 body.ui-hidden #hint {
     opacity: 0 !important;
@@ -237,6 +240,28 @@ body.pond #pond-controls {
     opacity: 0.85;
 }
 
+/* Window mode chrome: rhythm studio entry, same quiet corner feel. */
+#window-controls {
+    position: fixed;
+    left: 16px;
+    bottom: 16px;
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 10;
+    opacity: 0.22;
+    transition: opacity 0.4s ease;
+}
+
+body:not(.pond) #window-controls {
+    display: flex;
+}
+
+#window-controls:hover,
+#window-controls:focus-within {
+    opacity: 0.85;
+}
+
 /* Looks button + horizontal aesthetic flyout (no scrollbar chrome). */
 #looks-wrap {
     position: relative;
@@ -296,6 +321,8 @@ body.pond #pond-controls {
 #progress-btn,
 #catcher-btn,
 #picker-btn,
+#tunes-btn,
+#rhythm-btn,
 #net-btn {
     width: 34px;
     min-height: 34px;
@@ -323,6 +350,8 @@ body.pond #pond-controls {
 #progress-btn:hover,
 #catcher-btn:hover,
 #picker-btn:hover,
+#tunes-btn:hover,
+#rhythm-btn:hover,
 #net-btn:hover,
 .scenery-btn:focus-visible,
 #ambient-btn:focus-visible,
@@ -334,6 +363,8 @@ body.pond #pond-controls {
 #progress-btn:focus-visible,
 #catcher-btn:focus-visible,
 #picker-btn:focus-visible,
+#tunes-btn:focus-visible,
+#rhythm-btn:focus-visible,
 #net-btn:focus-visible {
     outline: none;
     border-color: rgba(200, 224, 210, 0.55);
@@ -1190,4 +1221,229 @@ body.pond #food-stash.has-items {
 }
 #ambient-btn.on .ico-ambient {
     color: #7ec8e8;
+}
+
+/* Rhythm studio (window) and tunes panel (pond). */
+#rhythm-panel,
+#tunes-panel {
+    position: fixed;
+    left: 58px;
+    bottom: 16px;
+    z-index: 11;
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 248px;
+    max-width: min(320px, calc(100vw - 72px));
+    max-height: min(70vh, 520px);
+    overflow: auto;
+    padding: 8px 8px 7px;
+    background: rgba(12, 22, 20, 0.52);
+    border: 1px solid rgba(180, 210, 200, 0.18);
+    border-radius: 10px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.35s ease;
+    scrollbar-width: thin;
+}
+
+body:not(.pond) #rhythm-panel.open {
+    display: flex;
+    opacity: 0.88;
+    pointer-events: auto;
+}
+
+body.pond #tunes-panel.open {
+    display: flex;
+    opacity: 0.82;
+    pointer-events: auto;
+}
+
+body:not(.pond) #rhythm-panel.open:hover,
+body:not(.pond) #rhythm-panel.open:focus-within,
+body.pond #tunes-panel.open:hover,
+body.pond #tunes-panel.open:focus-within {
+    opacity: 0.96;
+}
+
+.rhythm-transport,
+.rhythm-save-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.market-row.rhythm-mini {
+    width: auto;
+    flex: 1 1 auto;
+    min-width: 52px;
+    padding: 5px 7px;
+    text-align: center;
+}
+
+.rhythm-bpm-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 2px;
+    font: 300 10px/1 "Segoe UI", Roboto, sans-serif;
+    letter-spacing: 0.06em;
+    color: rgba(200, 220, 210, 0.6);
+}
+
+.rhythm-bpm-wrap input[type="range"] {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 3px;
+    background: rgba(160, 190, 180, 0.28);
+    border-radius: 2px;
+    outline: none;
+}
+
+.rhythm-bpm-wrap input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgba(210, 230, 220, 0.85);
+    cursor: pointer;
+}
+
+#rhythm-name {
+    flex: 1 1 120px;
+    min-width: 0;
+    margin: 0;
+    padding: 5px 7px;
+    background: rgba(8, 14, 14, 0.35);
+    border: 1px solid rgba(180, 210, 200, 0.18);
+    border-radius: 7px;
+    color: rgba(230, 240, 235, 0.9);
+    font: 300 11px/1.2 "Segoe UI", Roboto, sans-serif;
+}
+
+#rhythm-name::placeholder {
+    color: rgba(180, 200, 190, 0.4);
+}
+
+.rhythm-grid {
+    display: grid;
+    grid-template-columns: 34px repeat(16, minmax(0, 1fr));
+    gap: 2px;
+    padding: 2px 0 4px;
+}
+
+.rhythm-lane-label {
+    display: flex;
+    align-items: center;
+    font: 300 9px/1 "Segoe UI", Roboto, sans-serif;
+    letter-spacing: 0.04em;
+    color: rgba(190, 210, 200, 0.55);
+}
+
+.rhythm-cell {
+    aspect-ratio: 1;
+    min-width: 0;
+    padding: 0;
+    border: 1px solid rgba(180, 210, 200, 0.14);
+    border-radius: 3px;
+    background: rgba(20, 32, 30, 0.35);
+    cursor: pointer;
+    color: transparent;
+}
+
+.rhythm-cell.on {
+    background: rgba(140, 200, 180, 0.55);
+    border-color: rgba(180, 230, 210, 0.45);
+}
+
+.rhythm-cell.tone.on {
+    background: rgba(160, 190, 230, 0.55);
+    border-color: rgba(190, 210, 245, 0.5);
+}
+
+.rhythm-cell.beat {
+    box-shadow: inset 0 0 0 1px rgba(255, 230, 170, 0.55);
+}
+
+.rhythm-cell:focus-visible {
+    outline: none;
+    border-color: rgba(220, 240, 230, 0.7);
+}
+
+#rhythm-record.on,
+#rhythm-play.on,
+#tunes-btn.on,
+#rhythm-btn.on {
+    border-color: rgba(160, 210, 200, 0.55);
+    color: rgba(210, 240, 230, 0.95);
+}
+
+.rhythm-library {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.rhythm-tune-row {
+    display: flex;
+    gap: 4px;
+    align-items: stretch;
+}
+
+.rhythm-tune-row .market-row {
+    flex: 1;
+}
+
+.rhythm-tune-row .rhythm-del {
+    flex: 0 0 auto;
+    min-width: 44px;
+}
+
+.rhythm-empty {
+    margin: 0;
+    padding: 2px;
+    font: 300 10px/1.35 "Segoe UI", Roboto, sans-serif;
+    color: rgba(170, 195, 185, 0.5);
+}
+
+.rhythm-empty[hidden] {
+    display: none;
+}
+
+.ico-rhythm,
+.ico-tunes {
+    position: relative;
+    width: 14px;
+    height: 12px;
+    display: block;
+}
+
+.ico-rhythm::before,
+.ico-rhythm::after,
+.ico-tunes::before,
+.ico-tunes::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    width: 2.5px;
+    background: currentColor;
+    border-radius: 1px;
+}
+
+.ico-rhythm::before { left: 2px; height: 6px; }
+.ico-rhythm::after { left: 6px; height: 11px; }
+.ico-tunes::before { left: 3px; height: 8px; }
+.ico-tunes::after { left: 8px; height: 12px; }
+
+.ico-rhythm {
+    background:
+        linear-gradient(currentColor, currentColor) 10px 2px / 2.5px 9px no-repeat,
+        linear-gradient(currentColor, currentColor) 14px 5px / 2.5px 6px no-repeat;
+    width: 16px;
+}
+
+.ico-tunes {
+    background: linear-gradient(currentColor, currentColor) 13px 3px / 2.5px 9px no-repeat;
+    width: 16px;
 }

@@ -1668,6 +1668,88 @@ const Audio = (() => {
         osc.onended = () => { try { osc.disconnect(); g.disconnect(); p.disconnect(); } catch (e) {} };
     }
 
+    // Soft drum kit for the window rhythm studio (no sample files).
+    function playRhythmHit(kind, pan, gainMul) {
+        ensure();
+        if (actx.state === "suspended") actx.resume();
+        const t0 = actx.currentTime;
+        const mul = Math.max(0.05, Math.min(1.2, gainMul == null ? 1 : gainMul));
+        const panner = actx.createStereoPanner();
+        panner.pan.value = pan == null ? 0 : Math.max(-1, Math.min(1, pan));
+        const out = actx.createGain();
+        out.gain.value = mul;
+        out.connect(panner);
+        panner.connect(master);
+        const wet = actx.createGain();
+        wet.gain.value = kind === "hat" ? 0.12 : 0.22;
+        panner.connect(wet);
+        wet.connect(reverbSend);
+
+        if (kind === "kick") {
+            const osc = actx.createOscillator();
+            osc.type = "sine";
+            osc.frequency.setValueAtTime(118, t0);
+            osc.frequency.exponentialRampToValueAtTime(42, t0 + 0.14);
+            const g = actx.createGain();
+            g.gain.setValueAtTime(0.0001, t0);
+            g.gain.exponentialRampToValueAtTime(0.42, t0 + 0.008);
+            g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.28);
+            osc.connect(g); g.connect(out);
+            osc.start(t0); osc.stop(t0 + 0.32);
+            osc.onended = () => { try { osc.disconnect(); g.disconnect(); out.disconnect(); panner.disconnect(); wet.disconnect(); } catch (e) {} };
+            return;
+        }
+
+        if (kind === "snare") {
+            const noiseSrc = actx.createBufferSource();
+            noiseSrc.buffer = noiseBuf;
+            const nf = actx.createBiquadFilter();
+            nf.type = "bandpass";
+            nf.frequency.value = 1800;
+            nf.Q.value = 0.7;
+            const ng = actx.createGain();
+            ng.gain.setValueAtTime(0.0001, t0);
+            ng.gain.exponentialRampToValueAtTime(0.28, t0 + 0.004);
+            ng.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.16);
+            const body = actx.createOscillator();
+            body.type = "triangle";
+            body.frequency.setValueAtTime(220, t0);
+            body.frequency.exponentialRampToValueAtTime(120, t0 + 0.08);
+            const bg = actx.createGain();
+            bg.gain.setValueAtTime(0.0001, t0);
+            bg.gain.exponentialRampToValueAtTime(0.12, t0 + 0.004);
+            bg.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.1);
+            noiseSrc.connect(nf); nf.connect(ng); ng.connect(out);
+            body.connect(bg); bg.connect(out);
+            noiseSrc.start(t0); noiseSrc.stop(t0 + 0.2);
+            body.start(t0); body.stop(t0 + 0.12);
+            noiseSrc.onended = () => {
+                try {
+                    noiseSrc.disconnect(); nf.disconnect(); ng.disconnect();
+                    body.disconnect(); bg.disconnect(); out.disconnect(); panner.disconnect(); wet.disconnect();
+                } catch (e) {}
+            };
+            return;
+        }
+
+        // hat
+        const noiseSrc = actx.createBufferSource();
+        noiseSrc.buffer = noiseBuf;
+        const nf = actx.createBiquadFilter();
+        nf.type = "highpass";
+        nf.frequency.value = 6500;
+        nf.Q.value = 0.5;
+        const ng = actx.createGain();
+        ng.gain.setValueAtTime(0.0001, t0);
+        ng.gain.exponentialRampToValueAtTime(0.16, t0 + 0.002);
+        ng.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.055);
+        noiseSrc.connect(nf); nf.connect(ng); ng.connect(out);
+        noiseSrc.start(t0); noiseSrc.stop(t0 + 0.08);
+        noiseSrc.onended = () => {
+            try { noiseSrc.disconnect(); nf.disconnect(); ng.disconnect(); out.disconnect(); panner.disconnect(); wet.disconnect(); } catch (e) {}
+        };
+    }
+
     return {
         ensure,
         playDrop,
@@ -1682,6 +1764,7 @@ const Audio = (() => {
         starfall,
         whaleCall,
         whalePurr,
+        playRhythmHit,
         toggleAmbient,
         isAmbientOn,
         setAmbientOn,
@@ -1976,44 +2059,44 @@ class WaterSim {
         const { cols, rows } = this;
         const data = this.img.data;
         const showBed = typeof scenery !== "undefined" && scenery.bed;
-        const sunOn = typeof scenery !== "undefined" && scenery.sun;
-        // Clearer water under daylight so the bed and shadows stay readable.
-        const alpha = showBed ? (sunOn ? 92 : 132) : 255;
-        const sunClear = sunOn ? 1 : 0;
-        const causticPhase = (typeof sceneryTime === "number" ? sceneryTime : 0) * 0.45;
+        const sunOn = typeof scenery !== "undefined" && scenery.sun
+            && typeof nightMode !== "undefined" && !nightMode
+            && typeof crystalMode !== "undefined" && !crystalMode;
+        // Clearer water under sunset so each silhouette cast stays sharp.
+        const alpha = showBed ? (sunOn ? 76 : 132) : 255;
+        const sunWarm = sunOn ? 1 : 0;
+        // Fixed golden-hour caustic pattern (no day light cycle).
+        const causticPhase = 1.7;
         let p = 0;
         for (let y = 0; y < rows; y++) {
-            // Cool pond teal; daylight stays clear instead of amber haze.
+            // Sunset water: peach warmth, restrained blue so shadows contrast.
             const ty = y / rows;
-            const baseR = (showBed ? 16 : 8) + ty * 4 + sunClear * 4;
-            const baseG = (showBed ? 34 : 22) + ty * 12 + sunClear * 10;
-            const baseB = (showBed ? 40 : 26) + ty * 11 + sunClear * 12;
+            const baseR = (showBed ? 24 : 8) + ty * 6 + sunWarm * 28;
+            const baseG = (showBed ? 30 : 22) + ty * 9 + sunWarm * 10;
+            const baseB = (showBed ? 26 : 26) + ty * 5 + sunWarm * 0;
             for (let x = 0; x < cols; x++) {
                 const i = y * cols + x;
                 const l = x > 0 ? field[i - 1] : field[i];
                 const r = x < cols - 1 ? field[i + 1] : field[i];
                 const u = y > 0 ? field[i - cols] : field[i];
                 const d = y < rows - 1 ? field[i + cols] : field[i];
-                // Surface slope as a normal; daylight boosts contrast for crisp ripples.
                 const sx = l - r;
                 const sy = u - d;
-                const shade = (sx * (0.95 + sunClear * 0.28) + sy * 0.85) * (0.82 + sunClear * 0.18);
-                // Soft crest highlight only on steeper slopes.
+                const shade = (sx * (0.95 + sunWarm * 0.32) + sy * 0.9) * (0.88 + sunWarm * 0.22);
                 let spec = 0;
                 const s = sx * 0.55 + sy;
-                if (s > 5.5) spec = Math.min(70, (s - 5.5) * (s - 5.5) * (0.28 + sunClear * 0.1));
-                // Per-pixel sun caustics are expensive; keep them on high quality only.
+                if (s > 5.5) spec = Math.min(70, (s - 5.5) * (s - 5.5) * (0.3 + sunWarm * 0.12));
                 let caustic = 0;
                 if (sunOn && gfxQuality >= 2) {
                     const cx = x * 0.11 + causticPhase + y * 0.03;
                     const cy = y * 0.09 - causticPhase * 0.55 + x * 0.02;
                     const n = Math.sin(cx) * Math.sin(cy * 1.1) + Math.sin(cx * 0.37 + cy * 0.6) * 0.45;
-                    caustic = (n + 1.35) * 2.1 * sunClear;
+                    caustic = (n + 1.35) * 2.15 * sunWarm;
                 }
 
-                data[p] = clampByte(baseR + shade + spec * 0.5 + caustic * 0.85);
-                data[p + 1] = clampByte(baseG + shade * 0.95 + spec * 0.7 + caustic * 1.05);
-                data[p + 2] = clampByte(baseB + shade * 1.05 + spec * 0.75 + caustic * 1.15);
+                data[p] = clampByte(baseR + shade + spec * 0.6 + caustic * 1.35);
+                data[p + 1] = clampByte(baseG + shade * 0.88 + spec * 0.55 + caustic * 0.7);
+                data[p + 2] = clampByte(baseB + shade * 0.75 + spec * 0.32 + caustic * 0.15);
                 data[p + 3] = alpha;
                 p += 4;
             }
@@ -2041,7 +2124,7 @@ const scenery = {
     duckweed: true,
     debris: true, // solid movable lake clutter (logs, rocks, driftwood, pots, and more)
     bed: true,    // rocky / sandy pond floor seen through the water
-    sun: true,    // clear daylight, cool caustics, and strong shapely floor shadows
+    sun: true,    // sunset golden-hour light, warm caustics, and hard per-entity floor shadows
     frogs: true,  // underwater frogs swimming with tadpole clusters (background)
 };
 let sceneryItems = {
@@ -2601,10 +2684,9 @@ function drawPondBed(ctx) {
     ctx.globalAlpha = 1;
     ctx.drawImage(pondBedCanvas, 0, 0, viewW, viewH);
     // Thin water-column veil so it still feels submerged, without hiding the floor.
-    ctx.globalAlpha = scenery.sun && !nightMode && !crystalMode ? 0.045 : 0.08;
-    ctx.fillStyle = scenery.sun && !nightMode && !crystalMode
-        ? "rgba(28, 58, 62, 1)"
-        : "rgba(22, 48, 46, 1)";
+    const daySun = scenery.sun && !nightMode && !crystalMode;
+    ctx.globalAlpha = daySun ? 0.02 : 0.08;
+    ctx.fillStyle = daySun ? "rgba(58, 42, 28, 1)" : "rgba(22, 48, 46, 1)";
     ctx.fillRect(0, 0, viewW, viewH);
     ctx.restore();
 }
@@ -2618,8 +2700,8 @@ function skyShadowDir() {
         // Moon sits upper-right; longer cool shadows fall left and a bit down.
         return { x: -0.72, y: 0.48 };
     }
-    // Steady late-morning sun from upper-right: long, readable cast direction.
-    return { x: -0.74, y: 0.42 };
+    // Sunset golden hour: low sun on the right, long hard casts fall left.
+    return { x: -0.88, y: 0.34 };
 }
 
 function sunShadowDir() {
@@ -2627,38 +2709,39 @@ function sunShadowDir() {
 }
 
 function lightCastsFloorShadows() {
-    return crystalMode || nightMode || !!scenery.sun;
+    // Day sun only when sun pond is on; night/crystal use their own sky light.
+    if (crystalMode || nightMode) return true;
+    return !!scenery.sun;
 }
 
-// Transform to the sky-offset floor contact and slightly squash so the silhouette sits on the bed.
+// Transform to the sky-offset floor contact and squash so the silhouette sits hard on the bed.
 function withFloorShadow(ctx, x, y, sizeHint, alpha, rot, drawFn) {
     const d = skyShadowDir();
     const day = !crystalMode && !nightMode;
-    const stretch = crystalMode ? 1.42 : nightMode ? 1.28 : 1.22;
-    const len = (crystalMode ? 42 : nightMode ? 34 : 34) + Math.max(8, sizeHint) * stretch;
-    const a = Math.min(0.98, alpha * (crystalMode ? 1.55 : nightMode ? 1.25 : 1.62));
+    // Sunset casts are longer and flatter so each silhouette stays readable.
+    const stretch = crystalMode ? 1.42 : nightMode ? 1.28 : 1.48;
+    const len = (crystalMode ? 42 : nightMode ? 34 : 40) + Math.max(8, sizeHint) * stretch;
+    const a = Math.min(1, alpha * (crystalMode ? 1.55 : nightMode ? 1.25 : 2.15));
     ctx.save();
     ctx.translate(x + d.x * len, y + d.y * len);
-    // Day keeps more silhouette height so fins and limbs stay shapely.
-    ctx.scale(1, crystalMode ? 0.46 : nightMode ? 0.5 : 0.72);
+    ctx.scale(1, crystalMode ? 0.46 : nightMode ? 0.5 : 0.42);
     if (rot != null) ctx.rotate(rot);
-    // Tight penumbra, then a dark core that keeps the silhouette readable.
-    ctx.save();
-    ctx.globalAlpha = Math.min(1, a * (crystalMode ? 0.55 : nightMode ? 0.45 : 0.32));
-    ctx.fillStyle = crystalMode ? "rgba(28, 6, 42, 1)"
-        : nightMode ? "rgba(4, 8, 18, 1)" : "rgba(6, 10, 12, 1)";
-    ctx.scale(
-        crystalMode ? 1.2 : nightMode ? 1.12 : 1.05,
-        crystalMode ? 1.28 : nightMode ? 1.18 : 1.06
-    );
-    drawFn(ctx);
-    ctx.restore();
+    if (!day) {
+        // Soft penumbra only for moon / crystal.
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, a * (crystalMode ? 0.55 : 0.45));
+        ctx.fillStyle = crystalMode ? "rgba(28, 6, 42, 1)" : "rgba(4, 8, 18, 1)";
+        ctx.scale(crystalMode ? 1.2 : 1.12, crystalMode ? 1.28 : 1.18);
+        drawFn(ctx);
+        ctx.restore();
+    }
+    // Hard dark core: crisp per-entity silhouette, no vague haze.
     ctx.globalAlpha = Math.min(1, a);
     ctx.fillStyle = crystalMode
         ? `rgba(22, 4, 36, ${Math.min(0.98, a)})`
         : nightMode
             ? `rgba(3, 6, 16, ${Math.min(0.95, a)})`
-            : `rgba(4, 8, 10, ${Math.min(0.98, day ? Math.min(0.98, a * 1.05) : a)})`;
+            : `rgba(4, 1, 0, ${Math.min(1, a)})`;
     drawFn(ctx);
     ctx.restore();
 }
@@ -2957,16 +3040,20 @@ function drawBedCaustics(ctx) {
     if (gfxQuality <= 0) return;
     ctx.save();
     ctx.globalCompositeOperation = "screen";
-    const t = sunPhase;
     const poolN = gfxQuality >= 2 ? 18 : 9;
     const ribbonN = gfxQuality >= 2 ? 9 : 4;
     const crystal = !!crystalMode;
+    // Crystal keeps a soft prism shimmer; day golden-hour caustics stay fixed (no light cycle).
+    const t = crystal ? sunPhase : 0;
 
-    // Scattered light pools that drift slowly (organic, not a grid).
     for (let n = 0; n < poolN; n++) {
-        const x = ((n * 137.1 + Math.sin(t * 0.35 + n * 1.7) * 55 + Math.cos(t * 0.22 + n) * 30) % viewW + viewW) % viewW;
-        const y = ((n * 89.4 + Math.cos(t * 0.28 + n * 1.1) * 48 + Math.sin(t * 0.18 + n * 0.6) * 25) % viewH + viewH) % viewH;
-        const tw = 0.45 + 0.55 * Math.abs(Math.sin(t * 0.9 + n * 1.3));
+        const x = ((n * 137.1 + Math.sin(t * 0.35 + n * 1.7) * 55 + Math.cos(t * 0.22 + n) * 30
+            + (!crystal ? Math.sin(n * 2.1) * 40 : 0)) % viewW + viewW) % viewW;
+        const y = ((n * 89.4 + Math.cos(t * 0.28 + n * 1.1) * 48 + Math.sin(t * 0.18 + n * 0.6) * 25
+            + (!crystal ? Math.cos(n * 1.7) * 35 : 0)) % viewH + viewH) % viewH;
+        const tw = crystal
+            ? (0.45 + 0.55 * Math.abs(Math.sin(t * 0.9 + n * 1.3)))
+            : (0.62 + 0.28 * Math.abs(Math.sin(n * 1.3)));
         const rr = 22 + tw * 28 + (n % 5) * 4;
         const g = ctx.createRadialGradient(x, y, 0, x, y, rr);
         if (crystal) {
@@ -2974,9 +3061,9 @@ function drawBedCaustics(ctx) {
             g.addColorStop(0.4, `rgba(160, 90, 230, ${0.038 * tw})`);
             g.addColorStop(1, "rgba(90, 40, 160, 0)");
         } else {
-            g.addColorStop(0, `rgba(220, 245, 255, ${0.055 * tw})`);
-            g.addColorStop(0.4, `rgba(160, 220, 230, ${0.028 * tw})`);
-            g.addColorStop(1, "rgba(120, 190, 200, 0)");
+            g.addColorStop(0, `rgba(255, 200, 120, ${0.1 * tw})`);
+            g.addColorStop(0.4, `rgba(255, 140, 60, ${0.05 * tw})`);
+            g.addColorStop(1, "rgba(200, 80, 40, 0)");
         }
         ctx.fillStyle = g;
         ctx.beginPath();
@@ -2984,29 +3071,32 @@ function drawBedCaustics(ctx) {
         ctx.fill();
     }
 
-    // A few short, irregular ribbons (never evenly spaced H/V lines).
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     for (let n = 0; n < ribbonN; n++) {
-        const x0 = ((n * 211.7 + Math.sin(t * 0.4 + n) * 80) % viewW + viewW) % viewW;
-        const y0 = ((n * 163.3 + Math.cos(t * 0.33 + n * 1.4) * 70) % viewH + viewH) % viewH;
+        const x0 = ((n * 211.7 + Math.sin(t * 0.4 + n) * 80
+            + (!crystal ? Math.sin(n * 1.9) * 50 : 0)) % viewW + viewW) % viewW;
+        const y0 = ((n * 163.3 + Math.cos(t * 0.33 + n * 1.4) * 70
+            + (!crystal ? Math.cos(n * 2.3) * 45 : 0)) % viewH + viewH) % viewH;
         const len = 40 + (n % 4) * 28;
-        const ang = n * 0.9 + Math.sin(t * 0.25 + n) * 0.5;
-        const pulse = 0.5 + 0.5 * Math.sin(t * 0.75 + n * 1.1);
+        const ang = n * 0.9 + (crystal ? Math.sin(t * 0.25 + n) * 0.5 : Math.sin(n) * 0.35);
+        const pulse = crystal
+            ? (0.5 + 0.5 * Math.sin(t * 0.75 + n * 1.1))
+            : 0.72;
         ctx.beginPath();
         const steps = gfxQuality >= 2 ? 10 : 6;
         for (let i = 0; i <= steps; i++) {
             const u = i / steps;
             const x = x0 + Math.cos(ang) * (u - 0.5) * len
-                + Math.sin(u * 5 + t * 0.8 + n) * 8;
+                + Math.sin(u * 5 + (crystal ? t * 0.8 : n) + n) * 8;
             const y = y0 + Math.sin(ang) * (u - 0.5) * len * 0.65
-                + Math.cos(u * 4.2 + t * 0.6 + n) * 6;
+                + Math.cos(u * 4.2 + (crystal ? t * 0.6 : n * 0.8) + n) * 6;
             if (i === 0) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
         }
         ctx.strokeStyle = crystal
             ? `rgba(200, 150, 255, ${0.045 + pulse * 0.04})`
-            : `rgba(200, 235, 245, ${0.04 + pulse * 0.035})`;
+            : `rgba(255, 170, 90, ${0.05 + pulse * 0.035})`;
         ctx.lineWidth = 1.4 + (n % 3) * 0.5;
         ctx.stroke();
     }
@@ -3017,7 +3107,7 @@ function drawSunContactShadows(ctx) {
     if (!lightCastsFloorShadows()) return;
     ctx.save();
     ctx.globalCompositeOperation = "multiply";
-    ctx.globalAlpha = crystalMode ? 1 : nightMode ? 0.95 : 1;
+    ctx.globalAlpha = crystalMode ? 1 : nightMode ? 0.95 : 1.08;
 
     if (scenery.debris) {
         for (const o of obstacles) {
@@ -3108,6 +3198,34 @@ function drawSunContactShadows(ctx) {
             c.fill();
         });
     }
+    // Duckweed clusters: each pad casts its own little oval.
+    if (scenery.duckweed) {
+        for (const d of sceneryItems.duckweed) {
+            withFloorShadow(ctx, d.x, d.y, d.r, 0.48, d.rot || 0, (c) => {
+                const dens = Math.max(3, d.density || 6);
+                for (let i = 0; i < dens; i++) {
+                    const a = (i / dens) * Math.PI * 2 + (d.bob || 0);
+                    const rr = d.r * (0.25 + (i % 3) * 0.12);
+                    const px = Math.cos(a) * d.r * 0.45;
+                    const py = Math.sin(a) * d.r * 0.35;
+                    c.beginPath();
+                    c.ellipse(px, py, rr * 0.55, rr * 0.38, a, 0, Math.PI * 2);
+                    c.fill();
+                }
+            });
+        }
+        for (const L of sceneryItems.leaves) {
+            withFloorShadow(ctx, L.x, L.y, L.len * 0.55, 0.55, L.rot || 0, (c) => {
+                c.beginPath();
+                c.moveTo(-L.len * 0.85, 0);
+                c.quadraticCurveTo(-L.len * 0.2, -L.len * 0.55, L.len * 0.75, -L.len * 0.08);
+                c.quadraticCurveTo(L.len * 0.95, 0, L.len * 0.75, L.len * 0.1);
+                c.quadraticCurveTo(-L.len * 0.15, L.len * 0.5, -L.len * 0.85, 0);
+                c.closePath();
+                c.fill();
+            });
+        }
+    }
     ctx.restore();
 }
 
@@ -3193,15 +3311,15 @@ function drawSunCreatureShadows(ctx) {
     if (!lightCastsFloorShadows()) return;
     ctx.save();
     ctx.globalCompositeOperation = "multiply";
-    ctx.globalAlpha = crystalMode ? 1 : nightMode ? 0.95 : 1;
+    ctx.globalAlpha = crystalMode ? 1 : nightMode ? 0.95 : 1.1;
     for (const f of fishes) {
         if (f.dead) continue;
         const { L, W, shape } = fishShadowDims(f);
         const scale = f.golden ? (1 - (f.sinkDepth || 0) * 0.35) : 1;
         const yOff = f.golden ? (f.sinkDepth || 0) * 6 : 0;
         const liftZ = f.pickerLiftZ || 0;
-        // Lifted fish: longer, softer floor contact under the water plane.
-        const alpha = f.golden ? 0.68 : (liftZ > 1 ? 0.62 : 0.88);
+        // Lifted fish: longer floor contact; day shadows stay hard and opaque.
+        const alpha = f.golden ? 0.78 : (liftZ > 1 ? 0.7 : 0.96);
         withFloorShadow(ctx, f.x, f.y + yOff, L, alpha, f.dir, (c) => {
             c.scale(scale, scale);
             fillFishShadowPaths(c, L, W, shape);
@@ -3317,6 +3435,16 @@ function drawSunCreatureShadows(ctx) {
             });
         }
     }
+    // Floating food: each pellet keeps its own round cast.
+    for (const food of foods) {
+        if (!food || food.eaten || (food.sinkProgress || 0) > 0.92) continue;
+        const rr = typeof food.radius === "function" ? food.radius() : (food.size || 8) * 0.45;
+        withFloorShadow(ctx, food.x, food.y, rr, 0.58, 0, (c) => {
+            c.beginPath();
+            c.ellipse(0, 0, rr * 1.05, rr * 0.85, 0.2, 0, Math.PI * 2);
+            c.fill();
+        });
+    }
     ctx.restore();
 }
 
@@ -3344,42 +3472,45 @@ function fillFrogShadowPaths(ctx, frog) {
 
 // Clear daylight wash: cool top light, no amber haze, no sun disc or rays.
 function drawSunAmbience(ctx) {
-    if (!scenery.sun || nightMode) return;
-    const shimmer = 0.5 + 0.5 * Math.sin(sunPhase * 0.35);
+    // Day only: low sunset golden hour. Never draws under moon or crystal sky.
+    if (!scenery.sun || nightMode || crystalMode) return;
 
     ctx.save();
 
-    // Steady cool daylight from above; keeps water readable instead of golden haze.
+    // Sunset band: warm peach to rose across the upper right, cooling into the depths.
     ctx.globalCompositeOperation = "soft-light";
-    const wash = ctx.createLinearGradient(0, 0, 0, viewH);
-    wash.addColorStop(0, `rgba(210, 235, 245, ${0.14 + shimmer * 0.02})`);
-    wash.addColorStop(0.45, "rgba(170, 210, 220, 0.05)");
-    wash.addColorStop(1, "rgba(40, 70, 78, 0.08)");
+    const wash = ctx.createLinearGradient(0, 0, viewW * 0.15, viewH);
+    wash.addColorStop(0, "rgba(255, 170, 95, 0.38)");
+    wash.addColorStop(0.28, "rgba(255, 130, 70, 0.2)");
+    wash.addColorStop(0.62, "rgba(200, 90, 70, 0.1)");
+    wash.addColorStop(1, "rgba(55, 28, 36, 0.16)");
     ctx.fillStyle = wash;
     ctx.fillRect(0, 0, viewW, viewH);
 
-    // Soft sky patch near the light source, still no beams.
+    // Low sun bloom near the right horizon (no drawn disc, just heat).
     ctx.globalCompositeOperation = "screen";
     const hot = ctx.createRadialGradient(
-        viewW * 0.64, viewH * 0.14, 16,
-        viewW * 0.52, viewH * 0.4, Math.max(viewW, viewH) * 0.66
+        viewW * 0.86, viewH * 0.22, 8,
+        viewW * 0.62, viewH * 0.48, Math.max(viewW, viewH) * 0.72
     );
-    hot.addColorStop(0, `rgba(235, 248, 255, ${0.07 + shimmer * 0.015})`);
-    hot.addColorStop(0.45, "rgba(180, 220, 230, 0.025)");
-    hot.addColorStop(1, "rgba(90, 140, 150, 0)");
+    hot.addColorStop(0, "rgba(255, 220, 140, 0.22)");
+    hot.addColorStop(0.28, "rgba(255, 150, 70, 0.1)");
+    hot.addColorStop(0.6, "rgba(255, 100, 70, 0.035)");
+    hot.addColorStop(1, "rgba(120, 40, 30, 0)");
     ctx.fillStyle = hot;
     ctx.fillRect(0, 0, viewW, viewH);
 
-    // Cool edge shade so depth reads without muddying the mid pond.
+    // Long multiply shade so sunset casts stay dark and shapely.
     ctx.globalCompositeOperation = "multiply";
-    ctx.globalAlpha = 0.28;
+    ctx.globalAlpha = 0.48;
     const shade = ctx.createRadialGradient(
-        viewW * 0.55, viewH * 0.3, viewH * 0.16,
-        viewW * 0.5, viewH * 0.52, Math.max(viewW, viewH) * 0.76
+        viewW * 0.78, viewH * 0.2, viewH * 0.08,
+        viewW * 0.4, viewH * 0.58, Math.max(viewW, viewH) * 0.82
     );
-    shade.addColorStop(0, "rgba(248, 252, 255, 1)");
-    shade.addColorStop(0.55, "rgba(210, 228, 232, 1)");
-    shade.addColorStop(1, "rgba(42, 58, 64, 1)");
+    shade.addColorStop(0, "rgba(255, 236, 200, 1)");
+    shade.addColorStop(0.4, "rgba(245, 175, 120, 1)");
+    shade.addColorStop(0.75, "rgba(120, 70, 55, 1)");
+    shade.addColorStop(1, "rgba(36, 18, 20, 1)");
     ctx.fillStyle = shade;
     ctx.fillRect(0, 0, viewW, viewH);
 
@@ -7177,7 +7308,7 @@ class Fish {
 
     pet() {
         if (this.dead || this.golden || this.rainbowLeaving) return;
-        this.petTimer = 1.4;
+        this.petTimer = 1.75;
         // Species-specific contented note while being petted.
         const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
         const t = this.type;
@@ -7186,19 +7317,20 @@ class Fish {
                 * (typeof weatherPitchMul === "function" ? weatherPitchMul() : 1),
             wave: t.petWave || "sine",
             pan,
-            dur: t.petDur || 0.35,
-            level: 0.065,
-            partialAmt: (t.bitePartial != null ? t.bitePartial : 0.18) * 0.7,
+            dur: (t.petDur || 0.35) * 1.12,
+            level: 0.078,
+            partialAmt: (t.bitePartial != null ? t.bitePartial : 0.18) * 0.85,
             partialRatio: 2.2,
-            bright: (t.biteBright != null ? t.biteBright : 1) * 0.9,
+            bright: (t.biteBright != null ? t.biteBright : 1) * 1.05,
         });
         // Tiny affectionate ripple.
-        water.disturb(this.x, this.y, this.size * 0.4, 40);
+        water.disturb(this.x, this.y, this.size * 0.5, 55);
         if (typeof queuePetEcho === "function") queuePetEcho(this);
-        if (typeof emitBreathBubbles === "function") emitBreathBubbles(this.x, this.y, 4);
+        if (typeof emitBreathBubbles === "function") emitBreathBubbles(this.x, this.y, 6);
         if (typeof rememberPetSpot === "function") rememberPetSpot(this.x, this.y);
         if (typeof emitSonicRing === "function") {
             emitSonicRing(this.x, this.y, (this.type.petFreq || 320));
+            emitSonicRing(this.x, this.y, (this.type.petFreq || 320) * 1.35);
         }
 
         // Affection soothes evil fish (discrete pets plus continuous stroke time).
@@ -7260,6 +7392,9 @@ class Fish {
         });
         water.disturb(this.x, this.y, this.size * 0.7, 120);
         spawnSplash(this.x, this.y, this.size * 0.35, 0.35);
+        if (typeof celebrateDiscovery === "function") {
+            celebrateDiscovery("tame:redeem", this.x, this.y);
+        }
     }
 
     // Soften a monster apex: join the heroes as a white fish with blue eyes.
@@ -7299,6 +7434,9 @@ class Fish {
         });
         water.disturb(this.x, this.y, this.size * 0.85, 160);
         spawnSplash(this.x, this.y, this.size * 0.4, 0.45);
+        if (typeof celebrateDiscovery === "function") {
+            celebrateDiscovery("tame:monster", this.x, this.y);
+        }
     }
 
     // Green food: the fish flies up with a soft fade, then becomes a rare pond ornament.
@@ -9593,6 +9731,13 @@ class Fish {
             pathFishBody(ctx, L, W, shape);
             ctx.fill();
         }
+        if (this.petTimer > 0.2 && !this.golden && !this.isRainbow) {
+            // Soft warm pet glow while content.
+            const warmth = Math.min(1, this.petTimer / 1.75);
+            ctx.fillStyle = `rgba(255,210,160,${0.08 + warmth * 0.12})`;
+            pathFishBody(ctx, L * 1.02, W * 1.05, shape);
+            ctx.fill();
+        }
         if (this.apexHybrid && !this.golden && !this.isRainbow) {
             // Soft dual-tone sash so apex hybrids read as mixed lineage.
             ctx.save();
@@ -10815,6 +10960,9 @@ class Reptile {
         });
         water.disturb(this.x, this.y, this.size * 0.65, 140);
         spawnSplash(this.x, this.y, this.size * 0.3, 0.4);
+        if (typeof celebrateDiscovery === "function") {
+            celebrateDiscovery("tame:" + (this.kind || this.constructor.name || "apex"), this.x, this.y);
+        }
     }
 
     grow(amount) {
@@ -16093,6 +16241,9 @@ class PacifistVisitor {
         spawnSplash(this.x, this.y, this.size * 0.3, 0.45);
         // Immediate friendship gift.
         this.dropGift(true);
+        if (typeof celebrateDiscovery === "function") {
+            celebrateDiscovery("tame:helper:" + (this.kind || "pacifist"), this.x, this.y);
+        }
     }
 
     dropGift(strong) {
@@ -16921,6 +17072,9 @@ class CrystalSerpent {
         });
         water.disturb(this.x, this.y, this.size * 0.75, 200);
         spawnSplash(this.x, this.y, this.size * 0.28, 0.45);
+        if (typeof celebrateDiscovery === "function") {
+            celebrateDiscovery("tame:serpent", this.x, this.y);
+        }
     }
 
     findPrey() {
@@ -17448,6 +17602,16 @@ function spawnWindowRipple(x, y, v) {
     }
 }
 
+// Visual-only glass rings (rhythm drums already have their own voices).
+function spawnWindowRippleVisual(x, y, v) {
+    const voice = windowPosToVoice(x, y);
+    ripples.push(new Ripple(x, y, v, voice.freq));
+    if (ripples.filter((r) => !r.dead).length > CONFIG.maxVoices) {
+        const live = ripples.filter((r) => !r.dead);
+        live[0].decay = Math.max(live[0].decay, 4.0);
+    }
+}
+
 // ===========================================================================
 // INPUT: hold to grow the ball, drag to sling it across the water
 // The longer you hold, the bigger the food (and, by the shared physics, the
@@ -17922,6 +18086,11 @@ function onPointerDown(ev) {
         pointerDownAt = null;
         return;
     }
+    // Shooting star wish: tap the streak while it is still bright.
+    if (ev.button === 0 && mode === "pond" && tryCatchShootingStar(ev.clientX, ev.clientY)) {
+        pointerDownAt = null;
+        return;
+    }
     // Rainbow catcher: left-drag a small circle that must contain a free rainbow fish.
     if (ev.button === 0 && mode === "pond" && catcherMode) {
         pointerNow = { x: ev.clientX, y: ev.clientY };
@@ -17942,6 +18111,9 @@ function onPointerDown(ev) {
         if (armedStashVariant != null) {
             armedStashVariant = null;
             renderFoodStashUI();
+        }
+        if (tryCatchShootingStar(ev.clientX, ev.clientY)) {
+            return;
         }
         if (netMode) {
             netSweeping = true;
@@ -18118,6 +18290,7 @@ function onPointerUp(ev) {
         if (rocks.length < CONFIG.maxRocks) rocks.push(new Rock(sx, sy, x, y, v));
     } else {
         spawnWindowRipple(x, y, v);
+        if (typeof rhythmCaptureTone === "function") rhythmCaptureTone(x, y, v);
     }
 
     pointerDownAt = null;
@@ -18396,6 +18569,7 @@ toggle.addEventListener("click", () => {
     if (mode === "window" && typeof flushPendingGlassRain === "function") {
         flushPendingGlassRain();
     }
+    if (typeof onRhythmModeChange === "function") onRhythmModeChange();
     Audio.onModeChange();
 });
 toggle.addEventListener("dblclick", (e) => {
@@ -19054,7 +19228,10 @@ function updateProgressUI() {
 
 function setProgressOpen(open) {
     progressOpen = !!open;
-    if (progressOpen) setMarketOpen(false);
+    if (progressOpen) {
+        setMarketOpen(false);
+        if (typeof setTunesPanelOpen === "function") setTunesPanelOpen(false);
+    }
     const panel = document.getElementById("progress-panel");
     if (panel) {
         panel.classList.toggle("open", progressOpen);
@@ -19306,6 +19483,7 @@ function maybeUnlockPlatinum() {
     if (Audio.rainbowChime) Audio.rainbowChime(0);
     if (Audio.goldChime) Audio.goldChime(0);
     updateMarketUI();
+    if (typeof celebrateDiscovery === "function") celebrateDiscovery("platinum");
 }
 
 // First platinum fish unlocks moon pond in Looks (stays locked until then).
@@ -19317,6 +19495,7 @@ function unlockMoonPond() {
     updateCrystalButtonUI();
     updateMarketUI();
     if (Audio.goldChime) Audio.goldChime(0);
+    if (typeof celebrateDiscovery === "function") celebrateDiscovery("moonUnlock");
 }
 
 function maybeUnlockCrystalDepths() {
@@ -19328,6 +19507,7 @@ function maybeUnlockCrystalDepths() {
     updateMarketUI();
     if (Audio.rainbowChime) Audio.rainbowChime(0);
     if (Audio.goldChime) Audio.goldChime(0);
+    if (typeof celebrateDiscovery === "function") celebrateDiscovery("crystalUnlock");
 }
 
 function updateCrystalButtonUI() {
@@ -19383,36 +19563,105 @@ function syncSunPondButtonUI() {
     sunBtn.classList.toggle("on", sunOn);
     sunBtn.setAttribute("aria-pressed", sunOn ? "true" : "false");
     sunBtn.title = crystalMode
-        ? "Sun pond: return to daylight"
+        ? "Sun pond: return to golden hour"
         : nightMode
-            ? "Sun pond: return to daylight"
-            : (scenery.sun ? "Sun pond on: clear daylight" : "Sun pond: clear daylight and floor shadows");
+            ? "Sun pond: return to golden hour"
+            : (scenery.sun ? "Sun pond on: golden hour light" : "Sun pond: golden hour light and floor shadows");
 }
+
+// Soft one-shot flourishes for first discoveries (no quest UI).
+const DELIGHT_KEY = "ripple-delight-v1";
+let delightSeen = {
+    platinum: false,
+    moonUnlock: false,
+    moonVisit: false,
+    crystalUnlock: false,
+    crystalVisit: false,
+    tames: {},
+};
+
+function loadDelightSeen() {
+    try {
+        const raw = localStorage.getItem(DELIGHT_KEY);
+        if (!raw) return;
+        const data = JSON.parse(raw);
+        if (!data || typeof data !== "object") return;
+        delightSeen.platinum = !!data.platinum;
+        delightSeen.moonUnlock = !!data.moonUnlock;
+        delightSeen.moonVisit = !!data.moonVisit;
+        delightSeen.crystalUnlock = !!data.crystalUnlock;
+        delightSeen.crystalVisit = !!data.crystalVisit;
+        delightSeen.tames = (data.tames && typeof data.tames === "object") ? data.tames : {};
+    } catch (err) { /* ignore */ }
+}
+
+function saveDelightSeen() {
+    try {
+        localStorage.setItem(DELIGHT_KEY, JSON.stringify(delightSeen));
+    } catch (err) { /* ignore */ }
+}
+
+function celebrateDiscovery(kind, x, y) {
+    if (!kind) return;
+    if (kind.indexOf("tame:") === 0) {
+        if (delightSeen.tames[kind]) return;
+        delightSeen.tames[kind] = true;
+    } else {
+        if (delightSeen[kind]) return;
+        delightSeen[kind] = true;
+    }
+    saveDelightSeen();
+
+    const cx = (x != null) ? x : viewW * 0.5;
+    const cy = (y != null) ? y : viewH * 0.5;
+    const pan = Math.max(-1, Math.min(1, (cx / viewW) * 2 - 1));
+    if (Audio.ensure) Audio.ensure();
+    if (Audio.rainbowChime) Audio.rainbowChime(pan * 0.6);
+    if (Audio.goldChime) Audio.goldChime(pan * 0.4);
+    water.disturb(cx, cy, 22, 110);
+    if (typeof spawnSplash === "function") spawnSplash(cx, cy, 12, 0.4);
+    if (typeof emitStarWishSparks === "function") emitStarWishSparks(cx, cy, 18, false);
+    if (typeof emitBreathBubbles === "function") emitBreathBubbles(cx, cy, 8, "rgba(255,230,180,0.55)");
+    let mood = "pollen";
+    if (kind === "moonUnlock" || kind === "moonVisit") mood = "fireflies";
+    if (kind === "crystalUnlock" || kind === "crystalVisit") mood = "mist";
+    if (kind === "platinum") mood = "pollen";
+    if (kind.indexOf("tame:") === 0) mood = nightMode ? "fireflies" : "pollen";
+    if (typeof beginWeatherMood === "function") beginWeatherMood(mood);
+}
+
+loadDelightSeen();
 
 function setNightMode(on) {
     if (!nightUnlocked) return;
+    const was = nightMode;
     nightMode = !!on;
     if (nightMode) {
         crystalMode = false;
-        // Moon pond owns the sky; keep sun scenery ready for when day returns.
+        // Moon pond owns the sky; sun wash stays off while nightMode is true.
         scenery.sun = true;
+        if (!was && typeof celebrateDiscovery === "function") celebrateDiscovery("moonVisit");
     }
     saveMarketState();
     updateNightButtonUI();
     updateCrystalButtonUI();
+    syncSunPondButtonUI();
     markFirstInteraction();
 }
 
 function setCrystalMode(on) {
     if (!crystalUnlocked) return;
+    const was = crystalMode;
     crystalMode = !!on;
     if (crystalMode) {
         nightMode = false;
         scenery.sun = true;
+        if (!was && typeof celebrateDiscovery === "function") celebrateDiscovery("crystalVisit");
     }
     saveMarketState();
     updateNightButtonUI();
     updateCrystalButtonUI();
+    syncSunPondButtonUI();
     markFirstInteraction();
 }
 
@@ -19516,6 +19765,7 @@ function setMarketOpen(open) {
         }
         updateProgressUI();
     }
+    if (marketOpen && typeof setTunesPanelOpen === "function") setTunesPanelOpen(false);
     const panel = document.getElementById("market-panel");
     if (panel) {
         panel.classList.toggle("open", marketOpen);
@@ -21081,21 +21331,13 @@ function buildDevMenu() {
     btn(flavor, "Comet flyby", () => {
         devEnsurePond();
         const p = devSpawnPoint();
-        const tx = p.x < viewW * 0.5 ? viewW + 40 : -40;
-        const ty = p.y + (Math.random() - 0.5) * viewH * 0.3;
-        cometVisitor = {
-            x: p.x < viewW * 0.5 ? -40 : viewW + 40,
-            y: Math.max(20, Math.min(viewH - 20, p.y)),
-            tx: tx,
-            ty: Math.max(20, Math.min(viewH - 20, ty)),
-            dir: 0,
-            t: 0,
-            life: 4,
-        };
-        cometVisitor.dir = Math.atan2(cometVisitor.ty - cometVisitor.y, cometVisitor.tx - cometVisitor.x);
-        if (Audio.starfall) {
-            Audio.starfall(Math.max(-1, Math.min(1, (cometVisitor.x / viewW) * 2 - 1)));
-        }
+        const fromLeft = p.x < viewW * 0.5;
+        const x = fromLeft ? -40 : viewW + 40;
+        const y = Math.max(20, Math.min(viewH - 20, p.y));
+        const tx = fromLeft ? viewW + 40 : -40;
+        const ty = Math.max(20, Math.min(viewH - 20, p.y + (Math.random() - 0.5) * viewH * 0.3));
+        if (!nightMode && nightUnlocked) setNightMode(true);
+        spawnShootingStar(x, y, tx, ty, { speed: 640 });
     });
 
     const social = section("Social");
@@ -21671,7 +21913,7 @@ function drawColoredWakes(ctx) {
 }
 
 function drawGiantCausticSpotlight(ctx) {
-    if (!scenery.sun || nightMode || gfxQuality <= 0) return;
+    if (!scenery.sun || nightMode || crystalMode || gfxQuality <= 0) return;
     let best = null, bs = 0;
     for (const f of fishes) {
         if (f.dead || f.golden) continue;
@@ -21680,18 +21922,18 @@ function drawGiantCausticSpotlight(ctx) {
     if (whale && !whale.dead && whale.size > bs) { best = whale; bs = whale.size; }
     if (shark && !shark.dead && shark.size > bs) { best = shark; bs = shark.size; }
     if (!best || bs < 48) return;
-    const x = best.x + Math.sin(sunPhase * 0.7) * 8;
-    const y = best.y + Math.cos(sunPhase * 0.55) * 6;
+    const x = best.x;
+    const y = best.y;
     const rr = bs * 0.85;
     ctx.save();
     ctx.globalCompositeOperation = "screen";
     const g = ctx.createRadialGradient(x, y, 0, x, y, rr);
-    g.addColorStop(0, "rgba(225,245,255,0.12)");
-    g.addColorStop(0.45, "rgba(160,215,225,0.05)");
-    g.addColorStop(1, "rgba(110,180,190,0)");
+    g.addColorStop(0, "rgba(255,220,140,0.14)");
+    g.addColorStop(0.45, "rgba(255,160,70,0.055)");
+    g.addColorStop(1, "rgba(200,100,40,0)");
     ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.ellipse(x, y, rr, rr * 0.62, sunPhase * 0.1, 0, Math.PI * 2);
+    ctx.ellipse(x, y, rr, rr * 0.62, 0.35, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 }
@@ -22289,7 +22531,8 @@ const sonicRings = [];
 const petMemories = [];
 const whirlpools = [];
 let cometVisitor = null;
-let duskBlend = 0; // day stays clear; soft cool wash only when sun is off
+let starWishSparks = [];
+let duskBlend = 0; // unused remnant; day light is fixed golden hour when sun is on
 let icePatches = [];
 
 function emitBreathBubbles(x, y, n, col) {
@@ -22409,8 +22652,8 @@ function drawSonicRings(ctx) {
 }
 
 function rememberPetSpot(x, y) {
-    petMemories.push({ x: x, y: y, age: 0, life: 22 + Math.random() * 10 });
-    if (petMemories.length > 12) petMemories.shift();
+    petMemories.push({ x: x, y: y, age: 0, life: 34 + Math.random() * 14 });
+    if (petMemories.length > 16) petMemories.shift();
 }
 
 function updatePetMemories(dt) {
@@ -22542,24 +22785,8 @@ function drawMoonBedCaustics(ctx) {
 }
 
 function drawDuskWash(ctx) {
-    // Daylight stays consistent: no oscillating amber dusk haze over clear sun.
-    if (nightMode || crystalMode) return;
-    if (scenery.sun) {
-        duskBlend = 0;
-        return;
-    }
-    // Sun off: a mild cool depth wash only, still no warm cycle.
-    duskBlend = 0.35;
-    ctx.save();
-    ctx.globalCompositeOperation = "multiply";
-    ctx.globalAlpha = 0.18;
-    const g = ctx.createLinearGradient(0, 0, 0, viewH);
-    g.addColorStop(0, "rgba(210, 230, 235, 1)");
-    g.addColorStop(0.55, "rgba(140, 170, 175, 1)");
-    g.addColorStop(1, "rgba(36, 52, 56, 1)");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, viewW, viewH);
-    ctx.restore();
+    // No shifting day lighting. Golden hour is handled only by drawSunAmbience.
+    duskBlend = 0;
 }
 
 function emitBiolumWake(f) {
@@ -22599,71 +22826,262 @@ function updateSchoolOrbit(dt) {
 }
 
 function updateMemorySeek(dt) {
-    // Calm fish prefer remembered pet spots and ease toward them more often.
+    // Calm fish prefer remembered pet spots and linger near them more often.
     for (const f of fishes) {
-        if (f.dead || f.isPredator || f.isMonster || f.isRainbow || f.petTimer > 0) continue;
-        if (Math.random() > 0.045) continue;
-        const m = nearestPetMemory(f.x, f.y, 220);
+        if (f.dead || f.isPredator || f.isMonster || f.isRainbow) continue;
+        // Recently petted fish keep easing toward the touch spot.
+        const lingering = (f.petTimer || 0) > 0.15;
+        if (!lingering && Math.random() > 0.09) continue;
+        const m = nearestPetMemory(f.x, f.y, lingering ? 300 : 260);
         if (!m) continue;
         const want = Math.atan2(m.y - f.y, m.x - f.x);
-        f.dir += normAngle(want - f.dir) * Math.min(1, 2.4 * dt);
-        const step = Math.min(28 * dt, Math.hypot(m.x - f.x, m.y - f.y) * 0.35);
+        const steer = lingering ? 3.4 : 2.8;
+        f.dir += normAngle(want - f.dir) * Math.min(1, steer * dt);
+        const step = Math.min((lingering ? 36 : 32) * dt, Math.hypot(m.x - f.x, m.y - f.y) * (lingering ? 0.42 : 0.38));
         f.x += Math.cos(want) * step;
         f.y += Math.sin(want) * step;
     }
 }
 
+function spawnShootingStar(x, y, tx, ty, opts) {
+    const dir = Math.atan2(ty - y, tx - x);
+    const dist = Math.max(80, Math.hypot(tx - x, ty - y));
+    // Fast streak: cross the pond in about a second so catching it takes quick aim.
+    const speed = (opts && opts.speed) || (560 + Math.random() * 220);
+    const life = dist / speed + 0.12;
+    cometVisitor = {
+        x: x, y: y, tx: tx, ty: ty,
+        vx: Math.cos(dir) * speed,
+        vy: Math.sin(dir) * speed,
+        dir: dir,
+        t: 0,
+        life: life,
+        // Must tap while the streak is still bright.
+        catchUntil: Math.min(1.05, life * 0.58),
+        hitR: 58,
+        caught: false,
+        lateMiss: false,
+        burst: 0,
+    };
+    if (Audio.starfall) {
+        Audio.starfall(Math.max(-1, Math.min(1, (x / viewW) * 2 - 1)));
+    }
+    return cometVisitor;
+}
+
 function maybeSpawnComet(dt) {
     if (cometVisitor) {
-        cometVisitor.t += dt;
-        const k = 1 - Math.exp(-3 * dt);
-        cometVisitor.x += (cometVisitor.tx - cometVisitor.x) * k;
-        cometVisitor.y += (cometVisitor.ty - cometVisitor.y) * k;
-        if (Math.random() < 0.35) {
-            water.disturb(cometVisitor.x, cometVisitor.y, 6, 40);
-            emitColoredWake({
-                x: cometVisitor.x, y: cometVisitor.y, dir: cometVisitor.dir,
-                size: 24, age: cometVisitor.t, isRainbow: true, dead: false, golden: false,
-            }, 80);
+        const c = cometVisitor;
+        c.t += dt;
+        if (c.caught) {
+            c.burst = Math.min(1, (c.burst || 0) + dt * 3.2);
+            c.x += c.vx * dt * 0.35;
+            c.y += c.vy * dt * 0.35;
+            c.vx *= Math.exp(-2.4 * dt);
+            c.vy *= Math.exp(-2.4 * dt);
+            if (c.t > c.life) cometVisitor = null;
+            return;
         }
-        if (cometVisitor.t > cometVisitor.life) cometVisitor = null;
+        c.x += c.vx * dt;
+        c.y += c.vy * dt;
+        if (Math.random() < 0.42) {
+            water.disturb(c.x, c.y, 5, 34);
+            emitColoredWake({
+                x: c.x, y: c.y, dir: c.dir,
+                size: 22, age: c.t, isRainbow: true, dead: false, golden: false,
+            }, 110);
+        }
+        const pad = 70;
+        const gone = c.t > c.life
+            || c.x < -pad || c.x > viewW + pad
+            || c.y < -pad || c.y > viewH + pad;
+        if (gone) cometVisitor = null;
         return;
     }
-    if (pondFinaleActive() || Math.random() > 0.00035) return;
+    // Shooting stars only under the moon pond sky.
+    if (!nightMode || pondFinaleActive() || Math.random() > 0.00055) return;
     const side = Math.floor(Math.random() * 4);
     let x, y, tx, ty;
     if (side === 0) { x = -40; y = Math.random() * viewH; tx = viewW + 40; ty = Math.random() * viewH; }
     else if (side === 1) { x = viewW + 40; y = Math.random() * viewH; tx = -40; ty = Math.random() * viewH; }
     else if (side === 2) { x = Math.random() * viewW; y = -40; tx = Math.random() * viewW; ty = viewH + 40; }
     else { x = Math.random() * viewW; y = viewH + 40; tx = Math.random() * viewW; ty = -40; }
-    cometVisitor = {
-        x: x, y: y, tx: tx, ty: ty,
-        dir: Math.atan2(ty - y, tx - x),
-        t: 0, life: 3.2 + Math.random() * 1.4,
-    };
-    if (Audio.starfall) {
-        Audio.starfall(Math.max(-1, Math.min(1, (x / viewW) * 2 - 1)));
+    spawnShootingStar(x, y, tx, ty);
+}
+
+function emitStarWishSparks(x, y, n, late) {
+    if (gfxQuality <= 0) return;
+    const count = Math.min(n || 18, gfxQuality >= 2 ? 28 : 16);
+    for (let i = 0; i < count; i++) {
+        if (starWishSparks.length > 80) starWishSparks.shift();
+        const a = Math.random() * Math.PI * 2;
+        const sp = late ? (40 + Math.random() * 70) : (90 + Math.random() * 180);
+        starWishSparks.push({
+            x: x, y: y,
+            vx: Math.cos(a) * sp,
+            vy: Math.sin(a) * sp,
+            age: 0,
+            life: late ? (0.35 + Math.random() * 0.25) : (0.55 + Math.random() * 0.55),
+            r: late ? (1 + Math.random()) : (1.4 + Math.random() * 2.2),
+            hue: late ? (210 + Math.random() * 40) : (40 + Math.random() * 280),
+        });
     }
+}
+
+function updateStarWishSparks(dt) {
+    for (let i = starWishSparks.length - 1; i >= 0; i--) {
+        const s = starWishSparks[i];
+        s.age += dt;
+        s.x += s.vx * dt;
+        s.y += s.vy * dt;
+        s.vx *= Math.exp(-1.8 * dt);
+        s.vy *= Math.exp(-1.8 * dt);
+        if (s.age >= s.life) starWishSparks.splice(i, 1);
+    }
+}
+
+function drawStarWishSparks(ctx) {
+    if (!starWishSparks.length) return;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (const s of starWishSparks) {
+        const u = 1 - s.age / s.life;
+        ctx.globalAlpha = Math.max(0, u * 0.95);
+        ctx.fillStyle = `hsla(${s.hue}, 90%, 78%, 1)`;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r * (0.7 + u * 0.6), 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.restore();
+}
+
+function shootingStarHitTest(x, y) {
+    if (!cometVisitor || cometVisitor.caught || cometVisitor.lateMiss) return false;
+    const c = cometVisitor;
+    const hitR = c.hitR || 58;
+    if (Math.hypot(x - c.x, y - c.y) <= hitR) return true;
+    // Allow a bit of trail so a near-miss on the streak still counts.
+    for (let i = 1; i <= 5; i++) {
+        const bx = c.x - Math.cos(c.dir) * i * 12;
+        const by = c.y - Math.sin(c.dir) * i * 12;
+        if (Math.hypot(x - bx, y - by) <= hitR * (0.92 - i * 0.06)) return true;
+    }
+    return false;
+}
+
+function grantShootingStarWish(x, y) {
+    const c = cometVisitor;
+    if (!c) return;
+    c.caught = true;
+    c.burst = 0.01;
+    c.wishTrail = 1;
+    c.life = Math.min(c.life, c.t + 0.55);
+    c.vx *= 0.25;
+    c.vy *= 0.25;
+    // Warm spark trail along the streak so the catch reads clearly.
+    emitStarWishSparks(x, y, 30, false);
+    for (let i = 1; i <= 10; i++) {
+        const bx = x - Math.cos(c.dir) * i * 16;
+        const by = y - Math.sin(c.dir) * i * 16;
+        emitStarWishSparks(bx, by, 4, false);
+    }
+    water.disturb(x, y, 28, 140);
+    spawnSplash(x, y, 16, 0.55);
+    if (Audio.rainbowChime) Audio.rainbowChime(Math.max(-1, Math.min(1, (x / viewW) * 2 - 1)));
+    if (Audio.starfall) Audio.starfall(Math.max(-1, Math.min(1, (x / viewW) * 2 - 1)));
+
+    // Wish gifts: rare food at the catch, plus one saved rainbow pellet.
+    const dropN = 2 + (Math.random() < 0.35 ? 1 : 0);
+    for (let i = 0; i < dropN; i++) {
+        const fx = Math.max(24, Math.min(viewW - 24, x + (Math.random() - 0.5) * 36));
+        const fy = Math.max(24, Math.min(viewH - 24, y + (Math.random() - 0.5) * 36));
+        let flags = { rainbow: true };
+        if (i === 1 && platinumUnlocked && Math.random() < 0.5) flags = { platinum: true };
+        else if (i === 1 && Math.random() < 0.4) flags = { golden: true };
+        while (foods.length >= CONFIG.maxFoods) {
+            const common = foods.findIndex((f) => !isRareFoodFlags(f));
+            if (common >= 0) foods.splice(common, 1);
+            else foods.shift();
+        }
+        foods.push(new Food(fx, fy, 9 + Math.random() * 4, flags));
+    }
+    if (typeof stashFood === "function") stashFood("rainbow");
+    if (typeof beginWeatherMood === "function") beginWeatherMood("fireflies");
+    if (typeof emitBiolumWake === "function") {
+        for (const f of fishes) {
+            if (f.dead || Math.hypot(f.x - x, f.y - y) > 200) continue;
+            emitBiolumWake(f);
+            f.petTimer = Math.max(f.petTimer || 0, 0.9);
+        }
+    }
+    markFirstInteraction();
+}
+
+function missShootingStarLate(x, y) {
+    const c = cometVisitor;
+    if (!c) return;
+    c.lateMiss = true;
+    c.life = Math.min(c.life, c.t + 0.28);
+    emitStarWishSparks(x, y, 8, true);
+    water.disturb(x, y, 10, 50);
+    markFirstInteraction();
+}
+
+// Tap a shooting star while it is still bright. Too late only gets a faint fizzle.
+function tryCatchShootingStar(x, y) {
+    if (mode !== "pond" || !cometVisitor) return false;
+    if (!shootingStarHitTest(x, y)) return false;
+    const c = cometVisitor;
+    if (c.t <= (c.catchUntil || 1)) {
+        grantShootingStarWish(c.x, c.y);
+    } else {
+        missShootingStarLate(c.x, c.y);
+    }
+    return true;
 }
 
 function drawCometVisitor(ctx) {
     if (!cometVisitor) return;
     const c = cometVisitor;
-    const u = Math.min(1, c.t * 2) * Math.min(1, (c.life - c.t) * 2);
+    const fadeIn = Math.min(1, c.t * 4);
+    const fadeOut = Math.min(1, Math.max(0, (c.life - c.t) * 3.2));
+    const u = fadeIn * fadeOut * (c.caught ? (1 - Math.min(1, c.burst || 0)) : 1);
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     ctx.translate(c.x, c.y);
     ctx.rotate(c.dir);
-    const g = ctx.createLinearGradient(-40, 0, 20, 0);
-    g.addColorStop(0, "rgba(255,180,255,0)");
-    g.addColorStop(0.6, "rgba(180,220,255," + (0.45 * u) + ")");
-    g.addColorStop(1, "rgba(255,255,255," + (0.8 * u) + ")");
+    const trail = 54 + (c.caught ? 20 : 0);
+    const g = ctx.createLinearGradient(-trail, 0, 22, 0);
+    if (c.caught && c.wishTrail) {
+        g.addColorStop(0, "rgba(255,160,80,0)");
+        g.addColorStop(0.35, "rgba(255,190,110," + (0.4 * u) + ")");
+        g.addColorStop(0.7, "rgba(255,230,170," + (0.8 * u) + ")");
+        g.addColorStop(1, "rgba(255,255,245," + (0.98 * u) + ")");
+    } else {
+        g.addColorStop(0, "rgba(255,180,255,0)");
+        g.addColorStop(0.45, "rgba(190,220,255," + (0.35 * u) + ")");
+        g.addColorStop(0.82, "rgba(255,240,200," + (0.7 * u) + ")");
+        g.addColorStop(1, "rgba(255,255,255," + (0.95 * u) + ")");
+    }
     ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.moveTo(-40, 0);
-    ctx.quadraticCurveTo(-10, -8, 18, 0);
-    ctx.quadraticCurveTo(-10, 8, -40, 0);
+    ctx.moveTo(-trail, 0);
+    ctx.quadraticCurveTo(-14, -9, 20, 0);
+    ctx.quadraticCurveTo(-14, 9, -trail, 0);
     ctx.fill();
+    // Bright head so the catchable tip reads clearly.
+    ctx.fillStyle = `rgba(255,255,245,${0.9 * u})`;
+    ctx.beginPath();
+    ctx.arc(14, 0, 3.2 + (c.caught ? 6 * (c.burst || 0) : 0), 0, Math.PI * 2);
+    ctx.fill();
+    if (c.caught && c.burst > 0) {
+        const b = Math.min(1, c.burst);
+        ctx.strokeStyle = `rgba(255,230,180,${0.65 * (1 - b)})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(14, 0, 8 + b * 34, 0, Math.PI * 2);
+        ctx.stroke();
+    }
     ctx.restore();
 }
 
@@ -22879,8 +23297,16 @@ function updateNightLoop(dt) {
         nightLoop = { t: 0, phase: "comet", predator: false, rewardReady: false };
     }
     nightLoop.t += dt;
-    if (nightLoop.phase === "comet" && nightLoop.t > 4.5) {
-        if (!cometVisitor && Math.random() < 0.4) maybeSpawnComet(0.02);
+    if (nightLoop.phase === "comet" && nightLoop.t > 3.2) {
+        if (!cometVisitor && Math.random() < 0.72) {
+            const side = Math.floor(Math.random() * 4);
+            let x, y, tx, ty;
+            if (side === 0) { x = -40; y = Math.random() * viewH; tx = viewW + 40; ty = Math.random() * viewH; }
+            else if (side === 1) { x = viewW + 40; y = Math.random() * viewH; tx = -40; ty = Math.random() * viewH; }
+            else if (side === 2) { x = Math.random() * viewW; y = -40; tx = Math.random() * viewW; ty = viewH + 40; }
+            else { x = Math.random() * viewW; y = viewH + 40; tx = Math.random() * viewW; ty = -40; }
+            spawnShootingStar(x, y, tx, ty);
+        }
         nightLoop.phase = "biolum";
         nightLoop.t = 0;
     } else if (nightLoop.phase === "biolum") {
@@ -22945,6 +23371,7 @@ function updateFlavorSystems(dt) {
     updateDebrisTools(dt);
     updateNightLoop(dt);
     maybeSpawnComet(dt);
+    updateStarWishSparks(dt);
     updateIcePatches(dt);
     if (weatherMood && weatherMood.kind === "mist" && Math.random() < 0.002) {
         maybeSpawnIcePatch();
@@ -22971,6 +23398,733 @@ function updateFlavorSystems(dt) {
 }
 
 // ===========================================================================
+// WINDOW RHYTHM STUDIO: step loops on glass, save tunes, play soft in pond
+// ===========================================================================
+const RHYTHM_KEY = "ripple-tunes-v1";
+const RHYTHM_STEPS = 16;
+const RHYTHM_TUNE_CAP = 12;
+
+function emptyRhythmLane() {
+    return Array(RHYTHM_STEPS).fill(0);
+}
+
+function emptyToneLane() {
+    return Array(RHYTHM_STEPS).fill(null);
+}
+
+function newRhythmPattern(bpm) {
+    return {
+        bpm: Math.max(60, Math.min(140, bpm || 96)),
+        steps: RHYTHM_STEPS,
+        kick: emptyRhythmLane(),
+        snare: emptyRhythmLane(),
+        hat: emptyRhythmLane(),
+        tone: emptyToneLane(),
+    };
+}
+
+function cloneRhythmPattern(src) {
+    const p = newRhythmPattern(src && src.bpm);
+    if (!src) return p;
+    p.bpm = Math.max(60, Math.min(140, src.bpm || 96));
+    for (const lane of ["kick", "snare", "hat"]) {
+        const arr = Array.isArray(src[lane]) ? src[lane] : [];
+        for (let i = 0; i < RHYTHM_STEPS; i++) p[lane][i] = arr[i] ? 1 : 0;
+    }
+    const tones = Array.isArray(src.tone) ? src.tone : [];
+    for (let i = 0; i < RHYTHM_STEPS; i++) {
+        const t = tones[i];
+        if (t && t.on) {
+            p.tone[i] = {
+                on: 1,
+                freq: +t.freq || 440,
+                x: +t.x || viewW * 0.5,
+                y: +t.y || viewH * 0.5,
+                v: clamp01(t.v == null ? 0.45 : t.v),
+            };
+        } else p.tone[i] = null;
+    }
+    return p;
+}
+
+function patternToTunePayload(pattern, name, id) {
+    return {
+        id: id || ("t" + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36)),
+        name: (name || "Untitled").slice(0, 28),
+        bpm: pattern.bpm,
+        steps: RHYTHM_STEPS,
+        kick: pattern.kick.slice(),
+        snare: pattern.snare.slice(),
+        hat: pattern.hat.slice(),
+        tone: pattern.tone.map((t) => (t && t.on ? {
+            on: 1, freq: t.freq, x: t.x, y: t.y, v: t.v,
+        } : null)),
+    };
+}
+
+let rhythmPattern = newRhythmPattern(96);
+let rhythmTunes = [];
+let rhythmActiveId = null;
+let rhythmPlaying = false;
+let rhythmRecordArmed = false;
+let rhythmPanelOpen = false;
+let tunesPanelOpen = false;
+let rhythmStep = 0;
+let rhythmAcc = 0;
+let rhythmPondGain = 0.42; // quieter under pond life
+let rhythmPlaySource = null; // "studio" | "pond"
+let rhythmLifePulse = 0; // lingering beat energy for pond sway
+let rhythmKickTight = 0; // school tighten after kicks
+
+function loadRhythmStore() {
+    rhythmTunes = [];
+    rhythmActiveId = null;
+    try {
+        const raw = localStorage.getItem(RHYTHM_KEY);
+        if (!raw) return;
+        const data = JSON.parse(raw);
+        if (!data || typeof data !== "object") return;
+        const list = Array.isArray(data.tunes) ? data.tunes : [];
+        for (const row of list) {
+            if (!row || typeof row !== "object") continue;
+            const tune = patternToTunePayload(cloneRhythmPattern(row), row.name || "Tune", row.id);
+            rhythmTunes.push(tune);
+            if (rhythmTunes.length >= RHYTHM_TUNE_CAP) break;
+        }
+        if (data.activeId) {
+            const hit = rhythmTunes.find((t) => t.id === data.activeId);
+            if (hit) {
+                rhythmActiveId = hit.id;
+                rhythmPattern = cloneRhythmPattern(hit);
+            }
+        }
+    } catch (err) { /* ignore */ }
+}
+
+function saveRhythmStore() {
+    try {
+        localStorage.setItem(RHYTHM_KEY, JSON.stringify({
+            version: 1,
+            activeId: rhythmActiveId,
+            tunes: rhythmTunes,
+        }));
+    } catch (err) { /* ignore */ }
+}
+
+function rhythmStepSeconds() {
+    const bpm = Math.max(60, Math.min(140, rhythmPattern.bpm || 96));
+    return 60 / bpm / 4; // 16th notes
+}
+
+function setRhythmPlaying(on, source) {
+    rhythmPlaying = !!on;
+    if (rhythmPlaying) {
+        rhythmPlaySource = source || (mode === "pond" ? "pond" : "studio");
+        rhythmAcc = 0;
+    } else {
+        rhythmPlaySource = null;
+        rhythmRecordArmed = false;
+        updateRhythmRecordUI();
+    }
+    updateRhythmTransportUI();
+    updateTunesPanelUI();
+}
+
+function stopRhythmPlayback() {
+    setRhythmPlaying(false);
+}
+
+function playRhythmStep(stepIndex, visual) {
+    const i = ((stepIndex % RHYTHM_STEPS) + RHYTHM_STEPS) % RHYTHM_STEPS;
+    const pond = mode === "pond" || rhythmPlaySource === "pond";
+    const drumGain = pond ? rhythmPondGain : 1;
+    const panKick = -0.15;
+    const panSnare = 0.1;
+    const panHat = 0.35;
+    const kickOn = !!rhythmPattern.kick[i];
+    const snareOn = !!rhythmPattern.snare[i];
+    const hatOn = !!rhythmPattern.hat[i];
+    const tone = rhythmPattern.tone[i];
+    const toneOn = !!(tone && tone.on);
+    if (kickOn && Audio.playRhythmHit) {
+        Audio.playRhythmHit("kick", panKick, drumGain);
+        if (visual && mode === "window") {
+            spawnWindowRippleVisual(viewW * 0.22, viewH * 0.78, 0.55);
+        }
+    }
+    if (snareOn && Audio.playRhythmHit) {
+        Audio.playRhythmHit("snare", panSnare, drumGain * 0.95);
+        if (visual && mode === "window") {
+            spawnWindowRippleVisual(viewW * 0.5, viewH * 0.55, 0.4);
+        }
+    }
+    if (hatOn && Audio.playRhythmHit) {
+        Audio.playRhythmHit("hat", panHat, drumGain * 0.85);
+        if (visual && mode === "window") {
+            spawnWindowRippleVisual(viewW * 0.72, viewH * 0.22, 0.28);
+        }
+    }
+    if (toneOn) {
+        const x = Math.max(8, Math.min(viewW - 8, tone.x));
+        const y = Math.max(8, Math.min(viewH - 8, tone.y));
+        const v = clamp01((tone.v == null ? 0.45 : tone.v) * (pond ? 0.7 : 1));
+        if (visual && mode === "window") {
+            spawnWindowRipple(x, y, v);
+        } else {
+            // Pond: glass voice without glass ripples.
+            const voice = windowPosToVoice(x, y);
+            const pan = Math.max(-1, Math.min(1, (x / viewW) * 2 - 1));
+            Audio.playDrop({
+                freq: tone.freq || voice.freq,
+                decay: voice.decay,
+                velocity: clamp01(0.22 + v * 0.45),
+                pan,
+                plunk: voice.plunk,
+                surface: "water",
+            });
+        }
+    }
+    if (mode === "pond" && rhythmPlaying) {
+        pulsePondToRhythm(kickOn, snareOn, hatOn, toneOn);
+    }
+}
+
+// Soft beat reaction: sway, school tighten on kicks, night flicker on hats/tones.
+function pulsePondToRhythm(kickOn, snareOn, hatOn, toneOn) {
+    if (kickOn) {
+        rhythmKickTight = 1;
+        rhythmLifePulse = Math.max(rhythmLifePulse, 1);
+    } else if (snareOn) {
+        rhythmLifePulse = Math.max(rhythmLifePulse, 0.72);
+    } else if (hatOn || toneOn) {
+        rhythmLifePulse = Math.max(rhythmLifePulse, 0.42);
+    }
+    if ((hatOn || toneOn) && nightMode && typeof emitBiolumWake === "function") {
+        let n = 0;
+        for (const f of fishes) {
+            if (f.dead || f.golden || !(f.type && f.type.night)) continue;
+            emitBiolumWake(f);
+            if (++n >= 3) break;
+        }
+    }
+}
+
+function updatePondMusicLife(dt) {
+    const playing = rhythmPlaying && mode === "pond";
+    const pulseEase = 1 - Math.exp(-(playing ? 2.4 : 3.6) * dt);
+    rhythmLifePulse = Math.max(0, rhythmLifePulse - (playing ? 1.35 : 2.4) * dt);
+    rhythmKickTight = Math.max(0, rhythmKickTight - (playing ? 1.15 : 2.2) * dt);
+    if (!playing || (!fishes.length && !(pacifistVisitors && pacifistVisitors.length))) return;
+
+    const pulse = rhythmLifePulse;
+    const tight = rhythmKickTight;
+    const cx = viewW * 0.5;
+    const cy = viewH * 0.5;
+    const tNow = performance.now() * 0.001;
+
+    for (const f of fishes) {
+        if (f.dead || f.golden || f.rainbowLeaving || f.insideShark) continue;
+        // Tiny beat sway: ease, never teleport.
+        if (pulse > 0.04) {
+            const wobble = Math.sin(tNow * 7.5 + (f.age || 0) * 5.1 + f.x * 0.01) * pulse;
+            f.dir += wobble * 0.9 * dt;
+            const boost = Math.min(16 * dt, pulse * 20 * dt);
+            f.x += Math.cos(f.dir) * boost;
+            f.y += Math.sin(f.dir) * boost;
+        }
+        // Kick tighten: ease toward nearby schoolmates.
+        if (tight > 0.05 && !f.isPredator && !f.isMonster && !f.isRainbow) {
+            let sx = 0, sy = 0, n = 0;
+            for (const o of fishes) {
+                if (o === f || o.dead || o.golden || o.isPredator || o.isMonster) continue;
+                const d = Math.hypot(o.x - f.x, o.y - f.y);
+                if (d > 8 && d < 130) { sx += o.x; sy += o.y; n++; }
+            }
+            if (n > 0) {
+                const tx = sx / n;
+                const ty = sy / n;
+                const k = Math.min(1, tight * 1.1 * pulseEase);
+                f.x += (tx - f.x) * k * 0.045;
+                f.y += (ty - f.y) * k * 0.045;
+            }
+        }
+        // Heroes and tamed friends lean gently toward the pond center on the beat.
+        if ((f.isHero || f.redeemed || f.tamedMonster) && pulse > 0.08) {
+            const want = Math.atan2(cy - f.y, cx - f.x);
+            f.dir += normAngle(want - f.dir) * Math.min(1, 0.7 * pulse * dt);
+        }
+    }
+    if (pacifistVisitors && pacifistVisitors.length) {
+        for (const p of pacifistVisitors) {
+            if (!p || p.dead || p.golden) continue;
+            if (pulse > 0.05) {
+                p.dir += Math.sin(tNow * 6.2 + p.x * 0.01) * pulse * 0.55 * dt;
+                const boost = Math.min(12 * dt, pulse * 14 * dt);
+                p.x += Math.cos(p.dir) * boost;
+                p.y += Math.sin(p.dir) * boost;
+            }
+            if (p.tamed && pulse > 0.08) {
+                const want = Math.atan2(cy - p.y, cx - p.x);
+                p.dir += normAngle(want - p.dir) * Math.min(1, 0.55 * pulse * dt);
+            }
+        }
+    }
+}
+
+function updateRhythmStudio(dt) {
+    if (typeof updatePondMusicLife === "function") updatePondMusicLife(dt);
+    if (!rhythmPlaying) return;
+    rhythmAcc += dt;
+    const stepDur = rhythmStepSeconds();
+    let guard = 0;
+    while (rhythmAcc >= stepDur && guard < 8) {
+        rhythmAcc -= stepDur;
+        playRhythmStep(rhythmStep, true);
+        rhythmStep = (rhythmStep + 1) % RHYTHM_STEPS;
+        guard++;
+        const label = document.getElementById("rhythm-step-label");
+        if (label) label.textContent = (rhythmStep + 1) + " / " + RHYTHM_STEPS;
+        highlightRhythmBeat(rhythmStep);
+    }
+}
+
+function highlightRhythmBeat(step) {
+    const grid = document.getElementById("rhythm-grid");
+    if (!grid) return;
+    grid.querySelectorAll(".rhythm-cell.beat").forEach((el) => el.classList.remove("beat"));
+    grid.querySelectorAll('.rhythm-cell[data-step="' + step + '"]').forEach((el) => {
+        el.classList.add("beat");
+    });
+}
+
+function rhythmCaptureTone(x, y, v) {
+    if (!rhythmRecordArmed || mode !== "window") return;
+    Audio.ensure();
+    const voice = windowPosToVoice(x, y);
+    const step = rhythmStep;
+    rhythmPattern.tone[step] = {
+        on: 1,
+        freq: voice.freq,
+        x: x,
+        y: y,
+        v: clamp01(v == null ? 0.45 : v),
+    };
+    if (!rhythmPlaying) {
+        rhythmStep = (step + 1) % RHYTHM_STEPS;
+    }
+    renderRhythmGrid();
+    highlightRhythmBeat(rhythmStep);
+    const label = document.getElementById("rhythm-step-label");
+    if (label) label.textContent = (rhythmStep + 1) + " / " + RHYTHM_STEPS;
+    syncActiveRhythmTune();
+}
+
+function clearRhythmPattern() {
+    const bpm = rhythmPattern.bpm;
+    rhythmPattern = newRhythmPattern(bpm);
+    rhythmStep = 0;
+    rhythmAcc = 0;
+    renderRhythmGrid();
+    highlightRhythmBeat(0);
+    const label = document.getElementById("rhythm-step-label");
+    if (label) label.textContent = "1 / 16";
+    syncActiveRhythmTune();
+}
+
+function syncActiveRhythmTune() {
+    if (!rhythmActiveId) return;
+    const idx = rhythmTunes.findIndex((t) => t.id === rhythmActiveId);
+    if (idx < 0) return;
+    const nameEl = document.getElementById("rhythm-name");
+    const name = (nameEl && nameEl.value.trim()) || rhythmTunes[idx].name || "Untitled";
+    rhythmTunes[idx] = patternToTunePayload(rhythmPattern, name, rhythmActiveId);
+    saveRhythmStore();
+    renderRhythmLibrary();
+    renderTunesLibrary();
+}
+
+function toggleRhythmCell(lane, step) {
+    if (lane === "tone") {
+        if (rhythmPattern.tone[step]) rhythmPattern.tone[step] = null;
+        else {
+            const x = ((step + 0.5) / RHYTHM_STEPS) * viewW;
+            const y = viewH * 0.4;
+            const voice = windowPosToVoice(x, y);
+            rhythmPattern.tone[step] = { on: 1, freq: voice.freq, x, y, v: 0.42 };
+            if (Audio.playDrop) {
+                Audio.ensure();
+                const pan = Math.max(-1, Math.min(1, (x / viewW) * 2 - 1));
+                Audio.playDrop({
+                    freq: voice.freq, decay: voice.decay, velocity: 0.4, pan,
+                    plunk: voice.plunk, surface: "water",
+                });
+            }
+        }
+    } else {
+        rhythmPattern[lane][step] = rhythmPattern[lane][step] ? 0 : 1;
+        if (rhythmPattern[lane][step] && Audio.playRhythmHit) {
+            Audio.ensure();
+            Audio.playRhythmHit(lane, 0, 0.9);
+        }
+    }
+    renderRhythmGrid();
+    highlightRhythmBeat(rhythmStep);
+    syncActiveRhythmTune();
+}
+
+function renderRhythmGrid() {
+    const grid = document.getElementById("rhythm-grid");
+    if (!grid) return;
+    const lanes = [
+        { key: "kick", label: "Kick" },
+        { key: "snare", label: "Snare" },
+        { key: "hat", label: "Hat" },
+        { key: "tone", label: "Tone" },
+    ];
+    grid.innerHTML = "";
+    for (const lane of lanes) {
+        const lab = document.createElement("div");
+        lab.className = "rhythm-lane-label";
+        lab.textContent = lane.label;
+        grid.appendChild(lab);
+        for (let i = 0; i < RHYTHM_STEPS; i++) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "rhythm-cell" + (lane.key === "tone" ? " tone" : "");
+            btn.dataset.lane = lane.key;
+            btn.dataset.step = String(i);
+            const on = lane.key === "tone"
+                ? !!(rhythmPattern.tone[i] && rhythmPattern.tone[i].on)
+                : !!rhythmPattern[lane.key][i];
+            if (on) btn.classList.add("on");
+            btn.title = lane.label + " step " + (i + 1);
+            btn.setAttribute("aria-pressed", on ? "true" : "false");
+            btn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                Audio.ensure();
+                toggleRhythmCell(lane.key, i);
+            });
+            grid.appendChild(btn);
+        }
+    }
+}
+
+function renderRhythmLibrary() {
+    const lib = document.getElementById("rhythm-library");
+    if (!lib) return;
+    lib.innerHTML = "";
+    for (const tune of rhythmTunes) {
+        const row = document.createElement("div");
+        row.className = "rhythm-tune-row";
+        const loadBtn = document.createElement("button");
+        loadBtn.type = "button";
+        loadBtn.className = "market-row";
+        loadBtn.textContent = tune.name;
+        loadBtn.title = "Load " + tune.name;
+        loadBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            loadRhythmTune(tune.id);
+        });
+        const playBtn = document.createElement("button");
+        playBtn.type = "button";
+        playBtn.className = "market-row rhythm-mini";
+        playBtn.textContent = "Play";
+        playBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            loadRhythmTune(tune.id);
+            Audio.ensure();
+            setRhythmPlaying(true, "studio");
+        });
+        const delBtn = document.createElement("button");
+        delBtn.type = "button";
+        delBtn.className = "market-row rhythm-mini rhythm-del";
+        delBtn.textContent = "Delete";
+        delBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            deleteRhythmTune(tune.id);
+        });
+        row.appendChild(loadBtn);
+        row.appendChild(playBtn);
+        row.appendChild(delBtn);
+        lib.appendChild(row);
+    }
+}
+
+function renderTunesLibrary() {
+    const lib = document.getElementById("tunes-library");
+    const empty = document.getElementById("tunes-empty");
+    if (!lib) return;
+    lib.innerHTML = "";
+    if (!rhythmTunes.length) {
+        if (empty) empty.hidden = false;
+        return;
+    }
+    if (empty) empty.hidden = true;
+    for (const tune of rhythmTunes) {
+        const row = document.createElement("div");
+        row.className = "rhythm-tune-row";
+        const playBtn = document.createElement("button");
+        playBtn.type = "button";
+        playBtn.className = "market-row";
+        const isThis = rhythmPlaying && rhythmPlaySource === "pond" && rhythmActiveId === tune.id;
+        playBtn.textContent = (isThis ? "Playing · " : "") + tune.name;
+        playBtn.title = isThis ? "Playing " + tune.name : "Play " + tune.name + " in the pond";
+        playBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            Audio.ensure();
+            loadRhythmTune(tune.id);
+            setRhythmPlaying(true, "pond");
+        });
+        row.appendChild(playBtn);
+        lib.appendChild(row);
+    }
+}
+
+function loadRhythmTune(id) {
+    const tune = rhythmTunes.find((t) => t.id === id);
+    if (!tune) return;
+    rhythmActiveId = tune.id;
+    rhythmPattern = cloneRhythmPattern(tune);
+    rhythmStep = 0;
+    rhythmAcc = 0;
+    const bpmEl = document.getElementById("rhythm-bpm");
+    const bpmVal = document.getElementById("rhythm-bpm-val");
+    const nameEl = document.getElementById("rhythm-name");
+    if (bpmEl) bpmEl.value = String(rhythmPattern.bpm);
+    if (bpmVal) bpmVal.textContent = String(rhythmPattern.bpm);
+    if (nameEl) nameEl.value = tune.name;
+    renderRhythmGrid();
+    highlightRhythmBeat(0);
+    saveRhythmStore();
+    updateRhythmTransportUI();
+}
+
+function saveCurrentRhythmTune() {
+    const nameEl = document.getElementById("rhythm-name");
+    let name = (nameEl && nameEl.value.trim()) || "Untitled";
+    name = name.slice(0, 28);
+    let tune = rhythmActiveId ? rhythmTunes.find((t) => t.id === rhythmActiveId) : null;
+    if (tune) {
+        const next = patternToTunePayload(rhythmPattern, name, tune.id);
+        const idx = rhythmTunes.findIndex((t) => t.id === tune.id);
+        rhythmTunes[idx] = next;
+        rhythmActiveId = next.id;
+    } else {
+        if (rhythmTunes.length >= RHYTHM_TUNE_CAP) rhythmTunes.shift();
+        const next = patternToTunePayload(rhythmPattern, name);
+        rhythmTunes.push(next);
+        rhythmActiveId = next.id;
+    }
+    if (nameEl) nameEl.value = name;
+    saveRhythmStore();
+    renderRhythmLibrary();
+    renderTunesLibrary();
+}
+
+function deleteRhythmTune(id) {
+    rhythmTunes = rhythmTunes.filter((t) => t.id !== id);
+    if (rhythmActiveId === id) rhythmActiveId = null;
+    saveRhythmStore();
+    renderRhythmLibrary();
+    renderTunesLibrary();
+    updateTunesPanelUI();
+}
+
+function updateRhythmRecordUI() {
+    const btn = document.getElementById("rhythm-record");
+    if (!btn) return;
+    btn.classList.toggle("on", !!rhythmRecordArmed);
+    btn.setAttribute("aria-pressed", rhythmRecordArmed ? "true" : "false");
+    btn.textContent = rhythmRecordArmed ? "Recording" : "Record";
+}
+
+function updateRhythmTransportUI() {
+    const playBtn = document.getElementById("rhythm-play");
+    const rhythmBtn = document.getElementById("rhythm-btn");
+    if (playBtn) {
+        playBtn.classList.toggle("on", !!rhythmPlaying && rhythmPlaySource === "studio");
+        playBtn.textContent = (rhythmPlaying && rhythmPlaySource === "studio") ? "Playing" : "Play";
+    }
+    if (rhythmBtn) {
+        rhythmBtn.classList.toggle("on", !!rhythmPanelOpen);
+        rhythmBtn.setAttribute("aria-pressed", rhythmPanelOpen ? "true" : "false");
+        rhythmBtn.setAttribute("aria-expanded", rhythmPanelOpen ? "true" : "false");
+    }
+}
+
+function setRhythmPanelOpen(open) {
+    rhythmPanelOpen = !!open;
+    if (rhythmPanelOpen) setTunesPanelOpen(false);
+    const panel = document.getElementById("rhythm-panel");
+    if (panel) {
+        panel.classList.toggle("open", rhythmPanelOpen);
+        panel.setAttribute("aria-hidden", rhythmPanelOpen ? "false" : "true");
+    }
+    updateRhythmTransportUI();
+    if (rhythmPanelOpen) {
+        renderRhythmGrid();
+        renderRhythmLibrary();
+        highlightRhythmBeat(rhythmStep);
+    }
+}
+
+function setTunesPanelOpen(open) {
+    tunesPanelOpen = !!open;
+    if (tunesPanelOpen) {
+        setRhythmPanelOpen(false);
+        setMarketOpen(false);
+        setProgressOpen(false);
+    }
+    const panel = document.getElementById("tunes-panel");
+    if (panel) {
+        panel.classList.toggle("open", tunesPanelOpen);
+        panel.setAttribute("aria-hidden", tunesPanelOpen ? "false" : "true");
+    }
+    updateTunesPanelUI();
+    if (tunesPanelOpen) renderTunesLibrary();
+}
+
+function updateTunesPanelUI() {
+    const btn = document.getElementById("tunes-btn");
+    if (btn) {
+        btn.classList.toggle("on", !!tunesPanelOpen || (rhythmPlaying && rhythmPlaySource === "pond"));
+        btn.setAttribute("aria-pressed", tunesPanelOpen ? "true" : "false");
+        btn.setAttribute("aria-expanded", tunesPanelOpen ? "true" : "false");
+        btn.title = (rhythmPlaying && rhythmPlaySource === "pond")
+            ? "Tunes playing"
+            : "Tunes";
+    }
+    if (tunesPanelOpen) renderTunesLibrary();
+}
+
+function onRhythmModeChange() {
+    if (mode === "pond") {
+        setRhythmPanelOpen(false);
+        rhythmRecordArmed = false;
+        updateRhythmRecordUI();
+        // Keep pond playback running; studio visuals stop with mode.
+    } else {
+        setTunesPanelOpen(false);
+        if (rhythmPlaying && rhythmPlaySource === "pond") {
+            rhythmPlaySource = "studio";
+        }
+    }
+    updateRhythmTransportUI();
+    updateTunesPanelUI();
+}
+
+function initRhythmStudioUI() {
+    loadRhythmStore();
+    renderRhythmGrid();
+    renderRhythmLibrary();
+    renderTunesLibrary();
+
+    const bpmEl = document.getElementById("rhythm-bpm");
+    const bpmVal = document.getElementById("rhythm-bpm-val");
+    if (bpmEl) {
+        bpmEl.value = String(rhythmPattern.bpm);
+        if (bpmVal) bpmVal.textContent = String(rhythmPattern.bpm);
+        bpmEl.addEventListener("input", (e) => {
+            e.stopPropagation();
+            rhythmPattern.bpm = Math.max(60, Math.min(140, +bpmEl.value || 96));
+            if (bpmVal) bpmVal.textContent = String(rhythmPattern.bpm);
+            syncActiveRhythmTune();
+        });
+        bpmEl.addEventListener("click", (e) => e.stopPropagation());
+    }
+
+    const rhythmBtn = document.getElementById("rhythm-btn");
+    if (rhythmBtn) {
+        rhythmBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            Audio.ensure();
+            setRhythmPanelOpen(!rhythmPanelOpen);
+        });
+    }
+    const tunesBtn = document.getElementById("tunes-btn");
+    if (tunesBtn) {
+        tunesBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            Audio.ensure();
+            setTunesPanelOpen(!tunesPanelOpen);
+        });
+    }
+
+    const playBtn = document.getElementById("rhythm-play");
+    if (playBtn) {
+        playBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            Audio.ensure();
+            if (rhythmPlaying && rhythmPlaySource === "studio") stopRhythmPlayback();
+            else setRhythmPlaying(true, "studio");
+        });
+    }
+    const stopBtn = document.getElementById("rhythm-stop");
+    if (stopBtn) {
+        stopBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            stopRhythmPlayback();
+            rhythmStep = 0;
+            highlightRhythmBeat(0);
+            const label = document.getElementById("rhythm-step-label");
+            if (label) label.textContent = "1 / 16";
+        });
+    }
+    const recBtn = document.getElementById("rhythm-record");
+    if (recBtn) {
+        recBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            Audio.ensure();
+            rhythmRecordArmed = !rhythmRecordArmed;
+            updateRhythmRecordUI();
+        });
+    }
+    const clearBtn = document.getElementById("rhythm-clear");
+    if (clearBtn) {
+        clearBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            clearRhythmPattern();
+        });
+    }
+    const saveBtn = document.getElementById("rhythm-save");
+    if (saveBtn) {
+        saveBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            saveCurrentRhythmTune();
+        });
+    }
+    const nameEl = document.getElementById("rhythm-name");
+    if (nameEl) {
+        nameEl.addEventListener("click", (e) => e.stopPropagation());
+        nameEl.addEventListener("keydown", (e) => e.stopPropagation());
+    }
+    const tunesStop = document.getElementById("tunes-stop");
+    if (tunesStop) {
+        tunesStop.addEventListener("click", (e) => {
+            e.stopPropagation();
+            stopRhythmPlayback();
+        });
+    }
+
+    const rhythmPanel = document.getElementById("rhythm-panel");
+    if (rhythmPanel) {
+        rhythmPanel.addEventListener("click", (e) => e.stopPropagation());
+        rhythmPanel.onpointerdown = (e) => e.stopPropagation();
+    }
+    const tunesPanel = document.getElementById("tunes-panel");
+    if (tunesPanel) {
+        tunesPanel.addEventListener("click", (e) => e.stopPropagation());
+        tunesPanel.onpointerdown = (e) => e.stopPropagation();
+    }
+
+    updateRhythmRecordUI();
+    updateRhythmTransportUI();
+    updateTunesPanelUI();
+}
+
+initRhythmStudioUI();
+
+// ===========================================================================
 // RENDER LOOP
 // ===========================================================================
 let lastFrame = performance.now();
@@ -22981,6 +24135,7 @@ function frame(now) {
     lastFrame = now;
     sceneryTime += dt;
     tickGfxQuality(dt);
+    if (typeof updateRhythmStudio === "function") updateRhythmStudio(dt);
 
     if (mode === "pond") {
         sunPhase += dt;
@@ -22997,7 +24152,8 @@ function frame(now) {
         if (typeof drawIcePatches === "function") drawIcePatches(ctx);
         water.render(ctx);
         if (typeof drawGiantBedReveal === "function") drawGiantBedReveal(ctx);
-        if (gfxQuality >= 1) drawSunContactShadows(ctx);
+        // Floor shadows stay on whenever sky light is casting, even on lower gfx.
+        if (lightCastsFloorShadows()) drawSunContactShadows(ctx);
 
         // Shore and bank scenery sit under the swimming life.
         drawShoreStones(ctx, dt);
@@ -23037,7 +24193,7 @@ function frame(now) {
         for (let i = fishes.length - 1; i >= 0; i--) {
             if (fishes[i].dead) fishes.splice(i, 1);
         }
-        if (gfxQuality >= 1) drawSunCreatureShadows(ctx);
+        if (lightCastsFloorShadows()) drawSunCreatureShadows(ctx);
         if (typeof drawTerritoryRings === "function") drawTerritoryRings(ctx);
         if (typeof drawCurrentLanes === "function") drawCurrentLanes(ctx);
         if (typeof drawWhirlpools === "function") drawWhirlpools(ctx);
@@ -23047,6 +24203,7 @@ function frame(now) {
         if (typeof drawSonicRings === "function") drawSonicRings(ctx);
         if (typeof drawBreathBubbles === "function") drawBreathBubbles(ctx);
         if (typeof drawCometVisitor === "function") drawCometVisitor(ctx);
+        if (typeof drawStarWishSparks === "function") drawStarWishSparks(ctx);
         // Draw resting gold first (lakebed), then swimmers above them.
         for (const fish of fishes) {
             if (fish.golden) fish.draw(ctx);
