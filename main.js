@@ -16573,7 +16573,7 @@ function updateOctopusWhaleFight(dt) {
                 const gx = cx + along + Math.sin(leg.phase * 0.7 + i) * 6;
                 const gy = keelY + Math.sin(leg.phase + i) * 3
                     + (fight.shipLatched ? 2 : 0);
-                easeTipToward(leg, gx, gy, dt, fight.shipLatched ? 3.6 : 3.0);
+                easeTipToward(leg, gx, gy, dt, fight.shipLatched ? 5.2 : 3.0);
                 if (Math.abs(leg.tipY - keelY) < 22 && Math.abs(leg.tipX - gx) < 36) {
                     tipsOnKeel++;
                 }
