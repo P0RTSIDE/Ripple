@@ -1,0 +1,33 @@
+---
+description: Apex meals, pacifist helpers, and croc ending triggers
+alwaysApply: true
+---
+
+# Apex growth and helper fish
+
+## Shared helpers
+
+- `findEdiblePacifistHelper(hunter, rangeMult)`: nearest living helper smaller than the hunter.
+- `growApexFromMeal(ent, preySize)`: grow via `ent.grow` or size cap.
+- `consumePacifistHelper(hunter, prey, opts)`: kill helper, grow hunter, splash/audio.
+  - `opts.triggerCrocEnding: true` only for **wild** crocs/alligators (not tamed/hero), day mode, and starts `triggerCrocAlligatorEnding`.
+
+## Who may eat helpers today
+
+- Wild crocs/gators: hunt helpers; eating one triggers the early croc ending.
+- Tamed/hero crocs, sharks, swordfish, octopus/mantle, crystal serpent: may snack on helpers for growth only.
+- Pacifist helpers live in `pacifistVisitors` (`PacifistVisitor`, `isPacifist: true`), not in `fishes`.
+
+## Growth expectations
+
+- Crocs and alligators both grow from fish meals and fish food (not only alligators).
+- Apex predators should grow from fish meals and normal food bites via the shared meal helpers where practical.
+- Prefer `growApexFromMeal` over one-off size math when adding new apex snacks.
+
+## Size gate
+
+Helpers are only edible when `helper.size < hunter.size` (with a small buffer in `findEdiblePacifistHelper`). Do not let undersized hunters delete helpers.
+
+## Pending intent
+
+Large **evil pond fish** (`isPredator` / `isMonster` in `fishes`) should also hunt and eat helpers when big enough, using the same helpers above with `triggerCrocEnding: false`. Wire this in `Fish` hunt/eat paths if not already present.

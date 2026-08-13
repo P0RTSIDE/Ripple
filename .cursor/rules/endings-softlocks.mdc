@@ -1,0 +1,41 @@
+---
+description: Keep every Ripple ending under 25s with no softlocks
+alwaysApply: true
+---
+
+# Endings and softlocks
+
+Ripple finales must always clear. Players and restock must never get stuck.
+
+## Hard limit
+
+- `CONFIG.finaleMaxDuration` is **25 seconds** (wall clock).
+- Use `tickFinaleClock(state, dt)` on multi-phase ending state.
+- Stamp `wall0: performance.now()` when an ending begins.
+- `finaleOvertime(state)` is true if game clock **or** wall clock exceeds the limit.
+- `watchdogFinaleSoftlocks()` runs on a real `setInterval` so background-tab `dt` caps cannot stretch a finale forever.
+
+## When adding or editing an ending
+
+1. Give the ending object `t`, and for multi-phase also `clock` + `wall0`.
+2. Call `tickFinaleClock` each update.
+3. On overtime: force the normal finish path (burst, `finishApexDuel`, `resetPond`, clear globals). Do not leave a half-live finale flag.
+4. Soft returns (giant peace, octopus ship fade, crystal fade) may keep a flag briefly after restock, but must null out well under 25s.
+5. Do not rely only on phase timers that reset each beat. Absolute `clock` / `wall0` must still abort.
+6. Prefer shortening spectacle beats over raising the 25s cap.
+
+## Known endings to keep safe
+
+POV lunge, giant peace/shadow, hero remorse, rainbow exit/duet/ninja, rainbow croc, apex duel, croc helper trigger, frog finale, octopus-whale fight, orca feast, swordfish screen spear, crystal prism/serpent/mantle.
+
+## Audit
+
+- `probeFinaleState()` snapshots active finales.
+- `runFinaleAudit()` fires each ending and measures clear time.
+- Danger menu (type `devcodefartgoblin`) has Endings buttons including crystal and croc helper triggers.
+
+## Croc / alligator finale specifically
+
+- Empty pond or helper meal can start the story.
+- Helper meal uses `triggerCrocAlligatorEnding` (early finish, no endless shark meals).
+- `apexDuelPlayed` blocks shark respawn loops until the pond is fully restocked.
