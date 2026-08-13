@@ -22,6 +22,7 @@ Ripple is a single-page pond sim. Almost all gameplay lives in `main.js` with sh
 | Helpers | `pacifistVisitors`, `PacifistVisitor`, `findEdiblePacifistHelper`, `consumePacifistHelper` |
 | Apex growth | `growApexFromMeal` |
 | Croc finale | `beginApexDuel`, `finishApexDuel`, `triggerCrocAlligatorEnding`, `apexDuelPlayed` |
+| Frog / bullfrog | `beginFrogFinale`, `beginBullfrogFinale`, `bullfrog`, `bullfrogFinale` |
 | Finale lockout | `pondFinaleActive`, `finaleMaxSeconds`, `finaleOvertime`, `watchdogFinaleSoftlocks` |
 | Ending audit | `runFinaleAudit`, `probeFinaleState` |
 | Danger menu | type `devcodefartgoblin`, `buildDevMenu`, `devClearFinales` |
