@@ -527,6 +527,9 @@ const PLATINUM_RAINBOW_FOOD_COST = 5;
 const NIGHT_UNLOCK_RAINBOW_COST = 5; // market: unlock moon pond with stashed rainbow food
 const DOUBLE_PETTER_RAINBOW_COST = 5; // stashed rainbow food for double-pet upgrade
 const PICKER_RAINBOW_FOOD_COST = 3; // stashed rainbow food for fish picker tool
+const STRONGER_CURRENTS_RAINBOW_COST = 5; // stashed rainbow food for stronger currents
+const STRONGER_CURRENTS_MULT = 1.85; // flow force when stronger currents owned
+const STRONGER_CURRENTS_RANGE = 95; // influence radius (default 70)
 const BLOBFISH_PETS_FOR_RAINBOW = 50;
 // Stronger picker: lift well past predator size; exotic and mid apex can leave the water.
 const PICKER_LIFT_SIZE = 96; // commons / grown fish lift below this (was predatorSize 40)
@@ -562,6 +565,7 @@ let marketOpen = false;
 let magnetOwned = false;
 let doublePetterOwned = false; // one click pets twice
 let pickerOwned = false; // fish picker upper: lift small fish / drag large ones
+let strongerCurrentsOwned = false; // carved pond currents pull harder and farther
 let pickerMode = false;
 let pickerHold = null; // active right-drag pickup { ent, kind, mode, ... }
 let catcherLevel = 0; // 0..CATCHER_LEVEL_MAX wider catcher upgrades
@@ -16276,10 +16280,10 @@ function beginOctopusWhaleFight() {
     const cy = viewH * 0.48;
     if (!whale || whale.dead) {
         whale = new Whale();
-        // Swim in from a side instead of appearing mid-pond.
+        // Swim in from a nearer flank so contact lands before the beat times out.
         whale.fromLeft = octopus.x < cx;
-        whale.x = whale.fromLeft ? -whale.size * 0.8 : viewW + whale.size * 0.8;
-        whale.y = cy + (Math.random() - 0.5) * 30;
+        whale.x = whale.fromLeft ? -whale.size * 0.35 : viewW + whale.size * 0.35;
+        whale.y = cy + (Math.random() - 0.5) * 24;
         whale.dir = whale.fromLeft ? 0 : Math.PI;
         whale.isHero = false;
     }
@@ -16358,23 +16362,39 @@ function updateOctopusWhaleFight(dt) {
                 leg.phase += dt * 1.6;
                 const wx = whale ? whale.x : meetX;
                 const wy = whale ? whale.y : meetY;
-                const ang = fight.t * 0.9 + i * (Math.PI * 2 / 8)
-                    + Math.sin(leg.phase * 0.9) * 0.25;
-                const reach = Math.min(1, 0.35 + fight.t * 0.4);
-                const rad = (whale ? whale.size * (0.42 * reach) : 50)
-                    + Math.sin(leg.phase + i) * 8;
-                easeTipToward(
-                    leg,
-                    wx + Math.cos(ang) * rad,
-                    wy + Math.sin(ang) * rad * 0.7,
-                    dt,
-                    2.4
-                );
+                const bodyDist = Math.hypot(wx - octopus.x, wy - octopus.y);
+                const armLen = octopus.size * 1.55;
+                // Keep arms local until the whale is inside reach (no pond-wide stretch).
+                if (!whale || bodyDist > armLen * 1.35) {
+                    const ang = octopus.dir + Math.PI + (i / 7 - 0.5) * 1.5
+                        + Math.sin(leg.phase) * 0.35;
+                    const rad = octopus.size * (0.95 + 0.2 * Math.sin(leg.phase * 0.8 + i));
+                    easeTipToward(
+                        leg,
+                        octopus.x + Math.cos(ang) * rad,
+                        octopus.y + Math.sin(ang) * rad * 0.85,
+                        dt,
+                        2.2
+                    );
+                } else {
+                    const ang = fight.t * 0.9 + i * (Math.PI * 2 / 8)
+                        + Math.sin(leg.phase * 0.9) * 0.25;
+                    const reach = Math.min(1, 0.45 + (armLen / Math.max(40, bodyDist)) * 0.4);
+                    const rad = whale.size * (0.4 * reach)
+                        + Math.sin(leg.phase + i) * 8;
+                    easeTipToward(
+                        leg,
+                        wx + Math.cos(ang) * rad,
+                        wy + Math.sin(ang) * rad * 0.7,
+                        dt,
+                        2.6
+                    );
+                }
             }
         }
         if (whale && !whale.dead) {
             // Fast enough to cross half a pond before the phase timeout.
-            easeToward(whale, meetX + 12, meetY - 4, dt, 210, 1.15);
+            easeToward(whale, meetX + 12, meetY - 4, dt, 260, 1.35);
             whale.tailPhase = (whale.tailPhase || 0) + dt * 3.2;
         }
         const contactR = octopus && whale
@@ -16553,11 +16573,14 @@ function updateOctopusWhaleFight(dt) {
                 const gx = cx + along + Math.sin(leg.phase * 0.7 + i) * 6;
                 const gy = keelY + Math.sin(leg.phase + i) * 3
                     + (fight.shipLatched ? 2 : 0);
-                easeTipToward(leg, gx, gy, dt, fight.shipLatched ? 3.4 : 2.6);
-                if (Math.hypot(leg.tipX - gx, leg.tipY - gy) < 18) tipsOnKeel++;
+                easeTipToward(leg, gx, gy, dt, fight.shipLatched ? 3.6 : 3.0);
+                if (Math.abs(leg.tipY - keelY) < 22 && Math.abs(leg.tipX - gx) < 36) {
+                    tipsOnKeel++;
+                }
             }
-            if (!fight.shipLatched && fight.t > 0.55
-                && (tipsOnKeel >= 3 || Math.abs(keelY - octY) < (octopus.size * 1.25 + 24))) {
+            const keelInReach = Math.abs(keelY - octY) < (octopus.size * 1.35 + 36);
+            if (!fight.shipLatched && fight.t > 0.4
+                && (tipsOnKeel >= 2 || (keelInReach && tipsOnKeel >= 1))) {
                 fight.shipLatched = true;
                 Audio.predatorEat(0);
                 spawnSplash(cx, keelY, 16, 0.7);
@@ -23394,6 +23417,7 @@ function resetMarketUnlocks() {
     catcherOwned = true; // always available; upgrades still come from the market
     doublePetterOwned = false;
     pickerOwned = false;
+    strongerCurrentsOwned = false;
     catcherLevel = 0;
     rainbowCaughtCount = 0;
     platinumUnlocked = false;
@@ -23417,6 +23441,7 @@ function applyMarketData(data) {
     catcherOwned = true;
     doublePetterOwned = !!data.doublePetter;
     pickerOwned = !!data.picker;
+    strongerCurrentsOwned = !!data.strongerCurrents;
     catcherLevel = Math.max(0, Math.min(CATCHER_LEVEL_MAX, Math.floor(data.catcherLevel || 0)));
     rainbowCaughtCount = Math.max(0, Math.floor(data.rainbowCaught || 0));
     platinumUnlocked = !!data.platinum || rainbowCaughtCount >= RAINBOWS_FOR_PLATINUM;
@@ -24131,6 +24156,7 @@ function buildProgressSnapshot() {
             catcher: catcherOwned,
             doublePetter: doublePetterOwned,
             picker: pickerOwned,
+            strongerCurrents: strongerCurrentsOwned,
             catcherLevel,
             rainbowCaught: rainbowCaughtCount,
             platinum: platinumUnlocked,
@@ -24956,6 +24982,19 @@ function setMarketOpen(open) {
     updateMarketUI();
 }
 
+function setMarketTile(btn, opts) {
+    if (!btn) return;
+    const o = opts || {};
+    if (o.hidden !== undefined) btn.hidden = !!o.hidden;
+    btn.disabled = !!o.disabled;
+    if (o.title !== undefined) btn.title = o.title;
+    btn.classList.toggle("owned", !!o.owned);
+    const label = btn.querySelector(".market-tile-label");
+    const cost = btn.querySelector(".market-tile-cost");
+    if (label && o.label !== undefined) label.textContent = o.label;
+    if (cost && o.cost !== undefined) cost.textContent = o.cost;
+}
+
 function updateMarketUI() {
     updateMarketButtonUI();
     updateCatcherButtonUI();
@@ -24972,6 +25011,7 @@ function updateMarketUI() {
         catcherUp: document.getElementById("market-buy-catcher-up"),
         picker: document.getElementById("market-buy-picker"),
         doublePetter: document.getElementById("market-buy-double-petter"),
+        strongerCurrents: document.getElementById("market-buy-stronger-currents"),
         rainbow: document.getElementById("market-buy-rainbow"),
         goldfood: document.getElementById("market-buy-goldfood"),
         recipeMirror: document.getElementById("market-buy-recipe-mirror"),
@@ -24980,106 +25020,158 @@ function updateMarketUI() {
         platinum: document.getElementById("market-buy-platinum"),
     };
     if (rows.magnet) {
-        rows.magnet.disabled = !marketUnlocked || magnetOwned || goldCollected < MAGNET_GOLD_COST;
-        rows.magnet.textContent = magnetOwned
-            ? "Magnet owned (faster gold pickup)"
-            : "Magnet · " + MAGNET_GOLD_COST + " gold";
-        rows.magnet.title = magnetOwned
-            ? "Already owned: gold fish lift much faster"
-            : "Lift settled gold fish much faster";
+        setMarketTile(rows.magnet, {
+            disabled: !marketUnlocked || magnetOwned || goldCollected < MAGNET_GOLD_COST,
+            owned: magnetOwned,
+            label: "Magnet",
+            cost: magnetOwned ? "Owned" : MAGNET_GOLD_COST + " gold",
+            title: magnetOwned
+                ? "Already owned: gold fish lift much faster"
+                : "Lift settled gold fish much faster",
+        });
     }
     if (rows.catcher) {
-        rows.catcher.disabled = true;
-        rows.catcher.textContent = "Rainbow catcher owned";
-        rows.catcher.title = "Starter tool: use the catcher button, then drag a small circle";
+        setMarketTile(rows.catcher, {
+            disabled: true,
+            owned: true,
+            label: "Catcher",
+            cost: "Owned",
+            title: "Starter tool: use the catcher button, then drag a small circle",
+        });
     }
     if (rows.catcherUp) {
         const rainbowFood = availableRainbowFood();
         const maxed = catcherLevel >= CATCHER_LEVEL_MAX;
-        rows.catcherUp.hidden = !catcherOwned;
-        rows.catcherUp.disabled = !marketUnlocked || !catcherOwned || maxed
-            || rainbowFood < CATCHER_RAINBOW_FOOD_COST;
-        rows.catcherUp.textContent = maxed
-            ? "Catcher size maxed"
-            : "Wider catcher · " + CATCHER_RAINBOW_FOOD_COST + " rainbow food";
-        rows.catcherUp.title = maxed
-            ? "Catcher is as wide as it can get"
-            : "Radius " + Math.round(catcherMaxRadius()) + " · " + rainbowFood + " rainbow food saved";
+        setMarketTile(rows.catcherUp, {
+            hidden: !catcherOwned,
+            disabled: !marketUnlocked || !catcherOwned || maxed
+                || rainbowFood < CATCHER_RAINBOW_FOOD_COST,
+            owned: maxed,
+            label: "Wider",
+            cost: maxed ? "Maxed" : CATCHER_RAINBOW_FOOD_COST + " rainbow",
+            title: maxed
+                ? "Catcher is as wide as it can get"
+                : "Radius " + Math.round(catcherMaxRadius()) + ". " + rainbowFood + " rainbow food saved",
+        });
     }
     if (rows.picker) {
         const rainbowFood = availableRainbowFood();
-        rows.picker.disabled = !marketUnlocked || pickerOwned
-            || rainbowFood < PICKER_RAINBOW_FOOD_COST;
-        rows.picker.textContent = pickerOwned
-            ? "Fish picker owned"
-            : "Fish picker · " + PICKER_RAINBOW_FOOD_COST + " rainbow food";
-        rows.picker.title = pickerOwned
-            ? "Use the picker button, then right drag a fish"
-            : "Lift small fish or drag larger ones with right click";
+        setMarketTile(rows.picker, {
+            disabled: !marketUnlocked || pickerOwned
+                || rainbowFood < PICKER_RAINBOW_FOOD_COST,
+            owned: pickerOwned,
+            label: "Picker",
+            cost: pickerOwned ? "Owned" : PICKER_RAINBOW_FOOD_COST + " rainbow",
+            title: pickerOwned
+                ? "Use the picker button, then right drag a fish"
+                : "Lift small fish or drag larger ones with right click",
+        });
     }
     if (rows.doublePetter) {
         const rainbowFood = availableRainbowFood();
-        rows.doublePetter.hidden = !nightUnlocked;
-        rows.doublePetter.disabled = !marketUnlocked || !nightUnlocked || doublePetterOwned
-            || rainbowFood < DOUBLE_PETTER_RAINBOW_COST;
-        rows.doublePetter.textContent = doublePetterOwned
-            ? "Double petter owned"
-            : "Double petter · " + DOUBLE_PETTER_RAINBOW_COST + " rainbow food";
-        rows.doublePetter.title = doublePetterOwned
-            ? "Each pet click counts twice"
-            : "One click pets a fish twice";
+        setMarketTile(rows.doublePetter, {
+            hidden: !nightUnlocked,
+            disabled: !marketUnlocked || !nightUnlocked || doublePetterOwned
+                || rainbowFood < DOUBLE_PETTER_RAINBOW_COST,
+            owned: doublePetterOwned,
+            label: "Double pet",
+            cost: doublePetterOwned ? "Owned" : DOUBLE_PETTER_RAINBOW_COST + " rainbow",
+            title: doublePetterOwned
+                ? "Each pet click counts twice"
+                : "One click pets a fish twice",
+        });
+    }
+    if (rows.strongerCurrents) {
+        const rainbowFood = availableRainbowFood();
+        setMarketTile(rows.strongerCurrents, {
+            disabled: !marketUnlocked || strongerCurrentsOwned
+                || rainbowFood < STRONGER_CURRENTS_RAINBOW_COST,
+            owned: strongerCurrentsOwned,
+            label: "Currents",
+            cost: strongerCurrentsOwned ? "Owned" : STRONGER_CURRENTS_RAINBOW_COST + " rainbow",
+            title: strongerCurrentsOwned
+                ? "Carved pond currents pull harder and farther"
+                : "Make carved pond currents pull harder",
+        });
     }
     if (rows.rainbow) {
-        rows.rainbow.disabled = !marketUnlocked || goldCollected < RAINBOW_FOOD_GOLD_COST;
-        rows.rainbow.textContent = "Rainbow food · " + RAINBOW_FOOD_GOLD_COST + " gold";
-        rows.rainbow.title = "Adds one rainbow food to your stash";
+        setMarketTile(rows.rainbow, {
+            disabled: !marketUnlocked || goldCollected < RAINBOW_FOOD_GOLD_COST,
+            owned: false,
+            label: "Rainbow",
+            cost: RAINBOW_FOOD_GOLD_COST + " gold",
+            title: "Adds one rainbow food to your stash",
+        });
     }
     if (rows.goldfood) {
         const food = availableNormalFood();
-        rows.goldfood.disabled = !marketUnlocked || food < GOLD_FOOD_NORMAL_COST;
-        rows.goldfood.textContent = "Gold food · " + GOLD_FOOD_NORMAL_COST + " fish food";
-        rows.goldfood.title = food + " fish food saved";
+        setMarketTile(rows.goldfood, {
+            disabled: !marketUnlocked || food < GOLD_FOOD_NORMAL_COST,
+            owned: false,
+            label: "Gold food",
+            cost: GOLD_FOOD_NORMAL_COST + " food",
+            title: food + " fish food saved",
+        });
     }
     if (rows.recipeMirror) {
         const ok = countStashVariant("golden") >= RECIPE_MIRROR_COST.golden
             && countStashVariant("pink") >= RECIPE_MIRROR_COST.pink;
-        rows.recipeMirror.disabled = !marketUnlocked || !ok;
-        rows.recipeMirror.textContent = "Mirror craft · gold + breed food";
-        rows.recipeMirror.title = "Spend gold food and breed food to summon a mirror twin";
+        setMarketTile(rows.recipeMirror, {
+            disabled: !marketUnlocked || !ok,
+            owned: false,
+            label: "Mirror",
+            cost: "Gold + breed",
+            title: "Spend gold food and breed food to summon a mirror twin",
+        });
     }
     if (rows.recipeStorm) {
         const ok = countStashVariant("rainbow") >= RECIPE_STORM_COST.rainbow
             && countStashVariant("grower") >= RECIPE_STORM_COST.grower;
-        rows.recipeStorm.disabled = !marketUnlocked || !ok;
-        rows.recipeStorm.textContent = "Storm craft · rainbow + grower";
-        rows.recipeStorm.title = "Spend rainbow and grower food to start a weather mood";
+        setMarketTile(rows.recipeStorm, {
+            disabled: !marketUnlocked || !ok,
+            owned: false,
+            label: "Storm",
+            cost: "Rainbow + grow",
+            title: "Spend rainbow and grower food to start a weather mood",
+        });
     }
     if (rows.recipeNight) {
         const rainbowFood = availableRainbowFood();
         if (!nightUnlocked) {
-            rows.recipeNight.hidden = false;
-            rows.recipeNight.disabled = !marketUnlocked
-                || rainbowFood < NIGHT_UNLOCK_RAINBOW_COST;
-            rows.recipeNight.textContent = "Moon pond · "
-                + NIGHT_UNLOCK_RAINBOW_COST + " rainbow food";
-            rows.recipeNight.title = rainbowFood + " rainbow food saved. Unlocks moonlight in Looks.";
+            setMarketTile(rows.recipeNight, {
+                hidden: false,
+                disabled: !marketUnlocked
+                    || rainbowFood < NIGHT_UNLOCK_RAINBOW_COST,
+                owned: false,
+                label: "Moon pond",
+                cost: NIGHT_UNLOCK_RAINBOW_COST + " rainbow",
+                title: rainbowFood + " rainbow food saved. Unlocks moonlight in Looks.",
+            });
         } else {
             const ok = countStashVariant("platinum") >= 1 && countStashVariant("rainbow") >= 1;
-            rows.recipeNight.hidden = false;
-            rows.recipeNight.disabled = !marketUnlocked || !ok;
-            rows.recipeNight.textContent = "Night bloom · platinum + rainbow";
-            rows.recipeNight.title = "Spend platinum and rainbow food for fireflies and ice skims";
+            setMarketTile(rows.recipeNight, {
+                hidden: false,
+                disabled: !marketUnlocked || !ok,
+                owned: false,
+                label: "Night bloom",
+                cost: "Plat + rainbow",
+                title: "Spend platinum and rainbow food for fireflies and ice skims",
+            });
         }
     }
     if (rows.platinum) {
         const rainbowFood = availableRainbowFood();
-        rows.platinum.hidden = !platinumUnlocked;
-        rows.platinum.disabled = !marketUnlocked || !platinumUnlocked
-            || rainbowFood < PLATINUM_RAINBOW_FOOD_COST;
-        rows.platinum.textContent = "Platinum food · " + PLATINUM_RAINBOW_FOOD_COST + " rainbow food";
-        rows.platinum.title = platinumUnlocked
-            ? "Creates an invulnerable glowing fish"
-            : "Catch " + RAINBOWS_FOR_PLATINUM + " rainbow fish to unlock";
+        setMarketTile(rows.platinum, {
+            hidden: !platinumUnlocked,
+            disabled: !marketUnlocked || !platinumUnlocked
+                || rainbowFood < PLATINUM_RAINBOW_FOOD_COST,
+            owned: false,
+            label: "Platinum",
+            cost: PLATINUM_RAINBOW_FOOD_COST + " rainbow",
+            title: platinumUnlocked
+                ? "Creates an invulnerable glowing fish"
+                : "Catch " + RAINBOWS_FOR_PLATINUM + " rainbow fish to unlock",
+        });
     }
 }
 
@@ -25130,6 +25222,17 @@ function marketBuyPicker() {
     pickerOwned = true;
     saveMarketState();
     setPickerMode(true);
+    if (Audio.rainbowChime) Audio.rainbowChime(0);
+    updateMarketUI();
+    markFirstInteraction();
+}
+
+function marketBuyStrongerCurrents() {
+    if (!marketUnlocked || strongerCurrentsOwned) return;
+    if (availableRainbowFood() < STRONGER_CURRENTS_RAINBOW_COST) return;
+    if (!spendRainbowFood(STRONGER_CURRENTS_RAINBOW_COST)) return;
+    strongerCurrentsOwned = true;
+    saveMarketState();
     if (Audio.rainbowChime) Audio.rainbowChime(0);
     updateMarketUI();
     markFirstInteraction();
@@ -25495,6 +25598,7 @@ if (marketPanel) {
     const buyCatcherUp = document.getElementById("market-buy-catcher-up");
     const buyPicker = document.getElementById("market-buy-picker");
     const buyDoublePetter = document.getElementById("market-buy-double-petter");
+    const buyStrongerCurrents = document.getElementById("market-buy-stronger-currents");
     const buyRainbow = document.getElementById("market-buy-rainbow");
     const buyGoldFood = document.getElementById("market-buy-goldfood");
     const buyRecipeMirror = document.getElementById("market-buy-recipe-mirror");
@@ -25506,6 +25610,7 @@ if (marketPanel) {
     if (buyCatcherUp) buyCatcherUp.addEventListener("click", (e) => { e.stopPropagation(); marketBuyCatcherUpgrade(); });
     if (buyPicker) buyPicker.addEventListener("click", (e) => { e.stopPropagation(); marketBuyPicker(); });
     if (buyDoublePetter) buyDoublePetter.addEventListener("click", (e) => { e.stopPropagation(); marketBuyDoublePetter(); });
+    if (buyStrongerCurrents) buyStrongerCurrents.addEventListener("click", (e) => { e.stopPropagation(); marketBuyStrongerCurrents(); });
     if (buyRainbow) buyRainbow.addEventListener("click", (e) => { e.stopPropagation(); marketBuyRainbowFood(); });
     if (buyGoldFood) buyGoldFood.addEventListener("click", (e) => { e.stopPropagation(); marketBuyGoldFood(); });
     if (buyRecipeMirror) buyRecipeMirror.addEventListener("click", (e) => { e.stopPropagation(); marketCraftMirrorFood(); });
@@ -25992,6 +26097,7 @@ function buildDevMenu() {
         nightUnlocked = true;
         doublePetterOwned = true;
         pickerOwned = true;
+        strongerCurrentsOwned = true;
         saveMarketState();
         if (typeof updatePickerButtonUI === "function") updatePickerButtonUI();
         if (typeof updateMarketUI === "function") updateMarketUI();
@@ -26035,6 +26141,12 @@ function buildDevMenu() {
     btn(unlocks, "Double petter", () => {
         marketUnlocked = true;
         doublePetterOwned = true;
+        saveMarketState();
+        if (typeof updateMarketUI === "function") updateMarketUI();
+    });
+    btn(unlocks, "Stronger currents", () => {
+        marketUnlocked = true;
+        strongerCurrentsOwned = true;
         saveMarketState();
         if (typeof updateMarketUI === "function") updateMarketUI();
     });
@@ -27428,13 +27540,15 @@ function updateCurrentLanes(dt) {
 
 function currentFlowAt(x, y) {
     let fx = 0, fy = 0;
+    const range = strongerCurrentsOwned ? STRONGER_CURRENTS_RANGE : 70;
+    const forceMul = strongerCurrentsOwned ? STRONGER_CURRENTS_MULT : 1;
     for (const c of currentLanes) {
         const d = Math.hypot(c.x - x, c.y - y);
-        if (d > 70) continue;
+        if (d > range) continue;
         const u = 1 - c.age / c.life;
-        const w = (1 - d / 70) * u;
-        fx += c.ux * c.strength * w;
-        fy += c.uy * c.strength * w;
+        const w = (1 - d / range) * u;
+        fx += c.ux * c.strength * w * forceMul;
+        fy += c.uy * c.strength * w * forceMul;
     }
     return { x: fx, y: fy };
 }
