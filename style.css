@@ -1401,8 +1401,8 @@ body.pond #food-stash.has-items {
     flex-direction: column;
     gap: 6px;
     min-width: 248px;
-    max-width: min(320px, calc(100vw - 72px));
-    max-height: min(70vh, 520px);
+    max-width: min(560px, calc(100vw - 72px));
+    max-height: min(78vh, 640px);
     overflow: auto;
     padding: 8px 8px 7px;
     background: rgba(12, 22, 20, 0.52);
@@ -1418,6 +1418,7 @@ body:not(.pond) #rhythm-panel.open {
     display: flex;
     opacity: 0.88;
     pointer-events: auto;
+    min-width: min(520px, calc(100vw - 72px));
 }
 
 body.pond #tunes-panel.open {
@@ -1443,9 +1444,16 @@ body.pond #tunes-panel.open:focus-within {
 .market-row.rhythm-mini {
     width: auto;
     flex: 1 1 auto;
-    min-width: 52px;
+    min-width: 44px;
     padding: 5px 7px;
     text-align: center;
+}
+
+.market-row.rhythm-len.on,
+#rhythm-metro.on {
+    border-color: rgba(160, 210, 200, 0.55);
+    color: rgba(210, 240, 230, 0.95);
+    background: rgba(60, 100, 90, 0.35);
 }
 
 .rhythm-bpm-wrap {
@@ -1495,28 +1503,61 @@ body.pond #tunes-panel.open:focus-within {
 
 .rhythm-grid {
     display: grid;
-    grid-template-columns: 34px repeat(16, minmax(0, 1fr));
+    grid-template-columns: 40px repeat(32, minmax(0, 1fr));
     gap: 2px;
     padding: 2px 0 4px;
+    overflow-x: auto;
+}
+
+.rhythm-grid[data-steps="16"] {
+    grid-template-columns: 40px repeat(16, minmax(0, 1fr));
+}
+
+.rhythm-grid[data-steps="32"] {
+    grid-template-columns: 40px repeat(32, minmax(0, 1fr));
+}
+
+.rhythm-grid[data-steps="64"] {
+    grid-template-columns: 40px repeat(64, minmax(8px, 1fr));
+    min-width: 640px;
 }
 
 .rhythm-lane-label {
     display: flex;
     align-items: center;
+    justify-content: flex-start;
+    gap: 2px;
+    margin: 0;
+    padding: 0 2px;
+    border: none;
+    background: transparent;
     font: 300 9px/1 "Segoe UI", Roboto, sans-serif;
     letter-spacing: 0.04em;
     color: rgba(190, 210, 200, 0.55);
+    cursor: pointer;
+    user-select: none;
+    text-align: left;
+}
+
+.rhythm-lane-label.muted {
+    color: rgba(140, 150, 145, 0.35);
+    text-decoration: line-through;
 }
 
 .rhythm-cell {
     aspect-ratio: 1;
     min-width: 0;
+    min-height: 12px;
     padding: 0;
     border: 1px solid rgba(180, 210, 200, 0.14);
     border-radius: 3px;
     background: rgba(20, 32, 30, 0.35);
     cursor: pointer;
     color: transparent;
+}
+
+.rhythm-cell.bar {
+    border-left-color: rgba(220, 230, 210, 0.28);
 }
 
 .rhythm-cell.on {
@@ -1527,6 +1568,11 @@ body.pond #tunes-panel.open:focus-within {
 .rhythm-cell.tone.on {
     background: rgba(160, 190, 230, 0.55);
     border-color: rgba(190, 210, 245, 0.5);
+}
+
+.rhythm-cell.clap.on {
+    background: rgba(210, 180, 140, 0.55);
+    border-color: rgba(230, 200, 160, 0.5);
 }
 
 .rhythm-cell.beat {
