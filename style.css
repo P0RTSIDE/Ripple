@@ -6,12 +6,83 @@
     --bg-pond: #071012;
     --ink: rgba(200, 224, 255, 0.85);
     --muted: rgba(180, 210, 200, 0.55);
+    /* Handmade pond scrollbars: water channel + reed/pebble thumb. */
+    --scroll-track: rgba(6, 18, 16, 0.55);
+    --scroll-track-edge: rgba(90, 130, 110, 0.18);
+    --scroll-thumb: rgba(132, 168, 148, 0.55);
+    --scroll-thumb-mid: rgba(168, 196, 170, 0.62);
+    --scroll-thumb-tip: rgba(198, 214, 188, 0.72);
+    --scroll-thumb-hover: rgba(186, 210, 192, 0.78);
+    --scroll-thumb-active: rgba(210, 224, 200, 0.88);
+    --scroll-moss: rgba(70, 110, 88, 0.45);
 }
 
 * {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+}
+
+/*
+ * Chromium / Safari / Electron:
+ * Soft water-tint track with inset channel, pebble/reed thumb,
+ * moss edge. Readable min size via padding-box border.
+ */
+*::-webkit-scrollbar {
+    width: 11px;
+    height: 11px;
+}
+
+*::-webkit-scrollbar-track {
+    background:
+        linear-gradient(90deg, var(--scroll-track-edge), transparent 28%, transparent 72%, var(--scroll-track-edge)),
+        linear-gradient(180deg, rgba(12, 28, 24, 0.35), var(--scroll-track) 40%, rgba(4, 12, 10, 0.55));
+    border-radius: 999px;
+    box-shadow:
+        inset 0 1px 2px rgba(0, 0, 0, 0.45),
+        inset 0 -1px 0 rgba(140, 170, 150, 0.08);
+    margin: 2px;
+}
+
+*::-webkit-scrollbar-thumb {
+    background:
+        linear-gradient(160deg, var(--scroll-thumb-tip) 0%, var(--scroll-thumb-mid) 42%, var(--scroll-thumb) 100%);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    box-shadow:
+        inset 0 1px 0 rgba(230, 240, 220, 0.22),
+        inset 0 -1px 1px rgba(40, 70, 55, 0.35),
+        0 0 0 1px var(--scroll-moss);
+    min-height: 28px;
+    min-width: 28px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+    background:
+        linear-gradient(160deg, rgba(220, 232, 210, 0.88) 0%, var(--scroll-thumb-hover) 48%, rgba(150, 180, 158, 0.7) 100%);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    box-shadow:
+        inset 0 1px 0 rgba(240, 248, 230, 0.28),
+        inset 0 -1px 1px rgba(40, 70, 55, 0.3),
+        0 0 0 1px rgba(100, 140, 115, 0.55);
+}
+
+*::-webkit-scrollbar-thumb:active {
+    background:
+        linear-gradient(160deg, var(--scroll-thumb-active) 0%, rgba(160, 188, 168, 0.8) 100%);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    box-shadow:
+        inset 0 1px 2px rgba(20, 40, 30, 0.4),
+        0 0 0 1px rgba(90, 130, 105, 0.5);
+}
+
+*::-webkit-scrollbar-corner {
+    background: transparent;
 }
 
 html,
@@ -836,7 +907,7 @@ body:not(.pond) #window-controls {
     background: currentColor;
 }
 
-/* Quiet market panel: sits above pond controls when open. */
+/* Quiet market popup: icon tile grid above pond controls. */
 #market-panel {
     position: fixed;
     left: 58px;
@@ -844,12 +915,15 @@ body:not(.pond) #window-controls {
     z-index: 11;
     display: none;
     flex-direction: column;
-    gap: 4px;
-    min-width: 168px;
-    padding: 8px 8px 7px;
-    background: rgba(12, 22, 20, 0.42);
+    gap: 6px;
+    width: min(292px, calc(100vw - 72px));
+    padding: 9px 9px 8px;
+    background: rgba(12, 22, 20, 0.48);
     border: 1px solid rgba(180, 210, 200, 0.18);
-    border-radius: 10px;
+    border-radius: 12px;
+    box-shadow: 0 8px 28px rgba(4, 10, 8, 0.28);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.35s ease;
@@ -857,13 +931,13 @@ body:not(.pond) #window-controls {
 
 body.pond #market-panel.open {
     display: flex;
-    opacity: 0.78;
+    opacity: 0.82;
     pointer-events: auto;
 }
 
 body.pond #market-panel.open:hover,
 body.pond #market-panel.open:focus-within {
-    opacity: 0.95;
+    opacity: 0.96;
 }
 
 /* Progress panel: same quiet chrome as market, free local saves only. */
@@ -988,7 +1062,7 @@ body.pond #registry-panel.open:focus-within {
     grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
     gap: 6px;
     overflow: auto;
-    padding: 2px;
+    padding: 2px 4px 2px 2px;
     max-height: 300px;
 }
 
@@ -1066,10 +1140,377 @@ body.pond #registry-panel.open:focus-within {
     display: flex;
     justify-content: space-between;
     gap: 12px;
-    padding: 0 2px 4px;
+    padding: 0 2px 2px;
     font: 300 10px/1 "Segoe UI", Roboto, sans-serif;
     letter-spacing: 0.06em;
     color: rgba(200, 220, 210, 0.55);
+}
+
+.market-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+}
+
+@media (max-width: 420px) {
+    #market-panel {
+        width: min(240px, calc(100vw - 72px));
+    }
+
+    .market-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+.market-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 3px;
+    margin: 0;
+    min-height: 68px;
+    padding: 7px 4px 5px;
+    background: rgba(18, 32, 28, 0.35);
+    border: 1px solid rgba(180, 210, 200, 0.14);
+    border-radius: 8px;
+    color: rgba(210, 230, 220, 0.82);
+    cursor: pointer;
+    transition: border-color 0.25s ease, color 0.25s ease, background 0.25s ease, opacity 0.25s ease;
+}
+
+.market-tile:hover:not(:disabled),
+.market-tile:focus-visible:not(:disabled) {
+    outline: none;
+    border-color: rgba(200, 224, 210, 0.42);
+    background: rgba(180, 210, 200, 0.1);
+    color: rgba(235, 245, 240, 0.95);
+}
+
+.market-tile:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.market-tile.owned {
+    opacity: 0.72;
+    border-color: rgba(180, 210, 200, 0.22);
+    background: rgba(180, 210, 200, 0.06);
+}
+
+.market-tile.owned:disabled {
+    opacity: 0.72;
+}
+
+.market-tile-label {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: 300 9px/1.15 "Segoe UI", Roboto, sans-serif;
+    letter-spacing: 0.03em;
+    text-align: center;
+    color: inherit;
+}
+
+.market-tile-cost {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: 300 8px/1.1 "Segoe UI", Roboto, sans-serif;
+    letter-spacing: 0.02em;
+    text-align: center;
+    color: rgba(180, 210, 200, 0.52);
+}
+
+.market-tile.owned .market-tile-cost {
+    color: rgba(190, 215, 205, 0.62);
+}
+
+.market-ico {
+    display: block;
+    position: relative;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    margin-bottom: 1px;
+    color: rgba(210, 230, 220, 0.88);
+}
+
+.market-ico-magnet {
+    width: 14px;
+    height: 16px;
+    border: 1.5px solid currentColor;
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    margin-top: 2px;
+}
+
+.market-ico-magnet::before,
+.market-ico-magnet::after {
+    content: "";
+    position: absolute;
+    top: -3px;
+    width: 4px;
+    height: 5px;
+    background: currentColor;
+    border-radius: 1px;
+}
+
+.market-ico-magnet::before { left: -1.5px; }
+.market-ico-magnet::after { right: -1.5px; }
+
+.market-ico-catcher {
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid currentColor;
+    border-radius: 50%;
+}
+
+.market-ico-catcher::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 3px;
+    width: 8px;
+    height: 8px;
+    border: 1.2px dashed currentColor;
+    border-radius: 50%;
+    opacity: 0.75;
+}
+
+.market-ico-catcher-up {
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid currentColor;
+    border-radius: 50%;
+}
+
+.market-ico-catcher-up::before {
+    content: "";
+    position: absolute;
+    left: 1px;
+    top: 1px;
+    right: 1px;
+    bottom: 1px;
+    border: 1.2px solid currentColor;
+    border-radius: 50%;
+    opacity: 0.55;
+}
+
+.market-ico-catcher-up::after {
+    content: "";
+    position: absolute;
+    left: 3.5px;
+    top: 3.5px;
+    width: 7px;
+    height: 7px;
+    border: 1.1px dashed currentColor;
+    border-radius: 50%;
+    opacity: 0.8;
+}
+
+.market-ico-picker {
+    width: 16px;
+    height: 16px;
+}
+
+.market-ico-picker::before {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 7px;
+    width: 12px;
+    height: 7px;
+    border: 1.4px solid currentColor;
+    border-radius: 0 0 7px 7px;
+    border-top: none;
+}
+
+.market-ico-picker::after {
+    content: "";
+    position: absolute;
+    left: 5px;
+    top: 1px;
+    width: 6px;
+    height: 7px;
+    border: 1.4px solid currentColor;
+    border-bottom: none;
+    border-radius: 4px 4px 0 0;
+}
+
+.market-ico-pet {
+    width: 16px;
+    height: 14px;
+    margin-top: 2px;
+}
+
+.market-ico-pet::before {
+    content: "";
+    position: absolute;
+    left: 4px;
+    bottom: 0;
+    width: 8px;
+    height: 8px;
+    border: 1.4px solid currentColor;
+    border-radius: 50% 50% 45% 45%;
+}
+
+.market-ico-pet::after {
+    content: "";
+    position: absolute;
+    left: 1px;
+    top: 1px;
+    width: 3.5px;
+    height: 3.5px;
+    border: 1.3px solid currentColor;
+    border-radius: 50%;
+    box-shadow:
+        5.5px -1px 0 -0.1px currentColor,
+        11px 1px 0 -0.1px currentColor,
+        3px 5px 0 -0.15px currentColor;
+}
+
+.market-ico-current {
+    width: 16px;
+    height: 14px;
+    margin-top: 2px;
+}
+
+.market-ico-current::before,
+.market-ico-current::after {
+    content: "";
+    position: absolute;
+    left: 1px;
+    right: 1px;
+    height: 4px;
+    border: 1.3px solid currentColor;
+    border-top: none;
+    border-radius: 0 0 10px 10px;
+}
+
+.market-ico-current::before { top: 1px; }
+.market-ico-current::after { top: 7px; opacity: 0.7; }
+
+.market-ico-rainbow {
+    width: 16px;
+    height: 10px;
+    margin-top: 4px;
+    border: 1.4px solid currentColor;
+    border-bottom: none;
+    border-radius: 10px 10px 0 0;
+}
+
+.market-ico-rainbow::before {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 3px;
+    right: 3px;
+    height: 5px;
+    border: 1.2px solid currentColor;
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    opacity: 0.7;
+}
+
+.market-ico-pellet {
+    width: 10px;
+    height: 10px;
+    margin-top: 4px;
+    border: 1.5px solid currentColor;
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px rgba(180, 210, 200, 0.12);
+}
+
+.market-ico-pellet::after {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    width: 3px;
+    height: 3px;
+    background: currentColor;
+    border-radius: 50%;
+    opacity: 0.55;
+}
+
+.market-ico-mirror {
+    width: 14px;
+    height: 14px;
+    margin-top: 2px;
+    border: 1.4px solid currentColor;
+    border-radius: 3px;
+    transform: skewX(-8deg);
+}
+
+.market-ico-mirror::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 2px;
+    width: 4px;
+    height: 8px;
+    border-left: 1.3px solid currentColor;
+    opacity: 0.65;
+}
+
+.market-ico-storm {
+    width: 12px;
+    height: 14px;
+    margin-top: 2px;
+}
+
+.market-ico-storm::before {
+    content: "";
+    position: absolute;
+    left: 1px;
+    top: 0;
+    width: 10px;
+    height: 7px;
+    border: 1.4px solid currentColor;
+    border-radius: 50% 50% 40% 40%;
+}
+
+.market-ico-storm::after {
+    content: "";
+    position: absolute;
+    left: 5px;
+    top: 7px;
+    width: 4px;
+    height: 7px;
+    background: currentColor;
+    clip-path: polygon(30% 0, 100% 0, 55% 45%, 90% 45%, 0 100%, 35% 48%, 0 48%);
+}
+
+.market-ico-moon {
+    width: 14px;
+    height: 14px;
+    margin-top: 2px;
+    border: 1.5px solid currentColor;
+    border-radius: 50%;
+    box-shadow: inset -4px -1px 0 -1px currentColor;
+}
+
+.market-ico-platinum {
+    width: 12px;
+    height: 12px;
+    margin-top: 3px;
+    border: 1.5px solid currentColor;
+    border-radius: 2px;
+    transform: rotate(45deg);
+}
+
+.market-ico-platinum::after {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    right: 2px;
+    bottom: 2px;
+    border: 1.1px solid currentColor;
+    opacity: 0.65;
 }
 
 .market-row {
@@ -1304,7 +1745,7 @@ body.pond #food-stash.has-items {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    padding-right: 2px;
+    padding-right: 4px;
 }
 
 .dev-section-title {
@@ -1411,7 +1852,6 @@ body.pond #food-stash.has-items {
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.35s ease;
-    scrollbar-width: thin;
 }
 
 body:not(.pond) #rhythm-panel.open {
@@ -1505,8 +1945,20 @@ body.pond #tunes-panel.open:focus-within {
     display: grid;
     grid-template-columns: 40px repeat(32, minmax(0, 1fr));
     gap: 2px;
-    padding: 2px 0 4px;
+    padding: 2px 2px 10px;
     overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scroll-thumb-mid) var(--scroll-track);
+}
+
+/* Horizontal reed rail: a bit more presence when the loop is long. */
+.rhythm-grid::-webkit-scrollbar {
+    height: 12px;
+}
+
+.rhythm-grid::-webkit-scrollbar-track {
+    margin: 0 4px;
 }
 
 .rhythm-grid[data-steps="16"] {
