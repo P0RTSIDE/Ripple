@@ -1,0 +1,27 @@
+---
+description: Ripple project conventions for UI copy, cache bumps, and docs
+alwaysApply: true
+---
+
+# Ripple conventions
+
+## Shipping JS
+
+- After changing `main.js`, bump the cache query in `index.html` (`main.js?v=YYYYMMDDxx`).
+- Keep gameplay in `main.js` unless there is a clear reason to split.
+
+## User-facing text
+
+- Plain language only in UI, hints, registry blurbs, and in-pond messages.
+- No em dashes or en dashes.
+- No shell commands, file paths, or code blocks in product UI copy.
+
+## Docs and git hygiene
+
+- Do not commit or push personal `docs/ripple-user-guide.*` / `docs/Ripple-User-Guide.pdf`.
+- Do not add AI "next steps" or assistant feedback voice into files meant for public readers.
+- Prefer updating `.cursor/rules/` or `AGENTS.md` when you learn durable project facts other agents will need.
+
+## Motion
+
+Follow `.cursor/rules/natural-motion.mdc` for all creature and finale movement.
