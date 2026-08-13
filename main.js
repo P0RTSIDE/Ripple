@@ -198,8 +198,24 @@ function tickGfxQuality(dt) {
     }
 }
 
-// Optional one-shot: next food drop is forced rainbow (keywords / developer tools).
+// Optional one-shot: next food drop is forced rainbow (keywords / pet streak / developer tools).
 let guaranteeRainbow = false;
+// Discrete right-click pets with no food throws; enough of them force the next drop rainbow.
+const PETS_FOR_GUARANTEE_RAINBOW = 20;
+let petsWithoutFoodThrow = 0;
+
+function notePetForRainbowStreak(quiet) {
+    if (quiet) return;
+    petsWithoutFoodThrow += 1;
+    if (petsWithoutFoodThrow >= PETS_FOR_GUARANTEE_RAINBOW) {
+        petsWithoutFoodThrow = 0;
+        guaranteeRainbow = true;
+    }
+}
+
+function resetPetRainbowStreak() {
+    petsWithoutFoodThrow = 0;
+}
 
 // Type a variant name (anywhere) to force that kind on the next food drop.
 // When adding a new food variant: append its keyword here and handle it in applyFoodVariant.
@@ -587,8 +603,9 @@ const FISH_TYPES = [
     // More pond commons.
     { name: "bekko",    shape: "koi", koi: true, body: "#f6f1e8", belly: "#ffffff", pattern: "spots", patternColor: "#2a2a2c", size: [20, 29], speed: [21, 33], wave: "sine", register: 1.02, bite: 5, dur: 0.4, turn: 2.55, wiggle: 1.06, scale: PENTATONIC, petWave: "sine", petFreq: 310, petDur: 0.4, bitePartial: 0.24, biteBright: 1.05, whiskers: true },
     { name: "utanuri",  shape: "koi", koi: true, body: "#3a3a3c", belly: "#e8ddd0", pattern: "blotches", patternColor: "#f0e8dc", size: [21, 30], speed: [19, 30], wave: "sine", register: 0.92, bite: 6, dur: 0.43, turn: 2.35, wiggle: 1.0, scale: PENTATONIC, petWave: "triangle", petFreq: 280, petDur: 0.44, bitePartial: 0.2, biteBright: 0.95, whiskers: true },
-    { name: "oranda",   shape: "round", body: "#e86830", belly: "#ffe0b8", pattern: null, patternColor: null, size: [15, 21], speed: [20, 30], wave: "sine", register: 1.2, bite: 4, dur: 0.36, turn: 3.0, wiggle: 1.15, scale: PENTATONIC, petWave: "sine", petFreq: 370, petDur: 0.34, bitePartial: 0.3, biteBright: 1.2 },
-    { name: "ranchu",   shape: "round", body: "#d95a28", belly: "#ffd4a0", pattern: "spots", patternColor: "#fff0dc", size: [14, 19], speed: [18, 28], wave: "triangle", register: 1.18, bite: 4, dur: 0.38, turn: 2.9, wiggle: 1.05, scale: PENTATONIC, petWave: "triangle", petFreq: 360, petDur: 0.36, bitePartial: 0.28, biteBright: 1.15 },
+    // Oranda: round body plus raspberry head wen. Ranchu: egg body, wen, no dorsal.
+    { name: "oranda",   shape: "round", body: "#e86830", belly: "#ffe0b8", pattern: null, patternColor: null, size: [15, 21], speed: [20, 30], wave: "sine", register: 1.2, bite: 4, dur: 0.36, turn: 3.0, wiggle: 1.15, scale: PENTATONIC, petWave: "sine", petFreq: 370, petDur: 0.34, bitePartial: 0.3, biteBright: 1.2, wen: true },
+    { name: "ranchu",   shape: "round", body: "#d95a28", belly: "#ffd4a0", pattern: "spots", patternColor: "#fff0dc", size: [14, 19], speed: [18, 28], wave: "triangle", register: 1.18, bite: 4, dur: 0.38, turn: 2.9, wiggle: 1.05, scale: PENTATONIC, petWave: "triangle", petFreq: 360, petDur: 0.36, bitePartial: 0.28, biteBright: 1.15, wen: true, noDorsal: true },
     { name: "comet",    shape: "longfin", body: "#f0a040", belly: "#fff2d0", pattern: null, patternColor: null, size: [14, 20], speed: [26, 40], wave: "sine", register: 1.25, bite: 4, dur: 0.32, turn: 3.6, wiggle: 1.45, scale: PENTATONIC, petWave: "sine", petFreq: 400, petDur: 0.3, bitePartial: 0.34, biteBright: 1.25 },
     { name: "shubunkin", shape: "longfin", body: "#4a8ab0", belly: "#d8ecf8", pattern: "blotches", patternColor: "#e07040", size: [13, 19], speed: [24, 38], wave: "triangle", register: 1.22, bite: 4, dur: 0.34, turn: 3.5, wiggle: 1.5, scale: PENTATONIC, petWave: "triangle", petFreq: 390, petDur: 0.32, bitePartial: 0.33, biteBright: 1.22 },
     { name: "guppy",    shape: "longfin", body: "#38a888", belly: "#c8f0e0", pattern: "spots", patternColor: "#f0c050", size: [9, 13], speed: [34, 52], wave: "square", register: 1.7, bite: 3, dur: 0.22, turn: 5.2, wiggle: 1.7, dart: true, scale: PENTATONIC, petWave: "square", petFreq: 500, petDur: 0.22, bitePartial: 0.42, biteBright: 1.4 },
@@ -629,7 +646,7 @@ const EXOTIC_TYPES = [
     { name: "mandarin", exotic: true, odd: "drift",  shape: "round",   body: "#3a6ec4", belly: "#f0a040", pattern: "blotches", patternColor: "#e8d050", size: [13, 18], speed: [14, 24], wave: "triangle", register: 1.3,  bite: 4, dur: 0.48, turn: 3.8, wiggle: 1.4, scale: MINOR_PENT, petWave: "triangle", petFreq: 390, petDur: 0.5,  bitePartial: 0.28, biteBright: 1.15 },
     { name: "arowana",  exotic: true, odd: "glide",  shape: "arrow",   body: "#c9a24b", belly: "#fff0c8", pattern: "scales", patternColor: "#8a6a28", size: [28, 40], speed: [22, 36], wave: "sawtooth", register: 0.55, bite: 8, dur: 0.65, turn: 1.8, wiggle: 0.85, scale: MINOR_PENT, petWave: "triangle", petFreq: 200, petDur: 0.6,  bitePartial: 0.12, biteBright: 0.75 },
     { name: "peacock",  exotic: true, odd: "spiral", shape: "oval", body: "#2a6a9a", belly: "#e8b060", pattern: "spots", patternColor: "#f0d050", size: [15, 21], speed: [18, 28], wave: "triangle", register: 1.25, bite: 4, dur: 0.4, turn: 3.6, wiggle: 1.2, scale: PENTATONIC, petWave: "triangle", petFreq: 410, petDur: 0.42, bitePartial: 0.3, biteBright: 1.18 },
-    { name: "flowerhorn", exotic: true, odd: "drift", shape: "round", body: "#d05040", belly: "#f8c8a0", pattern: "blotches", patternColor: "#f0e080", size: [17, 24], speed: [16, 26], wave: "sine", register: 1.05, bite: 5, dur: 0.45, turn: 3.0, wiggle: 1.1, scale: MINOR_PENT, petWave: "sine", petFreq: 340, petDur: 0.45, bitePartial: 0.24, biteBright: 1.05 },
+    { name: "flowerhorn", exotic: true, odd: "drift", shape: "round", body: "#d05040", belly: "#f8c8a0", pattern: "blotches", patternColor: "#f0e080", size: [17, 24], speed: [16, 26], wave: "sine", register: 1.05, bite: 5, dur: 0.45, turn: 3.0, wiggle: 1.1, scale: MINOR_PENT, petWave: "sine", petFreq: 340, petDur: 0.45, bitePartial: 0.24, biteBright: 1.05, hump: true },
     { name: "oscar",    exotic: true, odd: "glide", shape: "oval", body: "#3a2a20", belly: "#e07040", pattern: "blotches", patternColor: "#f0a060", size: [20, 28], speed: [18, 30], wave: "sawtooth", register: 0.7, bite: 6, dur: 0.5, turn: 2.4, wiggle: 0.95, scale: MINOR_PENT, petWave: "triangle", petFreq: 230, petDur: 0.5, bitePartial: 0.14, biteBright: 0.78 },
     { name: "clownknife", exotic: true, odd: "zigzag", shape: "eel", body: "#2a2a30", belly: "#c8c8d0", pattern: "bands", patternColor: "#f0f0f4", size: [24, 34], speed: [22, 36], wave: "sawtooth", register: 0.68, bite: 6, dur: 0.55, turn: 2.8, wiggle: 1.6, scale: MINOR_PENT, petWave: "sawtooth", petFreq: 210, petDur: 0.52, bitePartial: 0.12, biteBright: 0.72 },
     { name: "datnoid",  exotic: true, odd: "glide", shape: "arrow", body: "#e8d8a0", belly: "#fff8e0", pattern: "bands", patternColor: "#2a2a28", size: [22, 32], speed: [20, 34], wave: "triangle", register: 0.75, bite: 6, dur: 0.48, turn: 2.5, wiggle: 1.0, scale: MINOR_PENT, petWave: "triangle", petFreq: 240, petDur: 0.46, bitePartial: 0.16, biteBright: 0.85 },
@@ -652,7 +669,7 @@ const BLOBFISH_TYPE = {
 // Night-pond visitors: cooler tones and quieter swim habits under moonlight.
 const NIGHT_FISH_TYPES = [
     { name: "moonkoi",  night: true, shape: "koi", koi: true, body: "#c8d4e8", belly: "#eef4ff", pattern: "hi", patternColor: "#6a7a9a", size: [20, 30], speed: [16, 26], wave: "sine", register: 0.9, bite: 5, dur: 0.45, turn: 2.2, wiggle: 0.95, scale: MINOR_PENT, petWave: "sine", petFreq: 260, petDur: 0.48, bitePartial: 0.2, biteBright: 0.9, whiskers: true },
-    { name: "lantern",  night: true, shape: "slim", body: "#3a4a6a", belly: "#d8e8ff", pattern: "spots", patternColor: "#f0e090", size: [12, 18], speed: [28, 44], wave: "triangle", register: 1.45, bite: 3, dur: 0.28, turn: 4.8, wiggle: 1.5, slim: 0.5, scale: PENTATONIC, petWave: "triangle", petFreq: 440, petDur: 0.3, bitePartial: 0.4, biteBright: 1.35 },
+    { name: "lantern",  night: true, shape: "slim", body: "#3a4a6a", belly: "#d8e8ff", pattern: "spots", patternColor: "#f0e090", size: [12, 18], speed: [28, 44], wave: "triangle", register: 1.45, bite: 3, dur: 0.28, turn: 4.8, wiggle: 1.5, slim: 0.5, scale: PENTATONIC, petWave: "triangle", petFreq: 440, petDur: 0.3, bitePartial: 0.4, biteBright: 1.35, lantern: true },
     { name: "silverfin", night: true, shape: "oval", body: "#9aadb8", belly: "#e8f0f4", pattern: "scales", patternColor: "#c8d8e0", size: [18, 26], speed: [18, 30], wave: "sine", register: 1.05, bite: 5, dur: 0.4, turn: 2.5, wiggle: 1.0, scale: PENTATONIC, petWave: "sine", petFreq: 310, petDur: 0.4, bitePartial: 0.25, biteBright: 1.1 },
     { name: "duskminnow", night: true, shape: "slim", body: "#5a6a88", belly: "#d0dcf0", pattern: null, patternColor: null, size: [9, 13], speed: [40, 60], wave: "sine", register: 1.85, bite: 3, dur: 0.2, turn: 5.5, wiggle: 1.55, dart: true, scale: PENTATONIC, petWave: "sine", petFreq: 500, petDur: 0.22, bitePartial: 0.42, biteBright: 1.4 },
     { name: "nightangel", night: true, shape: "angel", body: "#6a5a90", belly: "#e8d8ff", pattern: "spots", patternColor: "#c8b070", size: [15, 21], speed: [18, 28], wave: "triangle", register: 1.2, bite: 4, dur: 0.48, turn: 2.8, wiggle: 0.95, scale: MINOR_PENT, petWave: "triangle", petFreq: 350, petDur: 0.46, bitePartial: 0.28, biteBright: 1.05 },
@@ -1744,6 +1761,42 @@ const Audio = (() => {
                     body.disconnect(); bg.disconnect(); out.disconnect(); panner.disconnect(); wet.disconnect();
                 } catch (e) {}
             };
+            return;
+        }
+
+        if (kind === "clap") {
+            const burst = (delay, level) => {
+                const noiseSrc = actx.createBufferSource();
+                noiseSrc.buffer = noiseBuf;
+                const nf = actx.createBiquadFilter();
+                nf.type = "bandpass";
+                nf.frequency.value = 1400;
+                nf.Q.value = 1.1;
+                const ng = actx.createGain();
+                const t = t0 + delay;
+                ng.gain.setValueAtTime(0.0001, t);
+                ng.gain.exponentialRampToValueAtTime(level, t + 0.003);
+                ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+                noiseSrc.connect(nf); nf.connect(ng); ng.connect(out);
+                noiseSrc.start(t); noiseSrc.stop(t + 0.12);
+            };
+            burst(0, 0.26);
+            burst(0.018, 0.2);
+            burst(0.038, 0.14);
+            return;
+        }
+
+        if (kind === "click") {
+            const osc = actx.createOscillator();
+            osc.type = "sine";
+            osc.frequency.value = 1250;
+            const g = actx.createGain();
+            g.gain.setValueAtTime(0.0001, t0);
+            g.gain.exponentialRampToValueAtTime(0.12 * mul, t0 + 0.002);
+            g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.04);
+            osc.connect(g); g.connect(out);
+            osc.start(t0); osc.stop(t0 + 0.05);
+            osc.onended = () => { try { osc.disconnect(); g.disconnect(); out.disconnect(); panner.disconnect(); wet.disconnect(); } catch (e) {} };
             return;
         }
 
@@ -4500,12 +4553,12 @@ function frogBiteFood(frog) {
     let growAmt = 4 + food.size * 0.08;
     if (food.grower) growAmt = CONFIG.growerBoost * 0.85;
     else if (food.carcass) growAmt = 16;
-    else if (food.golden || food.rainbow) growAmt = 10;
-    else if (food.pink) growAmt = 6;
+    else if (food.golden || food.rainbow || food.platinum || food.hero) growAmt = 10;
+    else if (food.pink || food.green) growAmt = 6;
     frog.size = Math.min(CONFIG.sharkSize * 1.35, frog.size + growAmt);
     frog.speed = Math.min(70, (frog.speed || 30) + 1.5);
     Audio.fishNote({
-        freq: food.rainbow ? 420 : food.golden ? 380 : 250,
+        freq: food.rainbow ? 420 : food.golden || food.platinum ? 380 : food.hero ? 300 : 250,
         wave: "sine",
         pan,
         dur: 0.4,
@@ -4514,7 +4567,7 @@ function frogBiteFood(frog) {
         bright: 1.1,
     });
     if (food.rainbow && Audio.rainbowChime) Audio.rainbowChime(pan);
-    if (food.golden && Audio.goldChime) Audio.goldChime(pan);
+    if ((food.golden || food.platinum) && Audio.goldChime) Audio.goldChime(pan);
     water.disturb(frog.x, frog.y, frog.size * 0.55, 150);
     spawnSplash(frog.x, frog.y, frog.size * 0.28, 0.35);
     frog.biteTimer = 0.28;
@@ -4718,7 +4771,10 @@ function updateHungryTadpoles(dt) {
             if (dist < eatDist && t.biteTimer <= 0) {
                 food.eaten = true;
                 t.foodTarget = null;
-                t.size += food.grower ? 3.2 : food.golden || food.rainbow ? 2.2 : 1.1;
+                t.size += food.grower ? 3.2
+                    : food.golden || food.rainbow || food.platinum || food.hero ? 2.2
+                    : food.pink || food.green || food.carcass ? 1.6
+                    : 1.1;
                 t.biteTimer = 0.22;
                 const pan = Math.max(-1, Math.min(1, (t.x / viewW) * 2 - 1));
                 Audio.fishNote({
@@ -6239,6 +6295,79 @@ function drawFishScaleField(ctx, L, W, alpha) {
             ctx.stroke();
         }
     }
+    ctx.restore();
+}
+
+// Fancy goldfish raspberry wen (oranda / ranchu).
+function drawFancyWen(ctx, L, W, body, belly) {
+    const hx = L * 0.2;
+    const hy = -W * 0.58;
+    const lumps = [
+        [0, -0.02, 0.13],
+        [0.09, 0.05, 0.095],
+        [-0.08, 0.06, 0.09],
+        [0.02, 0.12, 0.075],
+        [-0.02, -0.1, 0.07],
+    ];
+    for (const [ox, oy, r] of lumps) {
+        const cx = hx + L * ox;
+        const cy = hy + W * oy;
+        const g = ctx.createRadialGradient(cx - L * r * 0.25, cy - L * r * 0.25, L * r * 0.1, cx, cy, L * r);
+        g.addColorStop(0, belly || "#ffe0b8");
+        g.addColorStop(0.55, body || "#e86830");
+        g.addColorStop(1, "rgba(90,40,20,0.35)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, L * r, L * r * 0.82, 0.15, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+// Flowerhorn nuchal hump: one large forehead bump.
+function drawNuchalHump(ctx, L, W, body, belly) {
+    const hx = L * 0.12;
+    const hy = -W * 0.72;
+    const g = ctx.createRadialGradient(hx - L * 0.04, hy - L * 0.04, L * 0.02, hx, hy, L * 0.2);
+    g.addColorStop(0, belly || "#f8c8a0");
+    g.addColorStop(0.55, body || "#d05040");
+    g.addColorStop(1, "rgba(60,20,20,0.4)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(hx, hy, L * 0.2, L * 0.16, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha *= 0.55;
+    ctx.beginPath();
+    ctx.ellipse(hx + L * 0.06, hy + L * 0.04, L * 0.12, L * 0.1, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha /= 0.55;
+}
+
+// Night lanternfish: glowing lure ahead of the snout.
+function drawLanternLure(ctx, L, W, age) {
+    const pulse = 0.55 + 0.45 * Math.sin((age || 0) * 5.2);
+    const lx = L * 0.78;
+    const ly = -W * 0.08;
+    ctx.strokeStyle = "rgba(210,220,190,0.75)";
+    ctx.lineWidth = Math.max(0.8, L * 0.028);
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(L * 0.48, -W * 0.12);
+    ctx.quadraticCurveTo(L * 0.62, -W * 0.42, lx, ly);
+    ctx.stroke();
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    const glow = ctx.createRadialGradient(lx, ly, 0, lx, ly, L * 0.28);
+    glow.addColorStop(0, `rgba(255,245,170,${0.65 * pulse})`);
+    glow.addColorStop(0.45, `rgba(255,200,70,${0.28 * pulse})`);
+    glow.addColorStop(1, "rgba(255,170,40,0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(lx, ly, L * 0.28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = `rgba(255,252,220,${0.9 * pulse})`;
+    ctx.beginPath();
+    ctx.arc(lx, ly, Math.max(1.4, L * 0.055), 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
 }
 
@@ -7866,7 +7995,7 @@ function nearestFood(x, y, range) {
     return best;
 }
 
-// Rainbow trail that spells the exit message, then fades after the fish leaves.
+// Rainbow trail that follows the fish-logo path, then fades after the fish leaves.
 const rainbowScriptTrail = [];
 
 // Continuous cursive-friendly letterforms (clearer proportions for pond-scale reading).
@@ -7947,7 +8076,7 @@ function cursiveConnector(from, to, samples) {
 function buildFishLogoPath(fromX, fromY) {
     const cx = viewW * 0.5;
     const cy = viewH * 0.48;
-    const s = Math.min(viewW, viewH) * 0.17;
+    const s = Math.min(viewW, viewH) * 0.24;
     const ox = cx - s * 0.15;
     const oy = cy;
     // Unit fish facing right: forked tail on the left, round snout on the right.
@@ -8506,7 +8635,7 @@ class Fish {
         this.redeemed = false; // once good again, never turns evil from eating
         this.debrisFlee = null; // flinch away from hauled debris
         this.dead = false;
-        this.giantEnded = false; // one-shot: already triggered the half-screen ending
+        this.giantEnded = false; // one-shot: already triggered the near screen-filling ending
         this._chaseBoost = 1;
         this.hatSeed = Math.random();
         this.blobPetCount = 0;
@@ -8667,11 +8796,12 @@ class Fish {
     }
 
     grow(amount, opts) {
-        if (this.golden || this.isRainbow || this.isPlatinum) return;
+        // Golden is frozen; rainbow and platinum can still snack and bulk up a little.
+        if (this.golden) return;
         const cap = fishGrowCap(this, opts);
         this.size = Math.min(cap, this.size + amount);
-        // Redeemed and hero fish keep growing but never turn evil.
-        if (this.redeemed || this.isHero || this.isMonster) {
+        // Rainbow / platinum / redeemed / hero / monster keep growing but never turn evil.
+        if (this.isRainbow || this.isPlatinum || this.redeemed || this.isHero || this.isMonster) {
             this.maybeBeginGiantEnding();
             return;
         }
@@ -10129,9 +10259,10 @@ class Fish {
             this.target = null;
             if (!this.isRainbow) this.turnToPlatinum();
             else {
-                this.grow(2);
+                this.grow(6);
                 const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
                 if (Audio.goldChime) Audio.goldChime(pan);
+                water.disturb(this.x, this.y, this.size * 0.55, 160);
             }
             return;
         }
@@ -10141,9 +10272,10 @@ class Fish {
             this.target = null;
             if (!this.isPlatinum) this.turnToRainbow();
             else {
-                this.grow(2);
+                this.grow(6);
                 const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
                 if (Audio.rainbowChime) Audio.rainbowChime(pan);
+                water.disturb(this.x, this.y, this.size * 0.55, 160);
             }
             return;
         }
@@ -10190,7 +10322,23 @@ class Fish {
         if (food.hero) {
             food.eaten = true;
             this.target = null;
-            this.turnHero();
+            // Rainbow / platinum ignore hero form; snack instead of a silent no-op.
+            if (this.isRainbow || this.isPlatinum) {
+                this.grow(6);
+                const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+                Audio.fishNote({
+                    freq: 290 * (this.type.register || 1),
+                    wave: "sine",
+                    pan,
+                    dur: 0.45,
+                    level: 0.11,
+                    partialAmt: 0.28,
+                    bright: 1.25,
+                });
+                water.disturb(this.x, this.y, this.size * 0.55, 160);
+            } else {
+                this.turnHero();
+            }
             return;
         }
 
@@ -10552,6 +10700,19 @@ class Fish {
             ? this._giantFlyAlpha : 1;
         const giantParts = (giantEnding && giantEnding.fish === this && giantEnding.parts)
             ? giantEnding.parts : null;
+        // Once the farewell starts cracking, draw discrete anatomy instead of
+        // offsetting full-fish layers (that silhouette read as a giant hand).
+        if (giantParts && giantEnding && giantEnding.fish === this) {
+            const splitStart = giantEnding.kind === "peace" ? 1.15 : 0.7;
+            const splitDur = giantEnding.kind === "peace" ? 2.6 : 2.0;
+            const split = clamp01((giantEnding.t - splitStart) / splitDur);
+            if (split > 0.03 && giantA > 0.02) {
+                ctx.globalAlpha = (0.92 * ghost) * morphA * giantA;
+                drawGiantSeparatedAnatomy(ctx, this, giantParts, L, W, body, belly, split);
+                ctx.restore();
+                return;
+            }
+        }
         const withGiantPart = (key, drawFn) => {
             if (!giantParts || !giantParts[key]) {
                 drawFn();
@@ -10780,7 +10941,7 @@ class Fish {
                     ctx.fill();
                     ctx.globalAlpha /= 0.55;
                 }
-            } else if (!this.golden) {
+            } else if (!this.golden && !this.type.noDorsal) {
                 const tall = shape === "longfin" ? 2.35
                     : shape === "angel" ? 2.05
                     : shape === "discus" ? 1.85
@@ -11150,6 +11311,13 @@ class Fish {
                 }
             }
 
+            // Species tells: raspberry wen, flowerhorn hump, lantern lure.
+            if (!this.golden && !this.isRainbow && !this.isPlatinum) {
+                if (this.type.wen) drawFancyWen(ctx, L, W, body, belly);
+                if (this.type.hump) drawNuchalHump(ctx, L, W, body, belly);
+                if (this.type.lantern) drawLanternLure(ctx, L, W, this.age);
+            }
+
             // Inherited swordfish bill + speared trophies (pierced through midsection).
             if (this.hasSword && !this.golden) {
                 for (const s of this.stuckPrey) {
@@ -11498,6 +11666,10 @@ function mixFishTypes(ta, tb) {
     if (ta.ghost != null || tb.ghost != null) {
         type.ghost = ((ta.ghost != null ? ta.ghost : 1) + (tb.ghost != null ? tb.ghost : 1)) * 0.5;
     }
+    if (ta.wen || tb.wen) type.wen = Math.random() < 0.5;
+    if (ta.noDorsal || tb.noDorsal) type.noDorsal = Math.random() < 0.45;
+    if (ta.hump || tb.hump) type.hump = Math.random() < 0.5;
+    if (ta.lantern || tb.lantern) type.lantern = Math.random() < 0.4;
     // Drop null odd so habits stay clean.
     if (!type.odd) delete type.odd;
     if (!type.pattern) type.patternColor = null;
@@ -11915,8 +12087,8 @@ function updateBreeding(dt) {
 // Rare crocodiles/alligators arrive on a long timer. They eat smaller fish.
 // A fish that outgrows and eats one becomes a monster, which later eats the
 // shark and then swims into the camera (POV) to "eat the user" and reset.
-// Heroes / redeemed (and grower-fed giants) that fill ~half the screen get a
-// separate farewell ending, then resetPond.
+// Heroes / redeemed (and grower-fed giants) that fill ~three quarters of the shorter
+// screen side get a separate farewell ending, then resetPond.
 // After a whale eats a fish, a large enough hero can hunt it for a one-shot
 // remorse explosion into a full hero school (every common + exotic type).
 // ===========================================================================
@@ -12656,7 +12828,8 @@ class Reptile {
         if (!this.foodTarget) return false;
         // Untamed crocs only chase transform pellets; friendly crocs eat any food.
         const food = this.foodTarget;
-        if (!this.tamed && !this.isHero && !(food.rainbow || food.golden || food.green || food.hero)) {
+        if (!this.tamed && !this.isHero
+            && !(food.rainbow || food.golden || food.green || food.grower || food.platinum || food.hero)) {
             this.foodTarget = null;
             return false;
         }
@@ -12674,6 +12847,15 @@ class Reptile {
         if (!food || food.eaten) return;
         const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
 
+        if (food.platinum) {
+            // Crocs cannot become platinum fish; snack and grow a little.
+            food.eaten = true;
+            this.foodTarget = null;
+            this.grow(8);
+            if (Audio.goldChime) Audio.goldChime(pan);
+            water.disturb(this.x, this.y, this.size * 0.7, 200);
+            return;
+        }
         if (food.rainbow) {
             food.eaten = true;
             this.foodTarget = null;
@@ -15887,40 +16069,54 @@ function drawPovAttack(ctx) {
     ctx.scale(scale, scale);
     ctx.globalAlpha = 0.86 + loom * 0.12;
 
-    const g = ctx.createRadialGradient(0, 0, 10, 0, 0, 95);
-    g.addColorStop(0, "#4a1828");
-    g.addColorStop(0.6, "#1a0810");
-    g.addColorStop(1, "#050308");
-    ctx.fillStyle = g;
+    // First-person face: brows + staring eyes above a jaw that opens toward the lens.
+    const face = ctx.createRadialGradient(0, -8, 8, 0, 10, 110);
+    face.addColorStop(0, "#5a2030");
+    face.addColorStop(0.55, "#1c0810");
+    face.addColorStop(1, "#050308");
+    ctx.fillStyle = face;
     ctx.beginPath();
-    ctx.ellipse(0, 0, 70, 55, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, -6, 78, 62, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = "#ff3030";
-    ctx.shadowColor = "rgba(255,40,40,0.8)";
-    ctx.shadowBlur = 12 + choke * 18 + loom * 8;
+    // Brow ridges so the stare reads as a face, not a floating mouth.
+    ctx.fillStyle = "#12060a";
     ctx.beginPath();
-    ctx.ellipse(-22, -12, 8, 5, -0.2, 0, Math.PI * 2);
-    ctx.ellipse(22, -12, 8, 5, 0.2, 0, Math.PI * 2);
+    ctx.ellipse(-30, -38, 22, 8, -0.25, 0, Math.PI * 2);
+    ctx.ellipse(30, -38, 22, 8, 0.25, 0, Math.PI * 2);
+    ctx.fill();
+
+    // White sclera, red iris, dark pupil.
+    ctx.fillStyle = "#fff4ec";
+    ctx.shadowColor = "rgba(255,50,40,0.95)";
+    ctx.shadowBlur = 14 + choke * 22 + loom * 10;
+    ctx.beginPath();
+    ctx.ellipse(-30, -26, 16, 12, -0.12, 0, Math.PI * 2);
+    ctx.ellipse(30, -26, 16, 12, 0.12, 0, Math.PI * 2);
     ctx.fill();
     ctx.shadowBlur = 0;
-    ctx.fillStyle = "#120008";
+    ctx.fillStyle = "#ff2424";
     ctx.beginPath();
-    ctx.ellipse(-22, -12, 3, 4, 0, 0, Math.PI * 2);
-    ctx.ellipse(22, -12, 3, 4, 0, 0, Math.PI * 2);
+    ctx.ellipse(-30, -26, 8.5, 7.5, 0, 0, Math.PI * 2);
+    ctx.ellipse(30, -26, 8.5, 7.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#0a0004";
+    ctx.beginPath();
+    ctx.ellipse(-30 + loom * 1.5, -26, 3.6, 4.4, 0, 0, Math.PI * 2);
+    ctx.ellipse(30 + loom * 1.5, -26, 3.6, 4.4, 0, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.fillStyle = "#2a0508";
     ctx.beginPath();
-    ctx.ellipse(0, 18, 40, 10 + mouthOpen * 50, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 28, 44, 12 + mouthOpen * 52, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = "#e8e0d0";
     for (let i = -4; i <= 4; i++) {
-        const tx = i * 7;
+        const tx = i * 7.5;
         ctx.beginPath();
-        ctx.moveTo(tx - 2.2, 18 - mouthOpen * 20);
-        ctx.lineTo(tx, 18 - mouthOpen * 34);
-        ctx.lineTo(tx + 2.2, 18 - mouthOpen * 20);
+        ctx.moveTo(tx - 2.4, 28 - mouthOpen * 18);
+        ctx.lineTo(tx, 28 - mouthOpen * 36);
+        ctx.lineTo(tx + 2.4, 28 - mouthOpen * 18);
         ctx.closePath();
         ctx.fill();
     }
@@ -16541,18 +16737,135 @@ function drawSwordfishSpearEnding(ctx) {
 }
 
 function createGiantBodyParts(size) {
+    // Spread far enough that pieces read as separate anatomy, not one silhouette.
     const s = Math.max(48, size);
     const mk = (gx, gy, ga, spin) => ({
-        x: 0, y: 0, a: 0, alpha: 1,
+        x: 0, y: 0, a: 0, alpha: 1, scale: 1,
         gx, gy, ga, spin: spin || 0,
     });
     return {
-        head: mk(s * 0.78, -s * 0.06, 0.7, 1.35),
-        body: mk(-s * 0.04, s * 0.14, -0.28, -0.55),
-        dorsal: mk(s * 0.12, -s * 0.92, -1.05, -1.8),
-        pectoral: mk(s * 0.18, s * 0.82, 1.15, 1.9),
-        tail: mk(-s * 1.12, s * 0.24, -1.35, -1.25),
+        head: mk(s * 1.35, -s * 0.08, 0.45, 0.55),
+        body: mk(0, s * 0.06, -0.12, -0.2),
+        dorsal: mk(s * 0.08, -s * 1.25, -0.7, -0.65),
+        pectoral: mk(s * 0.1, s * 1.2, 0.75, 0.7),
+        tail: mk(-s * 1.55, s * 0.05, -0.55, -0.5),
     };
+}
+
+// Discrete head / trunk / fins / tail so the giant farewell cannot read as a hand.
+function drawGiantSeparatedAnatomy(ctx, fish, parts, L, W, body, belly, split) {
+    if (!parts) return;
+    // Shrink the local drawing size so gaps between pieces stay visible.
+    const S = L * Math.max(0.3, 0.58 - split * 0.22);
+    const H = W * (S / L);
+    const warm = giantEnding && giantEnding.kind === "peace";
+    const piece = (key, drawFn) => {
+        const p = parts[key];
+        if (!p || (p.alpha != null && p.alpha < 0.02)) return;
+        ctx.save();
+        ctx.translate(p.x || 0, p.y || 0);
+        ctx.rotate(p.a || 0);
+        const sc = p.scale != null ? p.scale : Math.max(0.55, 1 - split * 0.35);
+        ctx.scale(sc, sc);
+        ctx.globalAlpha *= p.alpha != null ? p.alpha : 1;
+        if (warm) {
+            ctx.shadowColor = "rgba(255,170,70,0.75)";
+            ctx.shadowBlur = 18 + split * 10;
+        } else {
+            ctx.shadowColor = "rgba(20,0,8,0.7)";
+            ctx.shadowBlur = 14 + split * 12;
+        }
+        drawFn();
+        ctx.shadowBlur = 0;
+        ctx.restore();
+    };
+
+    piece("tail", () => {
+        ctx.fillStyle = belly;
+        ctx.beginPath();
+        ctx.moveTo(S * 0.08, 0);
+        ctx.quadraticCurveTo(-S * 0.15, -H * 1.15, -S * 0.55, -H * 1.55);
+        ctx.quadraticCurveTo(-S * 0.2, -H * 0.2, -S * 0.05, 0);
+        ctx.quadraticCurveTo(-S * 0.2, H * 0.2, -S * 0.55, H * 1.55);
+        ctx.quadraticCurveTo(-S * 0.15, H * 1.15, S * 0.08, 0);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(20,30,40,0.35)";
+        ctx.lineWidth = Math.max(1, S * 0.02);
+        ctx.stroke();
+    });
+
+    piece("body", () => {
+        const g = ctx.createLinearGradient(0, -H, 0, H);
+        g.addColorStop(0, body);
+        g.addColorStop(0.55, body);
+        g.addColorStop(1, belly);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, S * 0.42, H * 0.92, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(20,30,40,0.28)";
+        ctx.lineWidth = Math.max(1, S * 0.018);
+        ctx.stroke();
+    });
+
+    piece("dorsal", () => {
+        ctx.fillStyle = body;
+        ctx.beginPath();
+        ctx.moveTo(-S * 0.12, H * 0.05);
+        ctx.quadraticCurveTo(0, -H * 1.35, S * 0.28, -H * 0.15);
+        ctx.quadraticCurveTo(S * 0.05, H * 0.1, -S * 0.12, H * 0.05);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(20,30,40,0.3)";
+        ctx.lineWidth = Math.max(0.8, S * 0.016);
+        ctx.stroke();
+    });
+
+    piece("pectoral", () => {
+        ctx.fillStyle = belly;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, S * 0.28, H * 0.55, 0.35, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(20,30,40,0.28)";
+        ctx.lineWidth = Math.max(0.8, S * 0.016);
+        ctx.stroke();
+    });
+
+    piece("head", () => {
+        const g = ctx.createLinearGradient(-S * 0.1, -H, S * 0.45, H);
+        g.addColorStop(0, belly);
+        g.addColorStop(0.55, body);
+        g.addColorStop(1, body);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(-S * 0.18, -H * 0.55);
+        ctx.quadraticCurveTo(S * 0.35, -H * 0.7, S * 0.55, 0);
+        ctx.quadraticCurveTo(S * 0.35, H * 0.7, -S * 0.18, H * 0.55);
+        ctx.quadraticCurveTo(-S * 0.28, 0, -S * 0.18, -H * 0.55);
+        ctx.fill();
+        // Eye so the head piece reads as a head, not a pebble.
+        const closed = (fish.petTimer || 0) > 0;
+        ctx.fillStyle = closed ? "rgba(20,30,40,0.85)" : "#f4f8fc";
+        ctx.beginPath();
+        if (closed) {
+            ctx.ellipse(S * 0.18, -H * 0.18, S * 0.08, S * 0.025, -0.2, 0, Math.PI * 2);
+        } else {
+            ctx.ellipse(S * 0.18, -H * 0.18, S * 0.09, S * 0.07, -0.15, 0, Math.PI * 2);
+        }
+        ctx.fill();
+        if (!closed) {
+            ctx.fillStyle = "#142028";
+            ctx.beginPath();
+            ctx.ellipse(S * 0.2, -H * 0.18, S * 0.035, S * 0.04, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.strokeStyle = "rgba(20,30,40,0.3)";
+        ctx.lineWidth = Math.max(0.8, S * 0.016);
+        ctx.beginPath();
+        ctx.moveTo(-S * 0.18, -H * 0.55);
+        ctx.quadraticCurveTo(S * 0.35, -H * 0.7, S * 0.55, 0);
+        ctx.quadraticCurveTo(S * 0.35, H * 0.7, -S * 0.18, H * 0.55);
+        ctx.stroke();
+    });
 }
 
 function spawnGiantDebris(ending, f, n) {
@@ -16579,8 +16892,9 @@ function spawnGiantDebris(ending, f, n) {
 
 function updateGiantBodyParts(ending, dt, split) {
     if (!ending.parts || split <= 0) return;
-    const ease = 1 - Math.exp(-(1.3 + split * 2.4) * dt);
-    const maxStep = (70 + split * 180) * dt;
+    // Faster drift so gaps open while pieces are still opaque.
+    const ease = 1 - Math.exp(-(2.2 + split * 3.2) * dt);
+    const maxStep = (140 + split * 260) * dt;
     for (const key of Object.keys(ending.parts)) {
         const p = ending.parts[key];
         const tx = p.gx * split;
@@ -16595,9 +16909,10 @@ function updateGiantBodyParts(ending, dt, split) {
         p.x += dx;
         p.y += dy;
         p.a += (p.ga * split - p.a) * ease;
-        p.a += p.spin * split * dt * 0.85;
+        p.a += p.spin * split * dt * 0.55;
+        p.scale = Math.max(0.52, 1 - split * 0.38);
         // Pieces stay solid while separating, then ease out near the end.
-        const fade = split > 0.72 ? 1 - (split - 0.72) / 0.28 : 1;
+        const fade = split > 0.78 ? 1 - (split - 0.78) / 0.22 : 1;
         p.alpha = Math.max(0, fade);
     }
 }
@@ -16675,7 +16990,7 @@ function beginHeroRemorseEnding(fish) {
     if (heroRemorseEnding || whaleRemorseDone || povAttack || giantEnding
         || !fish || fish.dead) return;
     whaleRemorseDone = true;
-    fish.giantEnded = true; // block the normal half-screen farewell
+    fish.giantEnded = true; // block the normal giant farewell
     fish.target = null;
     fish.prey = null;
     fish.isPredator = false;
@@ -17138,13 +17453,13 @@ function updateGiantEnding(dt) {
             e.orbitRad += ((t < 1.4 ? 36 : 12) - e.orbitRad) * ease(0.9);
             easeOrbitToward(f, cx, cy - 6, e.orbitRad, e.orbitAng, dt, 40, 0.85, 0.7);
             bankToward(f, e.orbitAng + Math.PI * 0.5, dt, 1.0);
-            const split = clamp01((t - 1.35) / 2.8);
+            const split = clamp01((t - 1.15) / 2.6);
             f.dir += dt * (0.2 + (split > 0 && split < 0.55 ? Math.sin(t * 12) * 0.3 : 0));
             f.tailPhase += dt * (3.2 + split * 5);
             if (t < 1.5) f.petTimer = Math.max(f.petTimer, 0.8);
             e.wash += ((t < 1.2 ? t / 1.2 * 0.35 : 0.55 + split * 0.25) - (e.wash || 0)) * ease(1.8);
 
-            if (split > 0.08 && !e.cracked) {
+            if (split > 0.06 && !e.cracked) {
                 e.cracked = true;
                 spawnGiantDebris(e, f, 18);
                 Audio.predatorEat(Math.max(-1, Math.min(1, (f.x / viewW) * 2 - 1)) * 0.4);
@@ -17197,11 +17512,11 @@ function updateGiantEnding(dt) {
             e.orbitAng += dt * (1.1 + Math.min(1.2, t * 0.4));
             e.orbitRad += ((t < 0.9 ? 40 : 8) - e.orbitRad) * ease(1.2);
             easeOrbitToward(f, cx, cy, e.orbitRad, e.orbitAng, dt, 56, 1.25, 0.75);
-            const split = clamp01((t - 0.85) / 2.1);
+            const split = clamp01((t - 0.7) / 2.0);
             f.dir += dt * (1.0 + split * 2.0);
             f.tailPhase += dt * (6.5 + split * 6);
             e.wash += ((0.3 + split * 0.55) - (e.wash || 0)) * ease(2.2);
-            if (split > 0.06 && !e.cracked) {
+            if (split > 0.05 && !e.cracked) {
                 e.cracked = true;
                 spawnGiantDebris(e, f, 22);
                 Audio.sharkStrike(0);
@@ -17555,9 +17870,15 @@ class Shark {
             }
         } else if (!this.target || this.target.dead || this.target.insideShark
             || this.target.isPlatinum) {
-            // Apex hunters ignore platinum entirely (invulnerable).
+            // Apex hunters ignore platinum while chasing ordinary prey.
             this.target = nearestFish(this.x, this.y);
             if (!this.target) {
+                // Only glow fish left: swallow gag (carry while glowing, center, release).
+                const glow = (fishes || []).find((f) => f && !f.dead && f.isPlatinum && !f.insideShark);
+                if (glow && !this.isOrca && !this.isHero && !this.duelMode) {
+                    this.beginGlowSwallow(glow);
+                    return;
+                }
                 if (this.isCrystal && countableSwimmers().length === 0 && !pondFinaleActive()
                     && typeof beginCrystalApexEnding === "function"
                     && beginCrystalApexEnding("prism", this)) {
@@ -17681,7 +18002,11 @@ class Shark {
 
     eat(fish) {
         if (this.isHero || !fish || fish.dead) return;
-        if (fish.isRainbow || fish.isMonster || fish.isPlatinum) return;
+        if (fish.isRainbow || fish.isMonster) return;
+        if (fish.isPlatinum) {
+            // Invulnerable: never kill. Glow swallow is started from the empty-prey path.
+            return;
+        }
         // Larger heroes (or any larger fish) shrug the bite off.
         if (fish.size > this.size) return;
         const mealSize = fish.size;
@@ -21190,6 +21515,7 @@ function placeStashedFood(x, y, variant) {
     const fx = Math.max(20, Math.min(viewW - 20, x + ox));
     const fy = Math.max(20, Math.min(viewH - 20, y + oy));
     foods.push(new Food(fx, fy, size, flags));
+    resetPetRainbowStreak();
     water.disturb(fx, fy, size * 0.8, 90);
     spawnSplash(fx, fy, size * 0.35, 0.35);
     if (typeof Audio !== "undefined" && Audio.ensure) {
@@ -21730,7 +22056,10 @@ function onPointerUp(ev) {
         const dx = x - pointerDownAt.x;
         const dy = y - pointerDownAt.y;
         if (Math.hypot(dx, dy) > 8) { sx = pointerDownAt.x; sy = pointerDownAt.y; }
-        if (rocks.length < CONFIG.maxRocks) rocks.push(new Rock(sx, sy, x, y, v));
+        if (rocks.length < CONFIG.maxRocks) {
+            rocks.push(new Rock(sx, sy, x, y, v));
+            resetPetRainbowStreak();
+        }
     } else {
         spawnWindowRipple(x, y, v);
         if (typeof rhythmCaptureTone === "function") rhythmCaptureTone(x, y, v);
@@ -21783,6 +22112,7 @@ function petPondLifeAt(x, y, quiet) {
                 return;
             }
             crystalMantle.pet(quiet);
+            notePetForRainbowStreak(quiet);
             markFirstInteraction();
             return;
         }
@@ -21795,6 +22125,7 @@ function petPondLifeAt(x, y, quiet) {
                 return;
             }
             crystalSerpent.pet(quiet);
+            notePetForRainbowStreak(quiet);
             markFirstInteraction();
             return;
         }
@@ -21806,6 +22137,7 @@ function petPondLifeAt(x, y, quiet) {
             return;
         }
         guard.pet(quiet);
+        notePetForRainbowStreak(quiet);
         markFirstInteraction();
         return;
     }
@@ -21816,6 +22148,7 @@ function petPondLifeAt(x, y, quiet) {
             return;
         }
         pac.pet();
+        notePetForRainbowStreak(quiet);
         markFirstInteraction();
         return;
     }
@@ -21828,6 +22161,7 @@ function petPondLifeAt(x, y, quiet) {
                 return;
             }
             whale.pet(quiet);
+            notePetForRainbowStreak(quiet);
             markFirstInteraction();
             return;
         }
@@ -21837,6 +22171,7 @@ function petPondLifeAt(x, y, quiet) {
         if (d < shark.size * 0.55) {
             if (quiet && shark.rollTimer > 0) return;
             shark.pet();
+            notePetForRainbowStreak(quiet);
             markFirstInteraction();
             return;
         }
@@ -21849,6 +22184,7 @@ function petPondLifeAt(x, y, quiet) {
                 return;
             }
             swordfish.pet();
+            notePetForRainbowStreak(quiet);
             markFirstInteraction();
             return;
         }
@@ -21861,6 +22197,7 @@ function petPondLifeAt(x, y, quiet) {
                 return;
             }
             octopus.pet();
+            notePetForRainbowStreak(quiet);
             markFirstInteraction();
             return;
         }
@@ -21880,6 +22217,7 @@ function petPondLifeAt(x, y, quiet) {
             return;
         }
         bestR.pet();
+        notePetForRainbowStreak(quiet);
         markFirstInteraction();
         return;
     }
@@ -21895,6 +22233,7 @@ function petPondLifeAt(x, y, quiet) {
     }
     if (bestFrog) {
         petFrog(bestFrog, quiet);
+        notePetForRainbowStreak(quiet);
         markFirstInteraction();
         return;
     }
@@ -21915,6 +22254,7 @@ function petPondLifeAt(x, y, quiet) {
     best.pet();
     // Double petter: one click counts as two pets (blobfish progress, soothe, etc.).
     if (doublePetterOwned && !quiet) best.pet();
+    notePetForRainbowStreak(quiet);
     markFirstInteraction();
 }
 
@@ -22342,6 +22682,10 @@ function serializeFishType(type) {
         odd: type.odd || null,
         dart: !!type.dart,
         ghost: type.ghost,
+        wen: !!type.wen,
+        noDorsal: !!type.noDorsal,
+        hump: !!type.hump,
+        lantern: !!type.lantern,
     };
 }
 
@@ -22380,6 +22724,10 @@ function reviveFishType(data) {
     if (data.odd) type.odd = data.odd;
     if (data.dart) type.dart = true;
     if (data.ghost != null) type.ghost = data.ghost;
+    if (data.wen) type.wen = true;
+    if (data.noDorsal) type.noDorsal = true;
+    if (data.hump) type.hump = true;
+    if (data.lantern) type.lantern = true;
     return type;
 }
 
@@ -25687,6 +26035,26 @@ function buildDevMenu() {
         devClearFinales();
         endMariachiFiesta();
     });
+    btn(endings, "Glow swallow", () => {
+        devEnsurePond();
+        devClearFinales();
+        if (typeof setNightMode === "function") setNightMode(false);
+        if (typeof setCrystalMode === "function") setCrystalMode(false);
+        // Only platinum left: shark swallows it, glows, releases at center, leaves.
+        for (const f of fishes) {
+            if (f && !f.dead && !f.isPlatinum) f.dead = true;
+        }
+        let glow = fishes.find((f) => f && !f.dead && f.isPlatinum);
+        if (!glow) {
+            glow = devDemoFish({ platinum: true, size: 28 });
+        }
+        shark = new Shark(glow);
+        shark.x = viewW * 0.35;
+        shark.y = viewH * 0.5;
+        glow.x = shark.x + 40;
+        glow.y = shark.y;
+        shark.beginGlowSwallow(glow);
+    }, { warn: true });
     btn(endings, "POV lunge", () => {
         devClearFinales();
         const f = devDemoFish({
@@ -27531,68 +27899,117 @@ function updateFlavorSystems(dt) {
 // WINDOW RHYTHM STUDIO: step loops on glass, save tunes, play soft in pond
 // ===========================================================================
 const RHYTHM_KEY = "ripple-tunes-v1";
-const RHYTHM_STEPS = 16;
-const RHYTHM_TUNE_CAP = 12;
+const RHYTHM_STEP_CHOICES = [16, 32, 64];
+const RHYTHM_DEFAULT_STEPS = 32;
+const RHYTHM_TUNE_CAP = 24;
+const RHYTHM_DRUM_LANES = ["kick", "snare", "clap", "hat"];
 
-function emptyRhythmLane() {
-    return Array(RHYTHM_STEPS).fill(0);
+function clampRhythmSteps(n) {
+    const v = +n || RHYTHM_DEFAULT_STEPS;
+    if (RHYTHM_STEP_CHOICES.includes(v)) return v;
+    // Migrate odd lengths toward nearest supported size.
+    if (v <= 16) return 16;
+    if (v <= 32) return 32;
+    return 64;
 }
 
-function emptyToneLane() {
-    return Array(RHYTHM_STEPS).fill(null);
+function getRhythmSteps() {
+    return clampRhythmSteps(rhythmPattern && rhythmPattern.steps);
 }
 
-function newRhythmPattern(bpm) {
+function emptyRhythmLane(n) {
+    return Array(clampRhythmSteps(n != null ? n : getRhythmSteps())).fill(0);
+}
+
+function emptyToneLane(n) {
+    return Array(clampRhythmSteps(n != null ? n : getRhythmSteps())).fill(null);
+}
+
+function resizeRhythmLane(arr, n, fill) {
+    const steps = clampRhythmSteps(n);
+    const src = Array.isArray(arr) ? arr : [];
+    const out = Array(steps).fill(fill);
+    for (let i = 0; i < Math.min(steps, src.length); i++) out[i] = src[i] || fill;
+    return out;
+}
+
+function resizeToneLane(arr, n) {
+    const steps = clampRhythmSteps(n);
+    const src = Array.isArray(arr) ? arr : [];
+    const out = Array(steps).fill(null);
+    for (let i = 0; i < Math.min(steps, src.length); i++) {
+        const t = src[i];
+        if (t && t.on) {
+            out[i] = {
+                on: 1,
+                freq: +t.freq || 440,
+                x: +t.x || 0,
+                y: +t.y || 0,
+                v: clamp01(t.v == null ? 0.45 : t.v),
+            };
+        }
+    }
+    return out;
+}
+
+function newRhythmPattern(bpm, steps) {
+    const n = clampRhythmSteps(steps != null ? steps : RHYTHM_DEFAULT_STEPS);
     return {
-        bpm: Math.max(60, Math.min(140, bpm || 96)),
-        steps: RHYTHM_STEPS,
-        kick: emptyRhythmLane(),
-        snare: emptyRhythmLane(),
-        hat: emptyRhythmLane(),
-        tone: emptyToneLane(),
+        bpm: Math.max(60, Math.min(160, bpm || 96)),
+        steps: n,
+        swing: 0,
+        gain: 1,
+        kick: emptyRhythmLane(n),
+        snare: emptyRhythmLane(n),
+        clap: emptyRhythmLane(n),
+        hat: emptyRhythmLane(n),
+        tone: emptyToneLane(n),
     };
 }
 
 function cloneRhythmPattern(src) {
-    const p = newRhythmPattern(src && src.bpm);
+    const steps = clampRhythmSteps(src && src.steps != null ? src.steps : RHYTHM_DEFAULT_STEPS);
+    const p = newRhythmPattern(src && src.bpm, steps);
     if (!src) return p;
-    p.bpm = Math.max(60, Math.min(140, src.bpm || 96));
-    for (const lane of ["kick", "snare", "hat"]) {
-        const arr = Array.isArray(src[lane]) ? src[lane] : [];
-        for (let i = 0; i < RHYTHM_STEPS; i++) p[lane][i] = arr[i] ? 1 : 0;
+    p.bpm = Math.max(60, Math.min(160, src.bpm || 96));
+    p.swing = clamp01(src.swing == null ? 0 : src.swing);
+    p.gain = Math.max(0.2, Math.min(1, src.gain == null ? 1 : +src.gain));
+    for (const lane of RHYTHM_DRUM_LANES) {
+        p[lane] = resizeRhythmLane(src[lane], steps, 0).map((v) => (v ? 1 : 0));
     }
-    const tones = Array.isArray(src.tone) ? src.tone : [];
-    for (let i = 0; i < RHYTHM_STEPS; i++) {
-        const t = tones[i];
-        if (t && t.on) {
-            p.tone[i] = {
-                on: 1,
-                freq: +t.freq || 440,
-                x: +t.x || viewW * 0.5,
-                y: +t.y || viewH * 0.5,
-                v: clamp01(t.v == null ? 0.45 : t.v),
-            };
-        } else p.tone[i] = null;
+    p.tone = resizeToneLane(src.tone, steps);
+    // Fill missing xy on tones from step position.
+    for (let i = 0; i < steps; i++) {
+        const t = p.tone[i];
+        if (!t) continue;
+        if (!(t.x > 0 || t.y > 0)) {
+            t.x = ((i + 0.5) / steps) * (viewW || 800);
+            t.y = (viewH || 600) * 0.4;
+        }
     }
     return p;
 }
 
 function patternToTunePayload(pattern, name, id) {
+    const steps = clampRhythmSteps(pattern.steps);
     return {
         id: id || ("t" + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36)),
         name: (name || "Untitled").slice(0, 28),
         bpm: pattern.bpm,
-        steps: RHYTHM_STEPS,
-        kick: pattern.kick.slice(),
-        snare: pattern.snare.slice(),
-        hat: pattern.hat.slice(),
-        tone: pattern.tone.map((t) => (t && t.on ? {
+        steps,
+        swing: clamp01(pattern.swing || 0),
+        gain: Math.max(0.2, Math.min(1, pattern.gain == null ? 1 : pattern.gain)),
+        kick: (pattern.kick || []).slice(0, steps),
+        snare: (pattern.snare || []).slice(0, steps),
+        clap: (pattern.clap || emptyRhythmLane(steps)).slice(0, steps),
+        hat: (pattern.hat || []).slice(0, steps),
+        tone: (pattern.tone || []).slice(0, steps).map((t) => (t && t.on ? {
             on: 1, freq: t.freq, x: t.x, y: t.y, v: t.v,
         } : null)),
     };
 }
 
-let rhythmPattern = newRhythmPattern(96);
+let rhythmPattern = newRhythmPattern(96, RHYTHM_DEFAULT_STEPS);
 let rhythmTunes = [];
 let rhythmActiveId = null;
 let rhythmPlaying = false;
@@ -27605,6 +28022,9 @@ let rhythmPondGain = 0.42; // quieter under pond life
 let rhythmPlaySource = null; // "studio" | "pond"
 let rhythmLifePulse = 0; // lingering beat energy for pond sway
 let rhythmKickTight = 0; // school tighten after kicks
+let rhythmMetronome = false;
+let rhythmClipboard = null;
+let rhythmMute = { kick: false, snare: false, clap: false, hat: false, tone: false };
 
 function loadRhythmStore() {
     rhythmTunes = [];
@@ -27634,7 +28054,7 @@ function loadRhythmStore() {
 function saveRhythmStore() {
     try {
         localStorage.setItem(RHYTHM_KEY, JSON.stringify({
-            version: 1,
+            version: 2,
             activeId: rhythmActiveId,
             tunes: rhythmTunes,
         }));
@@ -27642,8 +28062,17 @@ function saveRhythmStore() {
 }
 
 function rhythmStepSeconds() {
-    const bpm = Math.max(60, Math.min(140, rhythmPattern.bpm || 96));
-    return 60 / bpm / 4; // 16th notes
+    const bpm = Math.max(60, Math.min(160, rhythmPattern.bpm || 96));
+    const base = 60 / bpm / 4; // sixteenth notes
+    const swing = clamp01(rhythmPattern.swing || 0);
+    // Even steps stretch, odd steps compress (classic swung 16ths).
+    const even = (rhythmStep % 2) === 0;
+    return base * (1 + (even ? swing : -swing) * 0.55);
+}
+
+function updateRhythmStepLabel() {
+    const label = document.getElementById("rhythm-step-label");
+    if (label) label.textContent = (rhythmStep + 1) + " / " + getRhythmSteps();
 }
 
 function setRhythmPlaying(on, source) {
@@ -27665,17 +28094,24 @@ function stopRhythmPlayback() {
 }
 
 function playRhythmStep(stepIndex, visual) {
-    const i = ((stepIndex % RHYTHM_STEPS) + RHYTHM_STEPS) % RHYTHM_STEPS;
+    const steps = getRhythmSteps();
+    const i = ((stepIndex % steps) + steps) % steps;
     const pond = mode === "pond" || rhythmPlaySource === "pond";
-    const drumGain = pond ? rhythmPondGain : 1;
+    const studioGain = Math.max(0.2, Math.min(1, rhythmPattern.gain == null ? 1 : rhythmPattern.gain));
+    const drumGain = (pond ? rhythmPondGain : 1) * studioGain;
     const panKick = -0.15;
     const panSnare = 0.1;
+    const panClap = 0.2;
     const panHat = 0.35;
-    const kickOn = !!rhythmPattern.kick[i];
-    const snareOn = !!rhythmPattern.snare[i];
-    const hatOn = !!rhythmPattern.hat[i];
+    const kickOn = !rhythmMute.kick && !!rhythmPattern.kick[i];
+    const snareOn = !rhythmMute.snare && !!rhythmPattern.snare[i];
+    const clapOn = !rhythmMute.clap && !!(rhythmPattern.clap && rhythmPattern.clap[i]);
+    const hatOn = !rhythmMute.hat && !!rhythmPattern.hat[i];
     const tone = rhythmPattern.tone[i];
-    const toneOn = !!(tone && tone.on);
+    const toneOn = !rhythmMute.tone && !!(tone && tone.on);
+    if (rhythmMetronome && !pond && Audio.playRhythmHit && (i % 4) === 0) {
+        Audio.playRhythmHit("click", 0, drumGain * (i === 0 ? 1 : 0.65));
+    }
     if (kickOn && Audio.playRhythmHit) {
         Audio.playRhythmHit("kick", panKick, drumGain);
         if (visual && mode === "window") {
@@ -27688,6 +28124,12 @@ function playRhythmStep(stepIndex, visual) {
             spawnWindowRippleVisual(viewW * 0.5, viewH * 0.55, 0.4);
         }
     }
+    if (clapOn && Audio.playRhythmHit) {
+        Audio.playRhythmHit("clap", panClap, drumGain * 0.9);
+        if (visual && mode === "window") {
+            spawnWindowRippleVisual(viewW * 0.62, viewH * 0.42, 0.34);
+        }
+    }
     if (hatOn && Audio.playRhythmHit) {
         Audio.playRhythmHit("hat", panHat, drumGain * 0.85);
         if (visual && mode === "window") {
@@ -27697,7 +28139,7 @@ function playRhythmStep(stepIndex, visual) {
     if (toneOn) {
         const x = Math.max(8, Math.min(viewW - 8, tone.x));
         const y = Math.max(8, Math.min(viewH - 8, tone.y));
-        const v = clamp01((tone.v == null ? 0.45 : tone.v) * (pond ? 0.7 : 1));
+        const v = clamp01((tone.v == null ? 0.45 : tone.v) * (pond ? 0.7 : 1) * studioGain);
         if (visual && mode === "window") {
             spawnWindowRipple(x, y, v);
         } else {
@@ -27715,7 +28157,7 @@ function playRhythmStep(stepIndex, visual) {
         }
     }
     if (mode === "pond" && rhythmPlaying) {
-        pulsePondToRhythm(kickOn, snareOn, hatOn, toneOn);
+        pulsePondToRhythm(kickOn, snareOn, hatOn || clapOn, toneOn);
     }
 }
 
@@ -27805,15 +28247,15 @@ function updateRhythmStudio(dt) {
     if (typeof updatePondMusicLife === "function") updatePondMusicLife(dt);
     if (!rhythmPlaying) return;
     rhythmAcc += dt;
-    const stepDur = rhythmStepSeconds();
     let guard = 0;
-    while (rhythmAcc >= stepDur && guard < 8) {
+    while (guard < 8) {
+        const stepDur = rhythmStepSeconds();
+        if (rhythmAcc < stepDur) break;
         rhythmAcc -= stepDur;
         playRhythmStep(rhythmStep, true);
-        rhythmStep = (rhythmStep + 1) % RHYTHM_STEPS;
+        rhythmStep = (rhythmStep + 1) % getRhythmSteps();
         guard++;
-        const label = document.getElementById("rhythm-step-label");
-        if (label) label.textContent = (rhythmStep + 1) + " / " + RHYTHM_STEPS;
+        updateRhythmStepLabel();
         highlightRhythmBeat(rhythmStep);
     }
 }
@@ -27831,7 +28273,8 @@ function rhythmCaptureTone(x, y, v) {
     if (!rhythmRecordArmed || mode !== "window") return;
     Audio.ensure();
     const voice = windowPosToVoice(x, y);
-    const step = rhythmStep;
+    const steps = getRhythmSteps();
+    const step = rhythmStep % steps;
     rhythmPattern.tone[step] = {
         on: 1,
         freq: voice.freq,
@@ -27840,25 +28283,157 @@ function rhythmCaptureTone(x, y, v) {
         v: clamp01(v == null ? 0.45 : v),
     };
     if (!rhythmPlaying) {
-        rhythmStep = (step + 1) % RHYTHM_STEPS;
+        rhythmStep = (step + 1) % steps;
     }
     renderRhythmGrid();
     highlightRhythmBeat(rhythmStep);
-    const label = document.getElementById("rhythm-step-label");
-    if (label) label.textContent = (rhythmStep + 1) + " / " + RHYTHM_STEPS;
+    updateRhythmStepLabel();
     syncActiveRhythmTune();
 }
 
 function clearRhythmPattern() {
     const bpm = rhythmPattern.bpm;
-    rhythmPattern = newRhythmPattern(bpm);
+    const steps = getRhythmSteps();
+    const swing = rhythmPattern.swing || 0;
+    const gain = rhythmPattern.gain == null ? 1 : rhythmPattern.gain;
+    rhythmPattern = newRhythmPattern(bpm, steps);
+    rhythmPattern.swing = swing;
+    rhythmPattern.gain = gain;
     rhythmStep = 0;
     rhythmAcc = 0;
     renderRhythmGrid();
     highlightRhythmBeat(0);
-    const label = document.getElementById("rhythm-step-label");
-    if (label) label.textContent = "1 / 16";
+    updateRhythmStepLabel();
     syncActiveRhythmTune();
+}
+
+function setRhythmLength(steps) {
+    const n = clampRhythmSteps(steps);
+    if (n === getRhythmSteps()) {
+        updateRhythmLengthUI();
+        return;
+    }
+    rhythmPattern = cloneRhythmPattern({ ...rhythmPattern, steps: n });
+    rhythmStep = Math.min(rhythmStep, n - 1);
+    rhythmAcc = 0;
+    renderRhythmGrid();
+    highlightRhythmBeat(rhythmStep);
+    updateRhythmStepLabel();
+    updateRhythmLengthUI();
+    syncActiveRhythmTune();
+}
+
+function shiftRhythmPattern(dir) {
+    const steps = getRhythmSteps();
+    const d = dir < 0 ? -1 : 1;
+    const rot = (arr, fill) => {
+        const out = arr.slice();
+        if (d < 0) {
+            const first = out.shift();
+            out.push(first == null ? fill : first);
+        } else {
+            const last = out.pop();
+            out.unshift(last == null ? fill : last);
+        }
+        return out;
+    };
+    for (const lane of RHYTHM_DRUM_LANES) {
+        rhythmPattern[lane] = rot(rhythmPattern[lane] || emptyRhythmLane(steps), 0);
+    }
+    rhythmPattern.tone = rot(rhythmPattern.tone || emptyToneLane(steps), null);
+    renderRhythmGrid();
+    highlightRhythmBeat(rhythmStep);
+    syncActiveRhythmTune();
+}
+
+function copyRhythmPattern() {
+    rhythmClipboard = patternToTunePayload(rhythmPattern, "Clipboard");
+}
+
+function pasteRhythmPattern() {
+    if (!rhythmClipboard) return;
+    const nameEl = document.getElementById("rhythm-name");
+    const keepName = nameEl ? nameEl.value : "";
+    const swing = rhythmPattern.swing;
+    const gain = rhythmPattern.gain;
+    const steps = getRhythmSteps();
+    rhythmPattern = cloneRhythmPattern({
+        ...rhythmClipboard,
+        steps: rhythmClipboard.steps || steps,
+        swing: rhythmClipboard.swing != null ? rhythmClipboard.swing : swing,
+        gain: rhythmClipboard.gain != null ? rhythmClipboard.gain : gain,
+    });
+    syncRhythmControlsFromPattern();
+    if (nameEl && keepName) nameEl.value = keepName;
+    renderRhythmGrid();
+    highlightRhythmBeat(rhythmStep);
+    syncActiveRhythmTune();
+}
+
+function startBlankRhythmTune() {
+    stopRhythmPlayback();
+    rhythmActiveId = null;
+    rhythmPattern = newRhythmPattern(rhythmPattern.bpm || 96, getRhythmSteps());
+    rhythmStep = 0;
+    rhythmAcc = 0;
+    const nameEl = document.getElementById("rhythm-name");
+    if (nameEl) nameEl.value = "";
+    syncRhythmControlsFromPattern();
+    renderRhythmGrid();
+    highlightRhythmBeat(0);
+    updateRhythmStepLabel();
+    updateRhythmTransportUI();
+}
+
+function duplicateRhythmTune() {
+    const nameEl = document.getElementById("rhythm-name");
+    const base = ((nameEl && nameEl.value.trim()) || "Tune").slice(0, 20);
+    const name = (base + " copy").slice(0, 28);
+    if (rhythmTunes.length >= RHYTHM_TUNE_CAP) rhythmTunes.shift();
+    const next = patternToTunePayload(rhythmPattern, name);
+    rhythmTunes.push(next);
+    rhythmActiveId = next.id;
+    if (nameEl) nameEl.value = name;
+    saveRhythmStore();
+    renderRhythmLibrary();
+    renderTunesLibrary();
+}
+
+function syncRhythmControlsFromPattern() {
+    const bpmEl = document.getElementById("rhythm-bpm");
+    const bpmVal = document.getElementById("rhythm-bpm-val");
+    const swingEl = document.getElementById("rhythm-swing");
+    const swingVal = document.getElementById("rhythm-swing-val");
+    const gainEl = document.getElementById("rhythm-gain");
+    const gainVal = document.getElementById("rhythm-gain-val");
+    if (bpmEl) bpmEl.value = String(rhythmPattern.bpm);
+    if (bpmVal) bpmVal.textContent = String(rhythmPattern.bpm);
+    const swingPct = Math.round(clamp01(rhythmPattern.swing || 0) * 100);
+    if (swingEl) swingEl.value = String(swingPct);
+    if (swingVal) swingVal.textContent = String(swingPct);
+    const gainPct = Math.round(Math.max(0.2, Math.min(1, rhythmPattern.gain == null ? 1 : rhythmPattern.gain)) * 100);
+    if (gainEl) gainEl.value = String(gainPct);
+    if (gainVal) gainVal.textContent = String(gainPct);
+    updateRhythmLengthUI();
+    updateRhythmMetroUI();
+}
+
+function updateRhythmLengthUI() {
+    const steps = getRhythmSteps();
+    document.querySelectorAll(".rhythm-len").forEach((btn) => {
+        const on = +btn.dataset.steps === steps;
+        btn.classList.toggle("on", on);
+        btn.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+    const grid = document.getElementById("rhythm-grid");
+    if (grid) grid.dataset.steps = String(steps);
+}
+
+function updateRhythmMetroUI() {
+    const btn = document.getElementById("rhythm-metro");
+    if (!btn) return;
+    btn.classList.toggle("on", !!rhythmMetronome);
+    btn.setAttribute("aria-pressed", rhythmMetronome ? "true" : "false");
 }
 
 function syncActiveRhythmTune() {
@@ -27874,10 +28449,12 @@ function syncActiveRhythmTune() {
 }
 
 function toggleRhythmCell(lane, step) {
+    const steps = getRhythmSteps();
+    if (step < 0 || step >= steps) return;
     if (lane === "tone") {
         if (rhythmPattern.tone[step]) rhythmPattern.tone[step] = null;
         else {
-            const x = ((step + 0.5) / RHYTHM_STEPS) * viewW;
+            const x = ((step + 0.5) / steps) * viewW;
             const y = viewH * 0.4;
             const voice = windowPosToVoice(x, y);
             rhythmPattern.tone[step] = { on: 1, freq: voice.freq, x, y, v: 0.42 };
@@ -27891,6 +28468,7 @@ function toggleRhythmCell(lane, step) {
             }
         }
     } else {
+        if (!rhythmPattern[lane]) rhythmPattern[lane] = emptyRhythmLane(steps);
         rhythmPattern[lane][step] = rhythmPattern[lane][step] ? 0 : 1;
         if (rhythmPattern[lane][step] && Audio.playRhythmHit) {
             Audio.ensure();
@@ -27905,27 +28483,41 @@ function toggleRhythmCell(lane, step) {
 function renderRhythmGrid() {
     const grid = document.getElementById("rhythm-grid");
     if (!grid) return;
+    const steps = getRhythmSteps();
+    grid.dataset.steps = String(steps);
     const lanes = [
         { key: "kick", label: "Kick" },
         { key: "snare", label: "Snare" },
+        { key: "clap", label: "Clap" },
         { key: "hat", label: "Hat" },
         { key: "tone", label: "Tone" },
     ];
     grid.innerHTML = "";
     for (const lane of lanes) {
-        const lab = document.createElement("div");
-        lab.className = "rhythm-lane-label";
+        const lab = document.createElement("button");
+        lab.type = "button";
+        lab.className = "rhythm-lane-label" + (rhythmMute[lane.key] ? " muted" : "");
         lab.textContent = lane.label;
+        lab.title = rhythmMute[lane.key] ? "Unmute " + lane.label : "Mute " + lane.label;
+        lab.addEventListener("click", (e) => {
+            e.stopPropagation();
+            rhythmMute[lane.key] = !rhythmMute[lane.key];
+            renderRhythmGrid();
+            highlightRhythmBeat(rhythmStep);
+        });
         grid.appendChild(lab);
-        for (let i = 0; i < RHYTHM_STEPS; i++) {
+        for (let i = 0; i < steps; i++) {
             const btn = document.createElement("button");
             btn.type = "button";
-            btn.className = "rhythm-cell" + (lane.key === "tone" ? " tone" : "");
+            btn.className = "rhythm-cell"
+                + (lane.key === "tone" ? " tone" : "")
+                + (lane.key === "clap" ? " clap" : "")
+                + ((i % 4) === 0 ? " bar" : "");
             btn.dataset.lane = lane.key;
             btn.dataset.step = String(i);
             const on = lane.key === "tone"
                 ? !!(rhythmPattern.tone[i] && rhythmPattern.tone[i].on)
-                : !!rhythmPattern[lane.key][i];
+                : !!(rhythmPattern[lane.key] && rhythmPattern[lane.key][i]);
             if (on) btn.classList.add("on");
             btn.title = lane.label + " step " + (i + 1);
             btn.setAttribute("aria-pressed", on ? "true" : "false");
@@ -28017,14 +28609,12 @@ function loadRhythmTune(id) {
     rhythmPattern = cloneRhythmPattern(tune);
     rhythmStep = 0;
     rhythmAcc = 0;
-    const bpmEl = document.getElementById("rhythm-bpm");
-    const bpmVal = document.getElementById("rhythm-bpm-val");
     const nameEl = document.getElementById("rhythm-name");
-    if (bpmEl) bpmEl.value = String(rhythmPattern.bpm);
-    if (bpmVal) bpmVal.textContent = String(rhythmPattern.bpm);
     if (nameEl) nameEl.value = tune.name;
+    syncRhythmControlsFromPattern();
     renderRhythmGrid();
     highlightRhythmBeat(0);
+    updateRhythmStepLabel();
     saveRhythmStore();
     updateRhythmTransportUI();
 }
@@ -28094,7 +28684,9 @@ function setRhythmPanelOpen(open) {
     if (rhythmPanelOpen) {
         renderRhythmGrid();
         renderRhythmLibrary();
+        syncRhythmControlsFromPattern();
         highlightRhythmBeat(rhythmStep);
+        updateRhythmStepLabel();
     }
 }
 
@@ -28146,22 +28738,110 @@ function onRhythmModeChange() {
 
 function initRhythmStudioUI() {
     loadRhythmStore();
+    if (!rhythmPattern || !rhythmPattern.steps) {
+        rhythmPattern = newRhythmPattern(96, RHYTHM_DEFAULT_STEPS);
+    } else {
+        rhythmPattern = cloneRhythmPattern(rhythmPattern);
+    }
     renderRhythmGrid();
     renderRhythmLibrary();
     renderTunesLibrary();
+    syncRhythmControlsFromPattern();
+    updateRhythmStepLabel();
 
     const bpmEl = document.getElementById("rhythm-bpm");
     const bpmVal = document.getElementById("rhythm-bpm-val");
     if (bpmEl) {
-        bpmEl.value = String(rhythmPattern.bpm);
-        if (bpmVal) bpmVal.textContent = String(rhythmPattern.bpm);
         bpmEl.addEventListener("input", (e) => {
             e.stopPropagation();
-            rhythmPattern.bpm = Math.max(60, Math.min(140, +bpmEl.value || 96));
+            rhythmPattern.bpm = Math.max(60, Math.min(160, +bpmEl.value || 96));
             if (bpmVal) bpmVal.textContent = String(rhythmPattern.bpm);
             syncActiveRhythmTune();
         });
         bpmEl.addEventListener("click", (e) => e.stopPropagation());
+    }
+
+    const swingEl = document.getElementById("rhythm-swing");
+    const swingVal = document.getElementById("rhythm-swing-val");
+    if (swingEl) {
+        swingEl.addEventListener("input", (e) => {
+            e.stopPropagation();
+            rhythmPattern.swing = clamp01((+swingEl.value || 0) / 100);
+            if (swingVal) swingVal.textContent = String(Math.round(rhythmPattern.swing * 100));
+            syncActiveRhythmTune();
+        });
+        swingEl.addEventListener("click", (e) => e.stopPropagation());
+    }
+
+    const gainEl = document.getElementById("rhythm-gain");
+    const gainVal = document.getElementById("rhythm-gain-val");
+    if (gainEl) {
+        gainEl.addEventListener("input", (e) => {
+            e.stopPropagation();
+            rhythmPattern.gain = Math.max(0.2, Math.min(1, (+gainEl.value || 100) / 100));
+            if (gainVal) gainVal.textContent = String(Math.round(rhythmPattern.gain * 100));
+            syncActiveRhythmTune();
+        });
+        gainEl.addEventListener("click", (e) => e.stopPropagation());
+    }
+
+    document.querySelectorAll(".rhythm-len").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            Audio.ensure();
+            setRhythmLength(+btn.dataset.steps || RHYTHM_DEFAULT_STEPS);
+        });
+    });
+
+    const shiftL = document.getElementById("rhythm-shift-left");
+    if (shiftL) {
+        shiftL.addEventListener("click", (e) => {
+            e.stopPropagation();
+            shiftRhythmPattern(-1);
+        });
+    }
+    const shiftR = document.getElementById("rhythm-shift-right");
+    if (shiftR) {
+        shiftR.addEventListener("click", (e) => {
+            e.stopPropagation();
+            shiftRhythmPattern(1);
+        });
+    }
+    const copyBtn = document.getElementById("rhythm-copy");
+    if (copyBtn) {
+        copyBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            copyRhythmPattern();
+        });
+    }
+    const pasteBtn = document.getElementById("rhythm-paste");
+    if (pasteBtn) {
+        pasteBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            pasteRhythmPattern();
+        });
+    }
+    const newBtn = document.getElementById("rhythm-new");
+    if (newBtn) {
+        newBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            startBlankRhythmTune();
+        });
+    }
+    const dupBtn = document.getElementById("rhythm-dup");
+    if (dupBtn) {
+        dupBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            duplicateRhythmTune();
+        });
+    }
+    const metroBtn = document.getElementById("rhythm-metro");
+    if (metroBtn) {
+        metroBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            rhythmMetronome = !rhythmMetronome;
+            updateRhythmMetroUI();
+        });
     }
 
     const rhythmBtn = document.getElementById("rhythm-btn");
@@ -28197,8 +28877,7 @@ function initRhythmStudioUI() {
             stopRhythmPlayback();
             rhythmStep = 0;
             highlightRhythmBeat(0);
-            const label = document.getElementById("rhythm-step-label");
-            if (label) label.textContent = "1 / 16";
+            updateRhythmStepLabel();
         });
     }
     const recBtn = document.getElementById("rhythm-record");
@@ -28251,6 +28930,7 @@ function initRhythmStudioUI() {
     updateRhythmRecordUI();
     updateRhythmTransportUI();
     updateTunesPanelUI();
+    updateRhythmMetroUI();
 }
 
 initRhythmStudioUI();

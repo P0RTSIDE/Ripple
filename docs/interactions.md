@@ -66,7 +66,7 @@ Rare visitor. Swallows fish it swims over (not platinum, and not heroes large en
 Rare night oddity on the whale-style cadence. Pet it 50 times and it throws up 5 rainbow fish.
 
 ### Frogs and tadpoles
-Background pond life when frogs looks are on. Pet a frog enough and it befriends, eats food, and can turn heroic. Giant hero frogs have their own burst finale that releases tadpoles. Hungry tadpoles that eat enough food metamorphose into frogs.
+Background pond life when frogs looks are on. Pet a frog enough and it befriends, eats food, and can turn heroic. Giant hero frogs have their own burst finale that releases tadpoles. Hungry tadpoles that eat enough food metamorphose into frogs. Frogs and tadpoles treat special pellets as growth snacks only (they do not take rainbow, gold, plant, platinum, or hero forms).
 
 ## Food types
 
@@ -74,14 +74,15 @@ Background pond life when frogs looks are on. Pet a frog enough and it befriends
 | --- | --- |
 | Normal | Grows the fish a little. Net scooping banks it for market trades. |
 | Golden | Turns the eater into a settled gold fish. |
-| Rainbow | Turns the eater into a rainbow fish. |
+| Rainbow | Turns the eater into a rainbow fish. Platinum fish snack and grow a little instead. |
 | Green | Turns the eater into a lasting pond plant. |
 | Grower | Big permanent size boost. |
 | Pink / breed | Blushes the fish for breeding. |
-| Platinum | Turns the eater into an invulnerable platinum fish (night predators only snack and grow a little). |
+| Platinum | Turns the eater into an invulnerable platinum fish. Rainbow fish, crocs, and night predators only snack and grow a little. |
+| Hero | Turns ordinary fish into hero guardians. Tames wild apex. Rainbow and platinum fish snack instead. |
 | Carcass | Large meal chunks (from some finales / events); strong growth. |
 
-Special pellets are rare on random throws. Typing a food name (or a pet streak with no throws) can force the next drop. Net scooping saves pellets to the stash; click a stash pellet, then click the pond to place it.
+Special pellets are rare on random throws. Typing a food name, or about 20 discrete pets with no food throws, can force the next drop. Net scooping saves pellets to the stash; click a stash pellet, then click the pond to place it.
 
 ## Market tools
 
@@ -133,6 +134,8 @@ Hats unlock separately in Looks for 5 gold and put little hats on fish.
 - **Rainbow exit**: A rainbow fish swims a fish logo trail, eases to the center, then bursts into 2 rainbow food pellets.
 - **Frog finale**: Giant hero frog bursts into tadpoles.
 - **Apex duel**: Day-only croc-versus-shark clash when wild reptiles clear the pond. Night never starts this fight; moonlight uses swordfish, octopus, and orca stories instead.
+- **Rainbow ninja**: When only rainbow fish remain (platinum ignored), they clash in a short fight, then burst into meat and rainbow food.
+- **Glow swallow**: When a day shark finds only platinum left, it swallows one unharmed, glows while carrying it to the center, releases it, then leaves as the pond restocks.
 
 ## Growth from prey
 

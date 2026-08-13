@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Ripple</title>
-    <link rel="stylesheet" href="style.css?v=20260812av" />
+    <link rel="stylesheet" href="style.css?v=20260813af" />
 </head>
 <body>
     <!-- The whole experience is a single full-viewport canvas surface. -->
@@ -122,20 +122,44 @@
     <div id="rhythm-panel" aria-label="Rhythm studio" aria-hidden="true">
         <div class="market-meta">
             <span>Rhythm studio</span>
-            <span id="rhythm-step-label">1 / 16</span>
+            <span id="rhythm-step-label">1 / 32</span>
         </div>
         <div class="rhythm-transport">
             <button type="button" id="rhythm-play" class="market-row rhythm-mini">Play</button>
             <button type="button" id="rhythm-stop" class="market-row rhythm-mini">Stop</button>
             <button type="button" id="rhythm-record" class="market-row rhythm-mini" aria-pressed="false">Record</button>
             <button type="button" id="rhythm-clear" class="market-row rhythm-mini">Clear</button>
+            <button type="button" id="rhythm-metro" class="market-row rhythm-mini" aria-pressed="false" title="Click track">Click</button>
+        </div>
+        <div class="rhythm-transport" id="rhythm-length-row" aria-label="Loop length">
+            <button type="button" class="market-row rhythm-mini rhythm-len" data-steps="16" aria-pressed="false">16</button>
+            <button type="button" class="market-row rhythm-mini rhythm-len on" data-steps="32" aria-pressed="true">32</button>
+            <button type="button" class="market-row rhythm-mini rhythm-len" data-steps="64" aria-pressed="false">64</button>
+            <button type="button" id="rhythm-shift-left" class="market-row rhythm-mini" title="Shift earlier">Earlier</button>
+            <button type="button" id="rhythm-shift-right" class="market-row rhythm-mini" title="Shift later">Later</button>
+        </div>
+        <div class="rhythm-transport">
+            <button type="button" id="rhythm-copy" class="market-row rhythm-mini">Copy</button>
+            <button type="button" id="rhythm-paste" class="market-row rhythm-mini">Paste</button>
+            <button type="button" id="rhythm-new" class="market-row rhythm-mini">New</button>
+            <button type="button" id="rhythm-dup" class="market-row rhythm-mini">Duplicate</button>
         </div>
         <label class="rhythm-bpm-wrap" title="Tempo">
             <span>Tempo</span>
-            <input type="range" id="rhythm-bpm" min="60" max="140" value="96" step="1" aria-label="Tempo" />
+            <input type="range" id="rhythm-bpm" min="60" max="160" value="96" step="1" aria-label="Tempo" />
             <span id="rhythm-bpm-val">96</span>
         </label>
-        <div id="rhythm-grid" class="rhythm-grid" aria-label="Step grid"></div>
+        <label class="rhythm-bpm-wrap" title="Swing">
+            <span>Swing</span>
+            <input type="range" id="rhythm-swing" min="0" max="100" value="0" step="1" aria-label="Swing" />
+            <span id="rhythm-swing-val">0</span>
+        </label>
+        <label class="rhythm-bpm-wrap" title="Studio loudness">
+            <span>Level</span>
+            <input type="range" id="rhythm-gain" min="20" max="100" value="100" step="1" aria-label="Studio loudness" />
+            <span id="rhythm-gain-val">100</span>
+        </label>
+        <div id="rhythm-grid" class="rhythm-grid" data-steps="32" aria-label="Step grid"></div>
         <div class="rhythm-save-row">
             <input type="text" id="rhythm-name" maxlength="28" placeholder="Tune name" aria-label="Tune name" />
             <button type="button" id="rhythm-save" class="market-row rhythm-mini">Save</button>
@@ -205,6 +229,6 @@
     <!-- On-load hint that fades out after the first interaction and never returns. -->
     <div id="hint">click anywhere</div>
 
-    <script src="main.js?v=20260813ac"></script>
+    <script src="main.js?v=20260813ai"></script>
 </body>
 </html>
