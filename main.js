@@ -114,6 +114,10 @@ const CONFIG = {
     frogSootheTime: 5,      // continuous stroke time that also befriends a frog
     frogFinaleTadpoles: 12, // tadpoles released when a giant hero frog bursts
     tadpoleMetamorphSize: 11, // hungry tadpole size that becomes a frog
+    // Rare bullfrog: eats frogs and tadpoles; oversized frogs can eat it back.
+    bullfrogInterval: 95,   // seconds between bullfrog spawn rolls
+    bullfrogChance: 0.035,  // very small chance a bullfrog arrives
+    bullfrogMealsForFinale: 4, // frog/tadpole meals before the feast ending can start
     mirrorFishChance: 0.035, // rare delayed twin that copies another fish
     weatherInterval: 55,    // seconds between weather mood rolls
     weatherChance: 0.42,    // chance a weather mood begins
@@ -524,8 +528,13 @@ const NIGHT_UNLOCK_RAINBOW_COST = 5; // market: unlock moon pond with stashed ra
 const DOUBLE_PETTER_RAINBOW_COST = 5; // stashed rainbow food for double-pet upgrade
 const PICKER_RAINBOW_FOOD_COST = 3; // stashed rainbow food for fish picker tool
 const BLOBFISH_PETS_FOR_RAINBOW = 50;
-// Fish smaller than predatorSize can be lifted out; at/above it they only drag.
-const PICKER_LIFT_SIZE = CONFIG.predatorSize;
+// Stronger picker: lift well past predator size; exotic and mid apex can leave the water.
+const PICKER_LIFT_SIZE = 96; // commons / grown fish lift below this (was predatorSize 40)
+const PICKER_EXOTIC_LIFT_SIZE = 120; // exotic visitors lift farther before becoming drag-only
+const PICKER_APEX_LIFT_SIZE = 120; // crocs, octopus, mantle, serpent, day shark; bigger bodies drag
+const PICKER_LIFT_PULL = 10; // air follow strength
+const PICKER_DRAG_PULL = 6.8; // water drag follow (was ~3.2)
+const PICKER_LIFT_RISE = 7.2; // how fast liftZ climbs (was ~5.5)
 const GOLD_CROCODILE_AWARD = 40; // fixed gold for lifting a golden alligator/crocodile
 const GOLD_NIGHT_PREDATOR_AWARD = 55; // fixed gold for lifting a golden swordfish / octopus
 const CATCHER_NIGHT_RAINBOW_REWARD = 3; // rainbow fish spawned when catching a rainbow night predator
@@ -2884,7 +2893,9 @@ let _floorShadowStamp = null;
 let _floorShadowStampDim = 0;
 
 function stampFloorShadowSilhouette(sizeHint, drawFn) {
-    const dim = Math.ceil(Math.max(64, sizeHint * 5.6 + 24));
+    // Pad enough for forked tails, ray wings, and octopus arms so casts are not clipped
+    // into jagged L or stair shapes.
+    const dim = Math.ceil(Math.max(64, sizeHint * 6.8 + 48));
     if (!_floorShadowStamp || _floorShadowStampDim < dim) {
         _floorShadowStamp = document.createElement("canvas");
         _floorShadowStamp.width = dim;
@@ -2894,7 +2905,9 @@ function stampFloorShadowSilhouette(sizeHint, drawFn) {
     const stamp = _floorShadowStamp;
     const sc = stamp.getContext("2d");
     sc.setTransform(1, 0, 0, 1, 0, 0);
-    sc.clearRect(0, 0, dim, dim);
+    // Always clear the full canvas. A prior giant/finale stamp can be much larger than
+    // the active dim; clearing only dim leaves phantom silhouettes that leak on blit.
+    sc.clearRect(0, 0, stamp.width, stamp.height);
     sc.save();
     sc.globalCompositeOperation = "source-over";
     sc.globalAlpha = 1;
@@ -2904,6 +2917,12 @@ function stampFloorShadowSilhouette(sizeHint, drawFn) {
     drawFn(sc);
     sc.restore();
     return { stamp, dim };
+}
+
+function blitFloorShadowStamp(ctx, stamp, dim, alpha) {
+    // Blit only the active dim region so oversized stamp canvas margins never draw.
+    ctx.globalAlpha = Math.min(1, alpha);
+    ctx.drawImage(stamp, 0, 0, dim, dim, -dim * 0.5, -dim * 0.5, dim, dim);
 }
 
 function withFloorShadow(ctx, x, y, sizeHint, alpha, rot, drawFn) {
@@ -2917,13 +2936,20 @@ function withFloorShadow(ctx, x, y, sizeHint, alpha, rot, drawFn) {
     ctx.scale(1, p.squashY);
     if (rot != null) ctx.rotate(rot);
     if (p.bloomAlpha > 0.01) {
-        ctx.globalAlpha = Math.min(1, a * p.bloomAlpha);
-        ctx.drawImage(stamp, -dim * 0.5, -dim * 0.5);
+        blitFloorShadowStamp(ctx, stamp, dim, a * p.bloomAlpha);
     }
     // One stamp, one alpha: reads as a single cast shade.
-    ctx.globalAlpha = Math.min(1, a);
-    ctx.drawImage(stamp, -dim * 0.5, -dim * 0.5);
+    blitFloorShadowStamp(ctx, stamp, dim, a);
     ctx.restore();
+}
+
+// Living casts only: skip hidden, swallowed, or fully faded finale bodies.
+function castsFloorShadow(ent) {
+    if (!ent || ent.dead) return false;
+    if (ent.insideShark) return false;
+    if (povAttack && povAttack.fish === ent) return false;
+    if (ent._giantFlyAlpha != null && ent._giantFlyAlpha < 0.05) return false;
+    return true;
 }
 
 // Fallback oval when a shape path is not available.
@@ -3481,6 +3507,41 @@ function pathPondPlantShadow(ctx, p) {
     ctx.ellipse(0, 0, s * 0.45, s * 0.32, 0, 0, Math.PI * 2);
 }
 
+function fillTadpoleShadowPaths(ctx, t) {
+    const s = t.size || 6;
+    ctx.beginPath();
+    ctx.moveTo(s * 0.55, 0);
+    ctx.bezierCurveTo(s * 0.25, -s * 0.35, -s * 0.1, -s * 0.32, -s * 0.45, -s * 0.18);
+    ctx.quadraticCurveTo(-s * 0.85, -s * 0.28, -s * 1.05, 0);
+    ctx.quadraticCurveTo(-s * 0.85, s * 0.28, -s * 0.45, s * 0.18);
+    ctx.bezierCurveTo(-s * 0.1, s * 0.32, s * 0.25, s * 0.35, s * 0.55, 0);
+    ctx.closePath();
+    ctx.fill();
+}
+
+function fillBullfrogShadowPaths(ctx, b) {
+    const S = b.size || 28;
+    const kick = b.kick || 0;
+    ctx.beginPath();
+    ctx.moveTo(S * 0.78, 0);
+    ctx.bezierCurveTo(S * 0.5, -S * 0.48, -S * 0.05, -S * 0.52, -S * 0.6, -S * 0.16);
+    ctx.bezierCurveTo(-S * 0.82, 0, -S * 0.58, S * 0.2, -S * 0.15, S * 0.4);
+    ctx.bezierCurveTo(S * 0.25, S * 0.5, S * 0.58, S * 0.34, S * 0.78, 0);
+    ctx.closePath();
+    ctx.fill();
+    for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(-S * 0.18, side * S * 0.1);
+        ctx.quadraticCurveTo(
+            -S * (0.5 + kick * 0.4), side * S * (0.34 + kick * 0.12),
+            -S * (0.4 + kick * 0.95), side * S * (0.24 - kick * 0.04)
+        );
+        ctx.quadraticCurveTo(-S * (0.6 + kick * 0.55), side * S * 0.06, -S * 0.22, 0);
+        ctx.closePath();
+        ctx.fill();
+    }
+}
+
 function drawSunCreatureShadows(ctx) {
     if (!lightCastsFloorShadows()) return;
     const p = floorShadowParams();
@@ -3488,25 +3549,25 @@ function drawSunCreatureShadows(ctx) {
     ctx.globalCompositeOperation = "multiply";
     ctx.globalAlpha = Math.min(1, p.contactMul + 0.04);
     for (const f of fishes) {
-        if (f.dead) continue;
+        if (!castsFloorShadow(f)) continue;
         const { L, W, shape } = fishShadowDims(f);
         const scale = f.golden ? (1 - (f.sinkDepth || 0) * 0.35) : 1;
         const yOff = f.golden ? (f.sinkDepth || 0) * 6 : 0;
         const liftZ = f.pickerLiftZ || 0;
-        // Lifted fish: longer floor contact; keep day shadows readable but softer.
-        const alpha = f.golden ? 0.62 : (liftZ > 1 ? 0.55 : 0.78);
+        const giantA = f._giantFlyAlpha != null ? f._giantFlyAlpha : 1;
+        const alpha = (f.golden ? 0.62 : (liftZ > 1 ? 0.55 : 0.78)) * giantA;
         withFloorShadow(ctx, f.x, f.y + yOff, L, alpha, f.dir, (c) => {
             c.scale(scale, scale);
             fillFishShadowPaths(c, L, W, shape);
         });
     }
     for (const r of reptiles) {
-        if (r.dead) continue;
+        if (!castsFloorShadow(r)) continue;
         withFloorShadow(ctx, r.x, r.y, r.size, 0.76, r.dir, (c) => {
             fillReptileShadowPaths(c, r);
         });
     }
-    if (swordfish && !swordfish.dead) {
+    if (castsFloorShadow(swordfish)) {
         withFloorShadow(ctx, swordfish.x, swordfish.y, swordfish.size, 0.76, swordfish.dir, (c) => {
             const L = swordfish.size;
             const W = L * 0.32;
@@ -3521,66 +3582,66 @@ function drawSunCreatureShadows(ctx) {
             c.fill();
         });
     }
-    if (octopus && !octopus.dead) {
-        withFloorShadow(ctx, octopus.x, octopus.y, octopus.size * 1.35, 0.7, 0, (c) => {
+    if (castsFloorShadow(octopus)) {
+        withFloorShadow(ctx, octopus.x, octopus.y, octopus.size * 2.4, 0.7, 0, (c) => {
             fillOctopusShadowPaths(c, octopus);
         });
     }
-    if (crystalMantle && !crystalMantle.dead) {
-        withFloorShadow(ctx, crystalMantle.x, crystalMantle.y, crystalMantle.size * 1.35, 0.72, 0, (c) => {
+    if (castsFloorShadow(crystalMantle)) {
+        withFloorShadow(ctx, crystalMantle.x, crystalMantle.y, crystalMantle.size * 2.4, 0.72, 0, (c) => {
             fillOctopusShadowPaths(c, crystalMantle);
         });
     }
-    if (shark && !shark.dead) {
+    if (castsFloorShadow(shark)) {
         const L = shark.size;
         const W = shark.size * 0.38;
         withFloorShadow(ctx, shark.x, shark.y, L, 0.8, shark.dir, (c) => {
             fillSharkShadowPaths(c, L, W);
         });
     }
-    if (whale && !whale.dead) {
+    if (castsFloorShadow(whale)) {
         const L = whale.size;
         const W = whale.size * 0.3;
         withFloorShadow(ctx, whale.x, whale.y, L, 0.72, whale.dir, (c) => {
             fillWhaleShadowPaths(c, L, W);
         });
     }
-    if (crystalSerpent && !crystalSerpent.dead) {
+    if (castsFloorShadow(crystalSerpent)) {
         withFloorShadow(ctx, crystalSerpent.x, crystalSerpent.y, crystalSerpent.size, 0.74, crystalSerpent.dir, (c) => {
             c.beginPath();
             c.ellipse(0, 0, crystalSerpent.size * 0.48, crystalSerpent.size * 0.16, 0, 0, Math.PI * 2);
             c.fill();
         });
     }
-    for (const p of pacifistVisitors || []) {
-        if (!p || p.dead) continue;
-        withFloorShadow(ctx, p.x, p.y, p.size, 0.72, p.dir, (c) => {
-            if (p.kind === "ribbon") {
-                fillFishShadowPaths(c, p.size, p.size * 0.28, "arrow");
-            } else if (p.kind === "garden") {
+    for (const pv of pacifistVisitors || []) {
+        if (!castsFloorShadow(pv)) continue;
+        withFloorShadow(ctx, pv.x, pv.y, pv.size, 0.72, pv.dir, (c) => {
+            if (pv.kind === "ribbon") {
+                fillFishShadowPaths(c, pv.size, pv.size * 0.28, "arrow");
+            } else if (pv.kind === "garden") {
                 c.beginPath();
-                c.ellipse(0, 0, p.size * 0.42, p.size * 0.34, 0, 0, Math.PI * 2);
+                c.ellipse(0, 0, pv.size * 0.42, pv.size * 0.34, 0, 0, Math.PI * 2);
                 c.fill();
-            } else if (p.kind === "lotus") {
+            } else if (pv.kind === "lotus") {
                 c.beginPath();
-                c.ellipse(0, 0, p.size * 0.42, p.size * 0.4, 0, 0, Math.PI * 2);
+                c.ellipse(0, 0, pv.size * 0.42, pv.size * 0.4, 0, 0, Math.PI * 2);
                 c.fill();
-            } else if (p.kind === "axolotl") {
+            } else if (pv.kind === "axolotl") {
                 c.beginPath();
-                c.moveTo(p.size * 0.55, 0);
-                c.bezierCurveTo(p.size * 0.25, -p.size * 0.28, -p.size * 0.1, -p.size * 0.3, -p.size * 0.45, -p.size * 0.16);
-                c.quadraticCurveTo(-p.size * 0.75, -p.size * 0.2, -p.size * 0.95, 0);
-                c.quadraticCurveTo(-p.size * 0.75, p.size * 0.2, -p.size * 0.45, p.size * 0.16);
-                c.bezierCurveTo(-p.size * 0.1, p.size * 0.3, p.size * 0.25, p.size * 0.28, p.size * 0.55, 0);
+                c.moveTo(pv.size * 0.55, 0);
+                c.bezierCurveTo(pv.size * 0.25, -pv.size * 0.28, -pv.size * 0.1, -pv.size * 0.3, -pv.size * 0.45, -pv.size * 0.16);
+                c.quadraticCurveTo(-pv.size * 0.75, -pv.size * 0.2, -pv.size * 0.95, 0);
+                c.quadraticCurveTo(-pv.size * 0.75, pv.size * 0.2, -pv.size * 0.45, pv.size * 0.16);
+                c.bezierCurveTo(-pv.size * 0.1, pv.size * 0.3, pv.size * 0.25, pv.size * 0.28, pv.size * 0.55, 0);
                 c.closePath();
                 c.fill();
             } else {
-                fillWhaleShadowPaths(c, p.size, p.size * 0.32);
+                fillWhaleShadowPaths(c, pv.size, pv.size * 0.32);
             }
         });
     }
     for (const g of biomeGuardians || []) {
-        if (!g || g.dead) continue;
+        if (!castsFloorShadow(g)) continue;
         withFloorShadow(ctx, g.x, g.y, g.size, 0.74, g.dir, (c) => {
             fillFishShadowPaths(c, g.size, g.size * 0.34, "oval");
         });
@@ -3589,35 +3650,51 @@ function drawSunCreatureShadows(ctx) {
         for (const g of frogGroups) {
             const frog = g.frog;
             if (!frog || frog.dead) continue;
-            withFloorShadow(ctx, frog.x, frog.y, frog.size, 0.7, frog.dir || 0, (c) => {
+            const fade = g.leaving ? 1 - clamp01(g.fade) : 1;
+            if (fade < 0.05) continue;
+            withFloorShadow(ctx, frog.x, frog.y, frog.size, 0.7 * fade, frog.dir || 0, (c) => {
                 fillFrogShadowPaths(c, frog);
             });
             for (const t of g.tadpoles || []) {
-                withFloorShadow(ctx, t.x, t.y, t.size || 6, 0.5, t.dir || 0, (c) => {
-                    const s = t.size || 6;
-                    c.beginPath();
-                    c.moveTo(s * 0.55, 0);
-                    c.bezierCurveTo(s * 0.25, -s * 0.35, -s * 0.1, -s * 0.32, -s * 0.45, -s * 0.18);
-                    c.quadraticCurveTo(-s * 0.85, -s * 0.28, -s * 1.05, 0);
-                    c.quadraticCurveTo(-s * 0.85, s * 0.28, -s * 0.45, s * 0.18);
-                    c.bezierCurveTo(-s * 0.1, s * 0.32, s * 0.25, s * 0.35, s * 0.55, 0);
-                    c.closePath();
-                    c.fill();
+                withFloorShadow(ctx, t.x, t.y, t.size || 6, 0.5 * fade, t.dir || 0, (c) => {
+                    fillTadpoleShadowPaths(c, t);
                 });
             }
         }
-        for (const t of hungryTadpoles) {
-            withFloorShadow(ctx, t.x, t.y, t.size || 6, 0.5, t.dir || 0, (c) => {
-                const s = t.size || 6;
-                c.beginPath();
-                c.moveTo(s * 0.55, 0);
-                c.bezierCurveTo(s * 0.25, -s * 0.35, -s * 0.1, -s * 0.32, -s * 0.45, -s * 0.18);
-                c.quadraticCurveTo(-s * 0.85, -s * 0.28, -s * 1.05, 0);
-                c.quadraticCurveTo(-s * 0.85, s * 0.28, -s * 0.45, s * 0.18);
-                c.bezierCurveTo(-s * 0.1, s * 0.32, s * 0.25, s * 0.35, s * 0.55, 0);
-                c.closePath();
-                c.fill();
+    }
+    for (const t of hungryTadpoles) {
+        if (!t) continue;
+        withFloorShadow(ctx, t.x, t.y, t.size || 6, 0.5, t.dir || 0, (c) => {
+            fillTadpoleShadowPaths(c, t);
+        });
+    }
+    if (frogFinale && frogFinale.frog && !frogFinale.frog.dead) {
+        const fa = frogFinale.alpha == null ? 1 : frogFinale.alpha;
+        if (fa > 0.05) {
+            withFloorShadow(ctx, frogFinale.frog.x, frogFinale.frog.y, frogFinale.frog.size, 0.7 * fa, frogFinale.frog.dir || 0, (c) => {
+                fillFrogShadowPaths(c, frogFinale.frog);
             });
+        }
+    }
+    if (bullfrog && !bullfrog.dead && !bullfrogFinale) {
+        withFloorShadow(ctx, bullfrog.x, bullfrog.y, bullfrog.size * 1.35, 0.72, bullfrog.dir || 0, (c) => {
+            fillBullfrogShadowPaths(c, bullfrog);
+        });
+    }
+    if (bullfrogFinale) {
+        const e = bullfrogFinale;
+        if (e.kind === "defeat" && e.frog && !e.frog.dead) {
+            withFloorShadow(ctx, e.frog.x, e.frog.y, e.frog.size, 0.7, e.frog.dir || 0, (c) => {
+                fillFrogShadowPaths(c, e.frog);
+            });
+        }
+        if (e.bullfrog && !e.bullfrog.dead) {
+            const ba = e.alpha == null ? 1 : e.alpha;
+            if (ba > 0.05) {
+                withFloorShadow(ctx, e.bullfrog.x, e.bullfrog.y, e.bullfrog.size * 1.35, 0.72 * ba, e.bullfrog.dir || 0, (c) => {
+                    fillBullfrogShadowPaths(c, e.bullfrog);
+                });
+            }
         }
     }
     // Floating food: each pellet keeps its own round cast.
@@ -4417,6 +4494,9 @@ let frogGroups = [];
 let frogCheckTimer = 0;
 let hungryTadpoles = []; // post-finale tadpoles that eat food and become frogs
 let frogFinale = null; // { frog, group, t, burst }
+let bullfrog = null; // rare large frog that hunts pond frogs and tadpoles
+let bullfrogCheckTimer = 0;
+let bullfrogFinale = null; // { kind: "feast"|"defeat", t, clock, wall0, ... }
 
 function easeInOutCubic(t) {
     const x = clamp01(t);
@@ -4591,7 +4671,13 @@ function frogTryFood(frog, dt) {
 }
 
 function frogFindPrey(frog) {
-    if (!frog.befriended || frog.size < CONFIG.sharkSize * 0.85) return null;
+    if (!frog.befriended) return null;
+    // Large frogs can turn the tables on a bullfrog that outgrew the school.
+    if (bullfrog && !bullfrog.dead && !bullfrogFinale
+        && frog.size > bullfrog.size * 1.02) {
+        return { kind: "bullfrog", x: bullfrog.x, y: bullfrog.y, size: bullfrog.size };
+    }
+    if (frog.size < CONFIG.sharkSize * 0.85) return null;
     // Large hero frogs hunt apex threats the way hero fish do.
     if (shark && !shark.dead && !shark.leaving && frog.size > shark.size) {
         return { kind: "shark", x: shark.x, y: shark.y, size: shark.size };
@@ -4608,6 +4694,18 @@ function frogFindPrey(frog) {
 
 function frogEatPrey(frog, prey) {
     if (!prey) return;
+    if (prey.kind === "bullfrog" && bullfrog && !bullfrog.dead) {
+        const meal = bullfrog.size;
+        const eaten = bullfrog;
+        bullfrog.dead = true;
+        Audio.predatorEat(0);
+        frog.size = Math.min(CONFIG.sharkSize * 1.4, frog.size + meal * 0.22);
+        water.disturb(frog.x, frog.y, frog.size, 420);
+        spawnSplash(frog.x, frog.y, 24, 0.85);
+        beginBullfrogFinale("defeat", eaten, frog);
+        bullfrog = null;
+        return;
+    }
     if (prey.kind === "shark" && shark && !shark.dead) {
         const wasOrca = !!shark.isOrca;
         shark.dead = true;
@@ -4738,6 +4836,532 @@ function updateFrogFinale(dt) {
     if (t >= 4.6 || finaleOvertime(e)) frogFinale = null;
 }
 
+// ---------------------------------------------------------------------------
+// Bullfrog: rare oversized frog that hunts frogs and tadpoles.
+// Oversized befriended frogs can eat it. Feast / defeat share one ending object.
+// ---------------------------------------------------------------------------
+function spawnBullfrog() {
+    if (bullfrog || bullfrogFinale || pondFinaleActive()) return null;
+    if (!scenery.frogs) return null;
+    const fromLeft = Math.random() < 0.5;
+    const b = {
+        x: fromLeft ? -40 : viewW + 40,
+        y: viewH * (0.58 + Math.random() * 0.22),
+        size: 28 + Math.random() * 8,
+        dir: fromLeft ? 0 : Math.PI,
+        tone: 0.35 + Math.random() * 0.4,
+        kick: 0,
+        speed: 26 + Math.random() * 10,
+        breath: Math.random() * Math.PI * 2,
+        blink: 0,
+        nextBlink: 1.2 + Math.random() * 2.5,
+        pitch: 0,
+        bobPhase: Math.random() * Math.PI * 2,
+        age: 0,
+        pouch: 0.15,
+        meals: 0,
+        prey: null,
+        tongueT: 0,
+        biteTimer: 0,
+        dead: false,
+        isBullfrog: true,
+    };
+    bullfrog = b;
+    water.disturb(Math.max(20, Math.min(viewW - 20, b.x)), b.y, b.size * 0.5, 120);
+    spawnSplash(Math.max(20, Math.min(viewW - 20, b.x)), b.y, 12, 0.4);
+    return b;
+}
+
+function bullfrogFindPrey(b) {
+    let best = null;
+    let bestD = CONFIG.perception * 1.8;
+    for (const g of frogGroups) {
+        const frog = g.frog;
+        if (!frog || frog.dead) continue;
+        if (frog.size >= b.size * 0.98) continue; // size gate: only eat smaller frogs
+        const d = Math.hypot(frog.x - b.x, frog.y - b.y);
+        if (d < bestD) {
+            bestD = d;
+            best = { kind: "frog", ref: frog, group: g, x: frog.x, y: frog.y, size: frog.size };
+        }
+        for (const t of g.tadpoles || []) {
+            const td = Math.hypot(t.x - b.x, t.y - b.y);
+            if (td < bestD) {
+                bestD = td;
+                best = { kind: "tadpole", ref: t, group: g, x: t.x, y: t.y, size: t.size };
+            }
+        }
+    }
+    for (const t of hungryTadpoles) {
+        const td = Math.hypot(t.x - b.x, t.y - b.y);
+        if (td < bestD) {
+            bestD = td;
+            best = { kind: "hungry", ref: t, x: t.x, y: t.y, size: t.size };
+        }
+    }
+    return best;
+}
+
+function bullfrogEatPrey(b, prey) {
+    if (!b || !prey || b.dead) return;
+    const pan = Math.max(-1, Math.min(1, (b.x / viewW) * 2 - 1));
+    if (prey.kind === "frog" && prey.ref && !prey.ref.dead) {
+        prey.ref.dead = true;
+        for (let i = frogGroups.length - 1; i >= 0; i--) {
+            if (frogGroups[i].frog === prey.ref) {
+                // Escort tadpoles scatter as free hungry tadpoles briefly, then get hunted.
+                for (const t of frogGroups[i].tadpoles || []) {
+                    hungryTadpoles.push({
+                        x: t.x, y: t.y, dir: Math.random() * Math.PI * 2,
+                        size: t.size, phase: t.phase || 0, tone: t.tone || 0.4,
+                        speed: 40 + Math.random() * 20, foodTarget: null, biteTimer: 0.2,
+                        hungry: true, vx: (Math.random() - 0.5) * 40, vy: (Math.random() - 0.5) * 30,
+                        sprayT: 0.35,
+                    });
+                }
+                frogGroups.splice(i, 1);
+            }
+        }
+        b.size = Math.min(CONFIG.sharkSize * 1.15, b.size + prey.size * 0.45);
+        b.meals += 1;
+        Audio.predatorEat(pan);
+    } else if (prey.kind === "tadpole" && prey.group && prey.ref) {
+        const list = prey.group.tadpoles;
+        const idx = list.indexOf(prey.ref);
+        if (idx >= 0) list.splice(idx, 1);
+        b.size = Math.min(CONFIG.sharkSize * 1.15, b.size + 2.2);
+        b.meals += 0.35;
+        Audio.fishNote({
+            freq: 180, wave: "triangle", pan, dur: 0.28, level: 0.08, partialAmt: 0.15, bright: 0.7,
+        });
+    } else if (prey.kind === "hungry" && prey.ref) {
+        const idx = hungryTadpoles.indexOf(prey.ref);
+        if (idx >= 0) hungryTadpoles.splice(idx, 1);
+        b.size = Math.min(CONFIG.sharkSize * 1.15, b.size + 2.4);
+        b.meals += 0.4;
+        Audio.fishNote({
+            freq: 170, wave: "triangle", pan, dur: 0.28, level: 0.08, partialAmt: 0.15, bright: 0.7,
+        });
+    } else {
+        return;
+    }
+    b.tongueT = 0.28;
+    b.pouch = Math.min(1, b.pouch + 0.2);
+    b.biteTimer = 0.35;
+    water.disturb(b.x, b.y, b.size * 0.7, 220);
+    spawnSplash(b.x, b.y, b.size * 0.35, 0.55);
+    if (b.meals >= CONFIG.bullfrogMealsForFinale || b.size >= CONFIG.sharkSize * 0.92) {
+        beginBullfrogFinale("feast", b, null);
+    }
+}
+
+function beginBullfrogFinale(kind, b, victorFrog) {
+    if (bullfrogFinale) return;
+    // Defeat can interrupt quieter pond life; feast needs no other hard finale.
+    if (kind === "feast" && pondFinaleActive()) return;
+    if (kind === "defeat" && (frogFinale || povAttack || giantEnding || heroRemorseEnding
+        || orcaFeastEnding || swordfishSpearEnding || rainbowNinjaEnding
+        || octopusWhaleFight || crystalApexEnding || apexDuel)) {
+        return;
+    }
+    const body = b || bullfrog;
+    if (!body && kind === "feast") return;
+    const actor = body ? {
+        x: body.x, y: body.y, size: body.size, dir: body.dir || 0,
+        tone: body.tone, kick: body.kick || 0, breath: body.breath || 0,
+        pouch: body.pouch || 0.4, blink: 0, pitch: body.pitch || 0,
+        bobPhase: body.bobPhase || 0, age: body.age || 0, tongueT: 0,
+        dead: false, isBullfrog: true,
+    } : null;
+    if (kind === "feast" && bullfrog) bullfrog.dead = true;
+    bullfrogFinale = {
+        kind: kind === "defeat" ? "defeat" : "feast",
+        t: 0,
+        clock: 0,
+        wall0: performance.now(),
+        bullfrog: actor,
+        frog: victorFrog || null,
+        wash: 0,
+        wake: [],
+        alpha: 1,
+        burst: false,
+        contactHit: false,
+        _bfStartSize: actor ? actor.size : 28,
+        orbitAng: actor
+            ? Math.atan2(actor.y - viewH * 0.5, actor.x - viewW * 0.5)
+            : 0,
+        orbitRad: actor
+            ? Math.max(40, Math.hypot(actor.x - viewW * 0.5, actor.y - viewH * 0.5))
+            : 80,
+    };
+    if (kind === "feast") bullfrog = null;
+    const pan = actor ? Math.max(-1, Math.min(1, (actor.x / viewW) * 2 - 1)) : 0;
+    Audio.predatorEat(pan);
+    if (Audio.goldChime) Audio.goldChime(pan * 0.5);
+}
+
+function finishBullfrogFinale() {
+    if (!bullfrogFinale) return;
+    const e = bullfrogFinale;
+    if (!e.burst && e.kind === "feast" && e.bullfrog) {
+        // Force the finish path on overtime so softlocks cannot stick.
+        explodeBullfrogFeast(e.bullfrog);
+    } else if (!e.burst && e.kind === "defeat" && e.bullfrog) {
+        releaseBullfrogDefeatTadpoles(e.bullfrog);
+    }
+    bullfrogFinale = null;
+    if (bullfrog && bullfrog.dead) bullfrog = null;
+}
+
+function explodeBullfrogFeast(b) {
+    if (!b) return;
+    const cx = b.x;
+    const cy = b.y;
+    for (let i = 0; i < 5; i++) {
+        const ang = (i / 5) * Math.PI * 2 + Math.random() * 0.3;
+        const rad = 12 + Math.random() * 28;
+        foods.push(new Food(
+            cx + Math.cos(ang) * rad,
+            cy + Math.sin(ang) * rad,
+            10 + Math.random() * 8,
+            { carcass: true }
+        ));
+    }
+    water.disturb(cx, cy, 110, 640);
+    spawnSplash(cx, cy, 40, 1);
+    if (Audio.sharkStrike) Audio.sharkStrike(0);
+    b.dead = true;
+}
+
+function releaseBullfrogDefeatTadpoles(b) {
+    if (!b) return;
+    const n = 8;
+    for (let i = 0; i < n; i++) {
+        const ang = (i / n) * Math.PI * 2 + Math.random() * 0.2;
+        const spd = 55 + Math.random() * 40;
+        hungryTadpoles.push({
+            x: b.x + Math.cos(ang) * 10,
+            y: b.y + Math.sin(ang) * 8,
+            dir: ang,
+            size: 5 + Math.random() * 2.2,
+            phase: Math.random() * Math.PI * 2,
+            tone: 0.2 + Math.random() * 0.5,
+            speed: 50 + Math.random() * 20,
+            foodTarget: null,
+            biteTimer: 0.1,
+            hungry: true,
+            vx: Math.cos(ang) * spd,
+            vy: Math.sin(ang) * spd,
+            sprayT: 0.5 + Math.random() * 0.3,
+        });
+    }
+    water.disturb(b.x, b.y, 90, 480);
+    spawnSplash(b.x, b.y, 28, 0.9);
+    if (Audio.rainbowChime) Audio.rainbowChime(0);
+    b.dead = true;
+}
+
+function updateBullfrogFinale(dt) {
+    if (!bullfrogFinale) return;
+    const e = bullfrogFinale;
+    e.t += dt;
+    tickFinaleClock(e, dt);
+    const b = e.bullfrog;
+    const cx = viewW * 0.5;
+    const cy = viewH * 0.5;
+    const ease = (rate) => finaleEase(rate, dt);
+    const t = e.t;
+
+    if (e.kind === "feast" && b && !b.dead && !e.burst) {
+        softSizeToward(b, CONFIG.sharkSize * 1.05, dt, 1.35);
+        e.orbitAng += dt * (0.7 + Math.min(0.9, t * 0.22));
+        e.orbitRad += (22 - e.orbitRad) * ease(0.85);
+        const tx = cx + Math.cos(e.orbitAng) * e.orbitRad;
+        const ty = cy + Math.sin(e.orbitAng) * e.orbitRad * 0.65;
+        easeToward(b, tx, ty, dt, 40 + Math.min(32, t * 12), 1.0);
+        bankToward(b, e.orbitAng + Math.PI * 0.5, dt, 1.2);
+        b.kick = 0.3 + 0.45 * Math.abs(Math.sin(t * 3.8));
+        b.pouch = 0.35 + 0.55 * (0.5 + 0.5 * Math.sin(t * 2.4));
+        b.breath += dt * 2.0;
+        b.age += dt;
+        e.wash += ((t < 3.2 ? Math.min(0.62, t * 0.2) : 0.75) - e.wash) * ease(1.8);
+        if (Math.random() < 0.16) {
+            water.disturb(b.x, b.y, b.size * 0.45, 60);
+            pushFinaleWake(e.wake, b.x, b.y, 1, { ang: b.dir + Math.PI, hue: 90, warm: true, spd: 22 });
+        }
+        if (t > 3.4) e.alpha = Math.max(0.12, 1 - (t - 3.4) / 0.85);
+        if (t >= 4.2 && !e.burst) {
+            e.burst = true;
+            explodeBullfrogFeast(b);
+            pushFinaleWake(e.wake, cx, cy, 16, { hue: 85, spd: 70, warm: true, lift: 10 });
+        }
+    } else if (e.kind === "defeat") {
+        const frog = e.frog;
+        if (b && !e.burst) {
+            easeToward(b, cx, cy, dt, 42, 0.9);
+            softSizeToward(b, Math.max(10, e._bfStartSize * Math.max(0.35, 1 - t * 0.22)), dt, 1.6);
+            b.kick = 0.15 + 0.25 * Math.abs(Math.sin(t * 6.5));
+            b.pouch = Math.max(0.05, b.pouch - dt * 0.35);
+            b.dir += dt * 2.4;
+            e.alpha = Math.max(0.08, 1 - t / 3.2);
+            e.wash += (0.45 - e.wash) * ease(1.5);
+        }
+        if (frog && !frog.dead) {
+            // Drive the victor into the bullfrog before the burst (no empty orbit).
+            const tx = b && !e.burst ? b.x : cx;
+            const ty = b && !e.burst ? b.y : cy;
+            easeToward(frog, tx, ty, dt, 58 + Math.min(40, t * 20), 1.35);
+            bankToward(frog, Math.atan2(ty - frog.y, tx - frog.x), dt, 1.6);
+            frog.kick = 0.4 + 0.4 * Math.abs(Math.sin(t * 5));
+            frog.petTimer = Math.max(frog.petTimer || 0, 1.1);
+            if (b && !e.burst && !e.contactHit
+                && Math.hypot(frog.x - b.x, frog.y - b.y) < frog.size * 0.55 + b.size * 0.45) {
+                e.contactHit = true;
+                spawnSplash((frog.x + b.x) * 0.5, (frog.y + b.y) * 0.5, 16, 0.7);
+                water.disturb(b.x, b.y, b.size * 0.7, 200);
+                if (Audio.predatorEat) Audio.predatorEat(0);
+            }
+        }
+        if (b && !e.burst && (t >= 2.35 || (e.contactHit && t >= 1.4))) {
+            e.burst = true;
+            releaseBullfrogDefeatTadpoles(b);
+        }
+    }
+    updateFinaleWake(e.wake, dt, 18);
+    if (t >= 5.4 || finaleOvertime(e)) finishBullfrogFinale();
+}
+
+function updateBullfrog(dt) {
+    updateBullfrogFinale(dt);
+    if (!bullfrog || bullfrog.dead) {
+        if (bullfrog && bullfrog.dead) bullfrog = null;
+        return;
+    }
+    if (bullfrogFinale) return;
+    const b = bullfrog;
+    const padX = viewW * 0.06;
+    const yMin = viewH * 0.45;
+    const yMax = viewH * 0.9;
+    b.age += dt;
+    b.breath += dt * 1.6;
+    b.bobPhase += dt * 0.95;
+    b.biteTimer = Math.max(0, b.biteTimer - dt);
+    b.tongueT = Math.max(0, b.tongueT - dt);
+    b.pouch += ((0.12 + Math.min(0.35, b.meals * 0.04)) - b.pouch) * Math.min(1, 1.5 * dt);
+    b.nextBlink -= dt;
+    if (b.nextBlink <= 0) {
+        b.blink = 0.12;
+        b.nextBlink = 1.8 + Math.random() * 3;
+    }
+    if (b.blink > 0) b.blink = Math.max(0, b.blink - dt);
+
+    // Flee oversized befriended frogs instead of softlocking a chase.
+    let flee = null;
+    for (const g of frogGroups) {
+        const frog = g.frog;
+        if (!frog || frog.dead || !frog.befriended) continue;
+        if (frog.size > b.size * 1.02) {
+            const d = Math.hypot(frog.x - b.x, frog.y - b.y);
+            if (d < CONFIG.perception * 1.5) {
+                flee = frog;
+                break;
+            }
+        }
+    }
+
+    let desired = b.dir;
+    let spd = b.speed;
+    if (flee) {
+        desired = Math.atan2(b.y - flee.y, b.x - flee.x);
+        spd = b.speed * 1.35;
+        b.kick = 0.55 + 0.4 * Math.abs(Math.sin(b.age * 5.5));
+    } else {
+        const prey = bullfrogFindPrey(b);
+        b.prey = prey;
+        if (prey) {
+            desired = Math.atan2(prey.y - b.y, prey.x - b.x);
+            spd = b.speed * 1.25 + b.size * 0.15;
+            b.kick = 0.5 + 0.45 * Math.abs(Math.sin(b.age * 5));
+            const dist = Math.hypot(prey.x - b.x, prey.y - b.y);
+            if (dist < b.size * 0.55 + prey.size * 0.5 + 10 && b.biteTimer <= 0) {
+                bullfrogEatPrey(b, prey);
+            }
+        } else {
+            if (Math.random() < 0.01) desired = b.dir + (Math.random() - 0.5) * 1.2;
+            b.kick = 0.15 + 0.25 * Math.abs(Math.sin(b.age * 2.2));
+            spd = b.speed * 0.7;
+        }
+    }
+    if (b.x < padX) desired = 0;
+    if (b.x > viewW - padX) desired = Math.PI;
+    if (b.y < yMin) desired = Math.atan2(0.7, Math.cos(desired) || 0.01);
+    if (b.y > yMax) desired = Math.atan2(-0.6, Math.cos(desired) || 0.01);
+    const diff = normAngle(desired - b.dir);
+    b.dir += Math.max(-2.2 * dt, Math.min(2.2 * dt, diff));
+    b.x += Math.cos(b.dir) * spd * dt;
+    b.y += Math.sin(b.dir) * spd * dt * 0.55 + Math.sin(b.bobPhase) * 5 * dt;
+    b.x = Math.max(padX * 0.4, Math.min(viewW - padX * 0.4, b.x));
+    b.y = Math.max(yMin, Math.min(yMax, b.y));
+    const desiredPitch = Math.sin(b.dir) * 0.3 + Math.sin(b.bobPhase) * 0.06;
+    b.pitch += (desiredPitch - (b.pitch || 0)) * Math.min(1, 3.5 * dt);
+}
+
+function drawBullfrogModel(ctx, b, alpha) {
+    // Same swim silhouette family as pond frogs, but darker, thicker, with
+    // a throat pouch, round tympanum, and yellow eyes so it reads as a bullfrog.
+    if (!b || b.dead) return;
+    const S = b.size;
+    const kick = Math.max(0, Math.min(1, b.kick || 0));
+    const pouch = Math.max(0, Math.min(1, b.pouch || 0.15));
+    const breath = 1 + Math.sin(b.breath || 0) * 0.04;
+    const tone = b.tone == null ? 0.45 : b.tone;
+    const r = 38 + Math.floor(tone * 22);
+    const gCol = 68 + Math.floor(tone * 28);
+    const bl = 36 + Math.floor(tone * 18);
+    const bellyR = 105 + Math.floor(tone * 30);
+    const bellyG = 115 + Math.floor(tone * 24);
+    const bellyB = 70 + Math.floor(tone * 16);
+    const a = (alpha == null ? 1 : alpha) * 0.88;
+
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.rotate((b.dir || 0) + (b.pitch || 0));
+    ctx.globalAlpha = a;
+
+    // Hind legs: tucked along the body, swept back on kick (same layout as pond frogs).
+    const tuckX = -S * (0.35 + kick * 0.85);
+    const tuckY = S * (0.22 - kick * 0.05);
+    const footSpread = S * (0.18 + kick * 0.58);
+    for (const side of [-1, 1]) {
+        ctx.fillStyle = `rgba(${r - 12},${gCol - 18},${bl - 10},0.92)`;
+        ctx.beginPath();
+        ctx.moveTo(-S * 0.18, side * S * 0.1);
+        ctx.quadraticCurveTo(
+            -S * (0.48 + kick * 0.35), side * S * (0.3 + kick * 0.1),
+            tuckX, side * tuckY
+        );
+        ctx.quadraticCurveTo(-S * (0.58 + kick * 0.48), side * S * 0.05, -S * 0.22, 0);
+        ctx.closePath();
+        ctx.fill();
+        // Broad webbed foot (reads as frog foot, not a split fish tail).
+        ctx.fillStyle = `rgba(${r + 8},${gCol + 18},${bl + 8},0.55)`;
+        ctx.beginPath();
+        ctx.moveTo(tuckX, side * tuckY * 0.85);
+        ctx.lineTo(tuckX - S * (0.18 + kick * 0.32), side * (tuckY + footSpread));
+        ctx.lineTo(tuckX - S * (0.32 + kick * 0.36), side * tuckY * 0.15);
+        ctx.lineTo(tuckX - S * (0.12 + kick * 0.18), side * (tuckY - footSpread * 0.35));
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    // Forelimbs under the chest.
+    ctx.fillStyle = `rgba(${r - 6},${gCol - 12},${bl - 6},0.8)`;
+    ctx.beginPath();
+    ctx.moveTo(S * 0.16, S * 0.12);
+    ctx.quadraticCurveTo(S * 0.38, S * 0.32, S * 0.24, S * 0.36);
+    ctx.quadraticCurveTo(S * 0.08, S * 0.24, S * 0.1, S * 0.1);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(S * 0.14, -S * 0.06);
+    ctx.quadraticCurveTo(S * 0.3, -S * 0.24, S * 0.2, -S * 0.3);
+    ctx.quadraticCurveTo(S * 0.06, -S * 0.16, S * 0.08, -S * 0.02);
+    ctx.fill();
+
+    // Stocky frog body (shorter snout than a fish oval).
+    const bodyG = ctx.createLinearGradient(0, -S * 0.38, 0, S * 0.4);
+    bodyG.addColorStop(0, `rgba(${r + 18},${gCol + 26},${bl + 14},0.96)`);
+    bodyG.addColorStop(0.45, `rgba(${r},${gCol},${bl},0.94)`);
+    bodyG.addColorStop(1, `rgba(${bellyR},${bellyG},${bellyB},0.92)`);
+    ctx.fillStyle = bodyG;
+    ctx.beginPath();
+    ctx.moveTo(S * 0.7, 0);
+    ctx.bezierCurveTo(S * 0.48, -S * 0.42 * breath, -S * 0.08, -S * 0.46 * breath, -S * 0.52, -S * 0.14);
+    ctx.bezierCurveTo(-S * 0.7, 0, -S * 0.5, S * 0.18, -S * 0.15, S * 0.36);
+    ctx.bezierCurveTo(S * 0.22, S * 0.46, S * 0.52, S * 0.32, S * 0.7, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Dorsal blotches instead of fish-like full vertical bands.
+    ctx.fillStyle = `rgba(${r - 28},${gCol - 38},${bl - 16},0.32)`;
+    for (const [sx, sy, sr] of [
+        [0.08, -0.14, 0.12], [-0.18, 0.06, 0.1], [0.32, 0.04, 0.08], [-0.36, -0.06, 0.09],
+    ]) {
+        ctx.beginPath();
+        ctx.ellipse(S * sx, S * sy, S * sr, S * sr * 0.65, 0.2, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Throat pouch under the jaw (the bullfrog tell).
+    const pouchR = S * (0.2 + pouch * 0.32);
+    const pouchGrad = ctx.createRadialGradient(S * 0.22, S * 0.24, 0, S * 0.22, S * 0.24, pouchR);
+    pouchGrad.addColorStop(0, `rgba(${bellyR + 35},${bellyG + 25},${bellyB + 12},0.95)`);
+    pouchGrad.addColorStop(1, `rgba(${r - 5},${gCol - 15},${bl - 5},0.7)`);
+    ctx.fillStyle = pouchGrad;
+    ctx.beginPath();
+    ctx.ellipse(S * 0.22, S * 0.22, pouchR * 1.2, pouchR * (0.8 + pouch * 0.3), 0.12, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Broad head.
+    ctx.fillStyle = `rgba(${r + 12},${gCol + 20},${bl + 10},0.96)`;
+    ctx.beginPath();
+    ctx.ellipse(S * 0.48, -S * 0.05, S * 0.34, S * 0.28 * breath, -0.1, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Round tympanum behind the eye.
+    ctx.strokeStyle = `rgba(${r - 22},${gCol - 28},${bl - 12},0.6)`;
+    ctx.lineWidth = Math.max(1.1, S * 0.04);
+    ctx.beginPath();
+    ctx.arc(S * 0.34, S * 0.02, S * 0.15, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(S * 0.34, S * 0.02, S * 0.055, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Yellow-gold eye on the upper head.
+    const ex = S * 0.54;
+    const ey = -S * 0.22;
+    ctx.fillStyle = `rgba(${r + 16},${gCol + 28},${bl + 12},0.95)`;
+    ctx.beginPath();
+    ctx.ellipse(ex, ey, S * 0.125, S * 0.115, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if (b.blink > 0.02) {
+        ctx.strokeStyle = "rgba(20,30,22,0.9)";
+        ctx.lineWidth = Math.max(1.2, S * 0.055);
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(ex - S * 0.08, ey);
+        ctx.quadraticCurveTo(ex, ey + S * 0.03, ex + S * 0.08, ey);
+        ctx.stroke();
+    } else {
+        ctx.fillStyle = "rgba(240,210,70,0.95)";
+        ctx.beginPath();
+        ctx.ellipse(ex, ey, S * 0.078, S * 0.072, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(18,22,16,0.95)";
+        ctx.beginPath();
+        ctx.ellipse(ex + S * 0.012, ey, S * 0.034, S * 0.048, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.7)";
+        ctx.beginPath();
+        ctx.arc(ex - S * 0.02, ey - S * 0.024, S * 0.015, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Short tongue flick only right after a meal (never a long idle filament).
+    if ((b.tongueT || 0) > 0.02) {
+        const u = clamp01(b.tongueT / 0.28);
+        ctx.strokeStyle = `rgba(200,90,90,${0.65 * u})`;
+        ctx.lineWidth = Math.max(1.2, S * 0.045);
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(S * 0.68, S * 0.05);
+        ctx.quadraticCurveTo(S * (0.82 + u * 0.12), S * 0.1, S * (0.88 + u * 0.18), S * 0.04);
+        ctx.stroke();
+    }
+
+    ctx.restore();
+}
+
 function updateHungryTadpoles(dt) {
     const yMin = viewH * 0.35;
     const yMax = viewH * 0.9;
@@ -4819,8 +5443,9 @@ function updateHungryTadpoles(dt) {
 }
 
 function updateFrogGroups(dt) {
-    if (!scenery.frogs && !frogFinale && !hungryTadpoles.length) return;
+    if (!scenery.frogs && !frogFinale && !bullfrogFinale && !hungryTadpoles.length && !bullfrog) return;
     updateFrogFinale(dt);
+    updateBullfrog(dt);
     updateHungryTadpoles(dt);
     if (!scenery.frogs) return;
 
@@ -4983,12 +5608,6 @@ function drawTadpole(ctx, t, alpha) {
     ctx.rotate(t.dir);
     ctx.globalAlpha = 0.72 * alpha;
 
-    // Soft shadow on the bed.
-    ctx.fillStyle = "rgba(20,30,25,0.18)";
-    ctx.beginPath();
-    ctx.ellipse(1, L * 0.35, L * 0.7, L * 0.28, 0, 0, Math.PI * 2);
-    ctx.fill();
-
     const g = 70 + Math.floor(t.tone * 40);
     const body = ctx.createLinearGradient(-L * 0.2, -L * 0.4, L * 0.3, L * 0.5);
     body.addColorStop(0, `rgba(${40 + g * 0.2},${g + 20},${55},0.92)`);
@@ -5069,12 +5688,6 @@ function drawFrogModel(ctx, frog, alpha) {
     ctx.rotate(frog.dir + (frog.pitch || 0));
     // Submerged look: cooler, a bit translucent.
     ctx.globalAlpha = 0.62 * alpha;
-
-    // Soft underwater shadow beneath the body.
-    ctx.fillStyle = "rgba(10,25,30,0.2)";
-    ctx.beginPath();
-    ctx.ellipse(-S * 0.05, S * 0.45, S * 1.1, S * 0.22, 0, 0, Math.PI * 2);
-    ctx.fill();
 
     // Hind legs: tucked along the body when kick~0, swept back when kick~1.
     const tuckX = -S * (0.35 + kick * 0.85);
@@ -5239,12 +5852,6 @@ function drawPacifistAxolotlModel(ctx, p, alpha) {
         ctx.shadowColor = "rgba(255,180,210,0.55)";
         ctx.shadowBlur = gfxQuality <= 0 ? 0 : 12;
     }
-
-    // Soft underwater shadow.
-    ctx.fillStyle = "rgba(40,20,30,0.18)";
-    ctx.beginPath();
-    ctx.ellipse(-S * 0.05, S * 0.42, S * 1.05, S * 0.2, 0, 0, Math.PI * 2);
-    ctx.fill();
 
     // Flat paddle tail (undulates opposite the limbs).
     const tw = Math.sin(limb * 1.1 + 0.4) * 0.35;
@@ -5988,6 +6595,38 @@ function drawFrogGroups(ctx) {
         }
         drawFinaleWake(ctx, frogFinale.wake, 0.9);
         drawFrogModel(ctx, frogFinale.frog, frogFinale.alpha == null ? 1 : frogFinale.alpha);
+    }
+    // Bullfrog sits above ordinary frogs so the hunter reads clearly.
+    if (bullfrog && !bullfrog.dead && !bullfrogFinale) {
+        drawBullfrogModel(ctx, bullfrog, 1);
+    }
+    if (bullfrogFinale) {
+        const e = bullfrogFinale;
+        if (e.wash > 0.02 && e.bullfrog) {
+            ctx.save();
+            const wash = ctx.createRadialGradient(
+                e.bullfrog.x, e.bullfrog.y, e.bullfrog.size * 0.2,
+                e.bullfrog.x, e.bullfrog.y, Math.max(viewW, viewH) * 0.55
+            );
+            const warm = e.kind === "feast";
+            wash.addColorStop(0, warm
+                ? `rgba(90, 130, 50, ${e.wash * 0.28})`
+                : `rgba(120, 180, 140, ${e.wash * 0.2})`);
+            wash.addColorStop(0.5, warm
+                ? `rgba(40, 70, 30, ${e.wash * 0.14})`
+                : `rgba(50, 100, 70, ${e.wash * 0.1})`);
+            wash.addColorStop(1, "rgba(16, 28, 18, 0)");
+            ctx.fillStyle = wash;
+            ctx.fillRect(0, 0, viewW, viewH);
+            ctx.restore();
+        }
+        drawFinaleWake(ctx, e.wake, 0.9);
+        if (e.kind === "defeat" && e.frog && !e.frog.dead) {
+            drawFrogModel(ctx, e.frog, 1);
+        }
+        if (e.bullfrog && !e.bullfrog.dead) {
+            drawBullfrogModel(ctx, e.bullfrog, e.alpha == null ? 1 : e.alpha);
+        }
     }
     for (const t of hungryTadpoles) drawTadpole(ctx, t, 1);
 }
@@ -10662,21 +11301,8 @@ class Fish {
 
         ctx.save();
         if (this.plantMorph) drawPlantMorphAura(ctx, this);
-        // Lifted fish: shape-matched shadow stays on the water plane.
-        if (liftZ > 1 && !this.golden) {
-            ctx.save();
-            ctx.globalCompositeOperation = "multiply";
-            const liftA = 0.28 + 0.22 * Math.min(1, liftZ / 50);
-            const { stamp, dim } = stampFloorShadowSilhouette(L, (c) => {
-                fillFishShadowPaths(c, L, W, shape);
-            });
-            ctx.translate(this.x, this.y);
-            ctx.scale(1, 0.55);
-            ctx.rotate(this.dir);
-            ctx.globalAlpha = liftA;
-            ctx.drawImage(stamp, -dim * 0.5, -dim * 0.5);
-            ctx.restore();
-        }
+        // Floor contact for lifted fish is drawn in drawSunCreatureShadows so it
+        // stays under the body and never doubles up with a second stamp here.
         const bobY = (!this.golden && (shape === "angel" || shape === "discus"))
             ? Math.sin(this.tailPhase * 0.7) * (2.2 + this.size * 0.04)
             : 0;
@@ -12197,13 +12823,13 @@ function pondFinaleActive() {
     const octopusReturn = octopusWhaleFight && octopusWhaleFight.restocked;
     const crystalReturn = crystalApexEnding && crystalApexEnding.restocked;
     if (giantReturn || octopusReturn || crystalReturn) {
-        return !!(povAttack || heroRemorseEnding || frogFinale
+        return !!(povAttack || heroRemorseEnding || frogFinale || bullfrogFinale
             || orcaFeastEnding || swordfishSpearEnding || rainbowNinjaEnding
             || (giantEnding && !giantReturn)
             || (octopusWhaleFight && !octopusReturn)
             || (crystalApexEnding && !crystalReturn));
     }
-    return !!(povAttack || giantEnding || heroRemorseEnding || frogFinale
+    return !!(povAttack || giantEnding || heroRemorseEnding || frogFinale || bullfrogFinale
         || octopusWhaleFight || orcaFeastEnding || swordfishSpearEnding || rainbowNinjaEnding
         || crystalApexEnding);
 }
@@ -12255,6 +12881,11 @@ function probeFinaleState() {
             doneT: rainbowNinjaEnding.doneT || 0,
         } : null,
         frog: frogFinale ? { t: frogFinale.t } : null,
+        bullfrog: bullfrogFinale ? {
+            kind: bullfrogFinale.kind,
+            t: bullfrogFinale.t,
+            clock: bullfrogFinale.clock || 0,
+        } : null,
         octopusFight: octopusWhaleFight ? {
             phase: octopusWhaleFight.phase,
             t: octopusWhaleFight.t,
@@ -12291,7 +12922,7 @@ async function runFinaleAudit(opts) {
             const seconds = (performance.now() - t0) / 1000;
             // Count soft-return fades too: restocked finales still occupy the pond until null.
             const busy = !!(p.pov || p.giant || p.remorse || p.orcaFeast || p.spear
-                || p.ninja || p.frog || p.octopusFight || p.crystal || p.apexDuel
+                || p.ninja || p.frog || p.bullfrog || p.octopusFight || p.crystal || p.apexDuel
                 || p.rainbowExit || p.rainbowCroc
                 || (shark && shark.glowSwallow));
             if (!busy) return { ok: true, seconds, probe: p };
@@ -12388,6 +13019,31 @@ async function runFinaleAudit(opts) {
         frog.isHero = true;
         frog.size = Math.max(frog.size, CONFIG.sharkSize * 1.02);
         beginFrogFinale(frog);
+    });
+    await run("bullfrogFeast", () => {
+        scenery.frogs = true;
+        if (!frogGroups.length) spawnFrogGroup();
+        spawnBullfrog();
+        if (!bullfrog) throw new Error("no bullfrog");
+        bullfrog.x = viewW * 0.5;
+        bullfrog.y = viewH * 0.55;
+        bullfrog.size = CONFIG.sharkSize * 0.95;
+        bullfrog.meals = CONFIG.bullfrogMealsForFinale;
+        beginBullfrogFinale("feast", bullfrog, null);
+    });
+    await run("bullfrogDefeat", () => {
+        scenery.frogs = true;
+        if (!frogGroups.length) spawnFrogGroup();
+        const frog = frogGroups[frogGroups.length - 1].frog;
+        befriendFrog(frog);
+        frog.size = 50;
+        spawnBullfrog();
+        if (!bullfrog) throw new Error("no bullfrog");
+        bullfrog.x = viewW * 0.5;
+        bullfrog.y = viewH * 0.55;
+        bullfrog.size = 32;
+        beginBullfrogFinale("defeat", bullfrog, frog);
+        bullfrog = null;
     });
     await run("octopusWhale", () => {
         if (typeof setNightMode === "function") { nightUnlocked = true; setNightMode(true); }
@@ -13101,8 +13757,12 @@ class Reptile {
             this.tailPhase += dt * 1.8;
             return;
         }
+        if (this.pickerThrow) {
+            updatePickerThrow(this, dt);
+            return;
+        }
         if (this.pickerHeld) {
-            this.tailPhase += dt * 4;
+            this.tailPhase += dt * (this.pickerLiftZ > 4 ? 12 : 4);
             return;
         }
         this.eatPulse -= dt;
@@ -13320,9 +13980,10 @@ class Reptile {
         const W = this.size * (isGator ? 0.36 : 0.28);
         const wig = this.golden ? 0 : Math.sin(this.tailPhase) * (this.tamed ? 0.18 : 0.3);
         const sink = this.golden ? (this.sinkDepth || 0) : 0;
+        const liftZ = this.pickerLiftZ || 0;
         if (this.plantMorph) drawPlantMorphAura(ctx, this);
         ctx.save();
-        ctx.translate(this.x, this.y + sink * 6);
+        ctx.translate(this.x, this.y + sink * 6 - liftZ);
         ctx.rotate(this.dir);
         const morphA = this.plantMorph && this._morphAlpha != null ? this._morphAlpha : 1;
         ctx.globalAlpha = 0.9 * (1 - sink * 0.25) * morphA;
@@ -14099,8 +14760,12 @@ class Swordfish {
             this.tailPhase += dt * 2.2;
             return;
         }
+        if (this.pickerThrow) {
+            updatePickerThrow(this, dt);
+            return;
+        }
         if (this.pickerHeld) {
-            this.tailPhase += dt * 5;
+            this.tailPhase += dt * (this.pickerLiftZ > 4 ? 14 : 5);
             return;
         }
         this.spearCooldown = Math.max(0, this.spearCooldown - dt);
@@ -14348,12 +15013,13 @@ class Swordfish {
         const W = this.size * 0.22;
         const wig = this.golden ? 0 : Math.sin(this.tailPhase) * 0.25;
         const sink = this.golden ? (this.sinkDepth || 0) : 0;
+        const liftZ = this.pickerLiftZ || 0;
         const morphA = this.plantMorph && this._morphAlpha != null ? this._morphAlpha : 1;
         const finaleA = (swordfishSpearEnding && swordfishSpearEnding.sf === this)
             ? (swordfishSpearEnding.liveAlpha || 0)
             : 1;
         ctx.save();
-        ctx.translate(this.x, this.y + sink * 6);
+        ctx.translate(this.x, this.y + sink * 6 - liftZ);
         ctx.rotate(this.dir);
         ctx.globalAlpha = 0.92 * (1 - sink * 0.25) * morphA * finaleA;
         if (this.isRainbow) {
@@ -14828,6 +15494,10 @@ class Octopus {
     update(dt) {
         if (this.dead) return;
         if (octopusWhaleFight && !this.isCrystal) return;
+        if (this.pickerThrow) {
+            updatePickerThrow(this, dt);
+            return;
+        }
         if (this.pickerHeld) {
             this.phase += dt * 2.1;
             this.pulse += dt * 2.8;
@@ -15240,7 +15910,8 @@ class Octopus {
         const breath = this.golden ? 1 : 1 + Math.sin(this.pulse) * 0.05;
         const sink = this.golden ? (this.sinkDepth || 0) : 0;
         const morphA = this.plantMorph && this._morphAlpha != null ? this._morphAlpha : 1;
-        const drawY = this.y + sink * 6;
+        const liftZ = this.pickerLiftZ || 0;
+        const drawY = this.y + sink * 6 - liftZ;
         const hx = Math.cos(this.dir);
         const hy = Math.sin(this.dir);
         const rearX = this.x - hx * S * 0.34;
@@ -15591,6 +16262,14 @@ function drawFinaleVignette(ctx, alpha, tint) {
     ctx.fillRect(0, 0, viewW, viewH);
 }
 
+// Pirate silhouette scale; keel sits at shipY + PIRATE_SHIP_KEEL * scale.
+const PIRATE_SHIP_DRAW_SCALE = 1.55;
+const PIRATE_SHIP_KEEL = 58;
+
+function pirateShipKeelY(shipY) {
+    return shipY + PIRATE_SHIP_KEEL * PIRATE_SHIP_DRAW_SCALE;
+}
+
 function beginOctopusWhaleFight() {
     if (octopusWhaleFight || !octopus || octopus.dead) return;
     const cx = viewW * 0.5;
@@ -15605,6 +16284,8 @@ function beginOctopusWhaleFight() {
         whale.isHero = false;
     }
     whale.ateFish = true;
+    // Cap fight whale so wrap contact reads clearly in a pond-sized frame.
+    whale.size = Math.min(whale.size, Math.min(viewW, viewH) * 0.22);
     octopusWhaleFight = {
         t: 0,
         clock: 0,
@@ -15618,6 +16299,8 @@ function beginOctopusWhaleFight() {
         whaleStartSize: whale.size,
         ateSound: false,
         shipSound: false,
+        shipLatched: false,
+        contactSplash: false,
         restocked: false,
         whaleStruggle: 0,
     };
@@ -15660,169 +16343,231 @@ function updateOctopusWhaleFight(dt) {
     fight.breath = (fight.breath || 0) + dt;
 
     if (fight.phase === "approach") {
+        // Meet at one shared point so bodies actually intersect (not side lanes).
+        const meetX = cx;
+        const meetY = cy + 4;
         if (octopus && !octopus.dead) {
-            easeToward(octopus, cx - 36, cy + 18, dt, 42, 1.1);
-            octopus.pulse = (octopus.pulse || 0) + dt * 2;
+            easeToward(octopus, meetX - (whale ? whale.size * 0.18 : 24), meetY + 10, dt, 70, 1.35);
+            bankToward(octopus, whale
+                ? Math.atan2(whale.y - octopus.y, whale.x - octopus.x)
+                : 0, dt, 1.6);
+            octopus.pulse = (octopus.pulse || 0) + dt * 2.2;
             for (let i = 0; i < octopus.legs.length; i++) {
                 const leg = octopus.legs[i];
                 leg.grab = null;
-                leg.phase += dt * 1.4;
-                const reach = 0.35 + Math.min(0.55, fight.t * 0.12);
-                const ang = octopus.dir + Math.PI * 0.15
-                    + (i / 7 - 0.5) * 1.4
-                    + Math.sin(leg.phase * 0.8) * 0.2;
-                const rad = (whale ? whale.size * reach : 70)
-                    + Math.sin(leg.phase + i) * 10;
-                const gx = (whale ? whale.x : cx) + Math.cos(ang) * rad * 0.55
-                    + Math.cos(octopus.dir) * octopus.size * 0.3;
-                const gy = (whale ? whale.y : cy) + Math.sin(ang) * rad * 0.4
-                    + Math.sin(octopus.dir) * octopus.size * 0.2;
-                easeTipToward(leg, gx, gy, dt, 1.6);
-            }
-        }
-        if (whale && !whale.dead) {
-            easeToward(whale, cx + 28, cy - 6, dt, 38, 0.7);
-            whale.tailPhase = (whale.tailPhase || 0) + dt * 2.4;
-        }
-        const near = octopus && whale
-            && Math.hypot(octopus.x - whale.x, octopus.y - whale.y) < (octopus.size + whale.size) * 0.55;
-        if (fight.t >= 2.6 || near || !octopus || octopus.dead) {
-            fight.phase = "wrap";
-            fight.t = 0;
-            Audio.predatorEat(0);
-            water.disturb(cx, cy, 50, 220);
-        }
-    } else if (fight.phase === "wrap") {
-        if (octopus && !octopus.dead) {
-            easeToward(octopus, cx - 10, cy + 8, dt, 28, 0.9);
-            for (let i = 0; i < octopus.legs.length; i++) {
-                const leg = octopus.legs[i];
-                leg.grab = null;
-                leg.phase += dt * 1.8;
-                // Coil gradually tighter around the whale.
-                const coil = Math.min(1, fight.t / 3.2);
-                const ang = fight.t * 0.55 + i * (Math.PI * 2 / 8) + Math.sin(leg.phase) * 0.15;
-                const rad = (whale ? whale.size * (0.55 - coil * 0.22) : 70)
-                    + Math.sin(leg.phase * 1.2 + i) * (12 - coil * 6);
-                const gx = (whale ? whale.x : cx) + Math.cos(ang) * rad;
-                const gy = (whale ? whale.y : cy) + Math.sin(ang) * rad * 0.72;
-                easeTipToward(leg, gx, gy, dt, 2.0 + coil);
-            }
-        }
-        if (whale && !whale.dead) {
-            // Struggle against the wrap: thrash, resist the center pull, splash hard.
-            fight.whaleStruggle = (fight.whaleStruggle || 0) + dt;
-            const s = fight.whaleStruggle;
-            const thrash = Math.sin(s * 7.2) * 22 + Math.sin(s * 3.1) * 10;
-            const resist = 0.55 + 0.45 * Math.abs(Math.sin(s * 2.4));
-            const pullX = cx + 8 + Math.cos(s * 2.8) * thrash * 0.55;
-            const pullY = cy - 2 + Math.sin(s * 3.6) * thrash * 0.4;
-            easeToward(whale, pullX, pullY, dt, 8 + resist * 20, 0.2);
-            // Occasional surge against the tentacles before being reeled back.
-            if (Math.sin(s * 1.7) > 0.92) {
-                whale.x += Math.cos(whale.dir) * 28 * dt;
-                whale.y += Math.sin(whale.dir) * 18 * dt;
-            }
-            whale.dir += dt * (0.9 + Math.sin(s * 5.5) * 1.6);
-            whale.tailPhase = (whale.tailPhase || 0) + dt * (5.5 + Math.abs(Math.sin(s * 6)) * 7);
-            if (Math.random() < 0.22) {
-                water.disturb(whale.x, whale.y, whale.size * 0.38, 70 + resist * 40);
-            }
-            if (Math.random() < 0.1) {
-                spawnSplash(
-                    whale.x + (Math.random() - 0.5) * whale.size * 0.4,
-                    whale.y + (Math.random() - 0.5) * whale.size * 0.25,
-                    10 + resist * 8,
-                    0.55 + resist * 0.25
+                leg.phase += dt * 1.6;
+                const wx = whale ? whale.x : meetX;
+                const wy = whale ? whale.y : meetY;
+                const ang = fight.t * 0.9 + i * (Math.PI * 2 / 8)
+                    + Math.sin(leg.phase * 0.9) * 0.25;
+                const reach = Math.min(1, 0.35 + fight.t * 0.4);
+                const rad = (whale ? whale.size * (0.42 * reach) : 50)
+                    + Math.sin(leg.phase + i) * 8;
+                easeTipToward(
+                    leg,
+                    wx + Math.cos(ang) * rad,
+                    wy + Math.sin(ang) * rad * 0.7,
+                    dt,
+                    2.4
                 );
             }
         }
-        if (fight.t >= 3.0) {
+        if (whale && !whale.dead) {
+            // Fast enough to cross half a pond before the phase timeout.
+            easeToward(whale, meetX + 12, meetY - 4, dt, 210, 1.15);
+            whale.tailPhase = (whale.tailPhase || 0) + dt * 3.2;
+        }
+        const contactR = octopus && whale
+            ? octopus.size * 0.55 + whale.size * 0.32
+            : 40;
+        const near = octopus && whale
+            && Math.hypot(octopus.x - whale.x, octopus.y - whale.y) < contactR;
+        if ((fight.t >= 0.85 && near) || fight.t >= 2.15 || !octopus || octopus.dead) {
+            fight.phase = "wrap";
+            fight.t = 0;
+            fight.contactSplash = false;
+            Audio.predatorEat(0);
+            if (octopus && whale) {
+                water.disturb((octopus.x + whale.x) * 0.5, (octopus.y + whale.y) * 0.5, 60, 260);
+                spawnSplash((octopus.x + whale.x) * 0.5, (octopus.y + whale.y) * 0.5, 18, 0.75);
+            } else {
+                water.disturb(cx, cy, 50, 220);
+            }
+        }
+    } else if (fight.phase === "wrap") {
+        // Cling to the whale body; thrash stays local so wrap never breaks contact.
+        const wx = whale && !whale.dead ? whale.x : cx;
+        const wy = whale && !whale.dead ? whale.y : cy;
+        if (octopus && !octopus.dead) {
+            easeToward(octopus, wx - (whale ? whale.size * 0.12 : 10), wy + 6, dt, 95, 1.4);
+            bankToward(octopus, whale
+                ? Math.atan2(wy - octopus.y, wx - octopus.x)
+                : octopus.dir, dt, 2.0);
+            for (let i = 0; i < octopus.legs.length; i++) {
+                const leg = octopus.legs[i];
+                leg.grab = null;
+                leg.phase += dt * 2.1;
+                const coil = Math.min(1, fight.t / 1.6);
+                const ang = fight.t * 0.85 + i * (Math.PI * 2 / 8) + Math.sin(leg.phase) * 0.12;
+                const rad = (whale ? whale.size * (0.38 - coil * 0.16) : 55)
+                    + Math.sin(leg.phase * 1.3 + i) * (10 - coil * 5);
+                easeTipToward(
+                    leg,
+                    wx + Math.cos(ang) * rad,
+                    wy + Math.sin(ang) * rad * 0.68,
+                    dt,
+                    2.8 + coil
+                );
+            }
+        }
+        if (whale && !whale.dead) {
+            fight.whaleStruggle = (fight.whaleStruggle || 0) + dt;
+            const s = fight.whaleStruggle;
+            const thrash = Math.sin(s * 7.2) * 14 + Math.sin(s * 3.1) * 6;
+            const clingX = cx + Math.cos(s * 2.8) * thrash * 0.45;
+            const clingY = cy + Math.sin(s * 3.6) * thrash * 0.35;
+            easeToward(whale, clingX, clingY, dt, 55, 0.55);
+            // Reel back toward the octopus so surges cannot open an air gap.
+            if (octopus && !octopus.dead) {
+                const dx = octopus.x - whale.x;
+                const dy = octopus.y - whale.y;
+                const d = Math.hypot(dx, dy);
+                const maxGap = whale.size * 0.28 + octopus.size * 0.35;
+                if (d > maxGap) {
+                    const pull = Math.min(d - maxGap, 70 * dt);
+                    whale.x += (dx / d) * pull;
+                    whale.y += (dy / d) * pull;
+                }
+            }
+            whale.dir += dt * (1.1 + Math.sin(s * 5.5) * 1.8);
+            whale.tailPhase = (whale.tailPhase || 0) + dt * (5.8 + Math.abs(Math.sin(s * 6)) * 7);
+            if (!fight.contactSplash && octopus
+                && Math.hypot(octopus.x - whale.x, octopus.y - whale.y)
+                    < octopus.size * 0.5 + whale.size * 0.3) {
+                fight.contactSplash = true;
+                spawnSplash((octopus.x + whale.x) * 0.5, (octopus.y + whale.y) * 0.5, 20, 0.8);
+                water.disturb(whale.x, whale.y, whale.size * 0.45, 180);
+            }
+            if (Math.random() < 0.24) {
+                water.disturb(whale.x, whale.y, whale.size * 0.35, 75);
+            }
+            if (Math.random() < 0.12) {
+                spawnSplash(
+                    whale.x + (Math.random() - 0.5) * whale.size * 0.35,
+                    whale.y + (Math.random() - 0.5) * whale.size * 0.2,
+                    10 + Math.random() * 6,
+                    0.55
+                );
+            }
+        }
+        if (fight.t >= 2.2) {
             fight.phase = "eat";
             fight.t = 0;
             if (!fight.ateSound) {
                 fight.ateSound = true;
                 Audio.predatorEat(0);
-                water.disturb(cx, cy, 70, 320);
+                water.disturb(wx, wy, 70, 320);
+                spawnSplash(wx, wy, 16, 0.7);
             }
         }
     } else if (fight.phase === "eat") {
+        const wx = whale && !whale.dead ? whale.x : cx;
+        const wy = whale && !whale.dead ? whale.y : cy;
         if (octopus && !octopus.dead) {
-            easeToward(octopus, cx, cy + 6, dt, 18, 0.6);
-            // Soft growth while feeding, not a size pop.
+            // Stay locked on the meal while growing.
+            easeToward(octopus, wx, wy + 4, dt, 70, 1.0);
             const growTo = Math.min(
                 fight.octStartSize + 34,
                 Math.min(viewW, viewH) * 0.38
             );
-            octopus.size += (growTo - octopus.size) * ease(0.7);
+            octopus.size += (growTo - octopus.size) * ease(0.85);
             for (let i = 0; i < octopus.legs.length; i++) {
                 const leg = octopus.legs[i];
-                leg.phase += dt * 1.5;
-                const ang = fight.t * 0.4 + i * (Math.PI * 2 / 8);
-                const rad = 28 + Math.sin(leg.phase + i) * 8
-                    + (whale ? whale.size * 0.25 : 20);
+                leg.phase += dt * 1.7;
+                const ang = fight.t * 0.55 + i * (Math.PI * 2 / 8);
+                const rad = Math.max(14, (whale ? whale.size * 0.34 : 22)
+                    + Math.sin(leg.phase + i) * 6);
                 easeTipToward(
                     leg,
-                    cx + Math.cos(ang) * rad,
-                    cy + Math.sin(ang) * rad * 0.65,
-                    dt, 2.4
+                    wx + Math.cos(ang) * rad,
+                    wy + Math.sin(ang) * rad * 0.65,
+                    dt,
+                    3.0
                 );
             }
         }
         if (whale && !whale.dead) {
             fight.whaleStruggle = (fight.whaleStruggle || 0) + dt;
             const s = fight.whaleStruggle;
-            const thrash = Math.sin(s * 8.5) * (16 * Math.max(0.15, 1 - fight.t * 0.2));
-            easeToward(
-                whale,
-                cx + 4 + Math.cos(s * 4) * thrash,
-                cy + Math.sin(s * 5) * thrash * 0.6,
-                dt, 6 + Math.abs(thrash) * 0.4, 0.18
-            );
-            whale.dir += dt * (1.1 + Math.sin(s * 6) * 1.4);
-            whale.tailPhase = (whale.tailPhase || 0) + dt * (6 + Math.abs(Math.sin(s * 7)) * 5);
-            // Shrink smoothly toward vanishing.
-            const shrink = Math.max(0.08, 1 - fight.t * 0.22);
+            const thrash = Math.sin(s * 8.5) * (10 * Math.max(0.12, 1 - fight.t * 0.28));
+            const holdX = (octopus ? octopus.x : cx) + Math.cos(s * 4) * thrash;
+            const holdY = (octopus ? octopus.y : cy) + Math.sin(s * 5) * thrash * 0.55;
+            easeToward(whale, holdX, holdY, dt, 40, 0.35);
+            whale.dir += dt * (1.2 + Math.sin(s * 6) * 1.5);
+            whale.tailPhase = (whale.tailPhase || 0) + dt * (6.2 + Math.abs(Math.sin(s * 7)) * 5);
+            const shrink = Math.max(0.08, 1 - fight.t * 0.32);
             whale.size = fight.whaleStartSize * shrink;
-            if (Math.random() < 0.16) {
+            if (Math.random() < 0.18) {
                 water.disturb(whale.x, whale.y, Math.max(12, whale.size * 0.3), 55);
             }
-            if (whale.size < fight.whaleStartSize * 0.12 || fight.t > 2.6) {
+            if (whale.size < fight.whaleStartSize * 0.12 || fight.t > 1.85) {
+                const sx = whale.x;
+                const sy = whale.y;
                 whale.dead = true;
                 whale = null;
-                spawnSplash(cx, cy, 22, 0.7);
+                spawnSplash(sx, sy, 22, 0.75);
             }
         }
-        if (fight.t >= 2.8) {
+        if (fight.t >= 2.05) {
             fight.phase = "ship";
             fight.t = 0;
+            fight.shipLatched = false;
             if (!fight.shipSound) {
                 fight.shipSound = true;
                 Audio.sharkStrike(0);
             }
         }
     } else if (fight.phase === "ship") {
-        // Ship drifts down; arms reach up without snapping. Keep the scene dark.
-        fight.shipAlpha = Math.min(1, fight.shipAlpha + dt * 0.35);
-        const shipTargetY = cy - 64;
-        fight.shipY += (shipTargetY - fight.shipY) * ease(0.85);
+        // Ship drops to octopus reach; tips latch the keel, then tug the hull down.
+        fight.shipAlpha = Math.min(1, fight.shipAlpha + dt * 0.55);
+        const octX = octopus && !octopus.dead ? octopus.x : cx;
+        const octY = octopus && !octopus.dead ? octopus.y : cy + 20;
+        const reachKeelY = octY - Math.min(octopus ? octopus.size * 1.15 : 90, 110);
+        const approachY = Math.min(cy - 40, reachKeelY - PIRATE_SHIP_KEEL * PIRATE_SHIP_DRAW_SCALE);
+        if (!fight.shipLatched) {
+            fight.shipY += (approachY - fight.shipY) * ease(1.55);
+        } else {
+            // Tug: keel eases down onto the mantle.
+            const tugKeel = octY - (octopus ? octopus.size * 0.35 : 28);
+            const tugShipY = tugKeel - PIRATE_SHIP_KEEL * PIRATE_SHIP_DRAW_SCALE;
+            fight.shipY += (tugShipY - fight.shipY) * ease(1.35);
+        }
+        const keelY = pirateShipKeelY(fight.shipY);
         if (octopus && !octopus.dead) {
-            easeToward(octopus, cx, cy + 28, dt, 20, 0.5);
+            easeToward(octopus, cx, cy + 22, dt, 36, 0.7);
+            let tipsOnKeel = 0;
             for (let i = 0; i < octopus.legs.length; i++) {
                 const leg = octopus.legs[i];
-                leg.phase += dt * 1.3;
-                const ang = -Math.PI * 0.5 + (i / 7 - 0.5) * 1.15;
-                const stretch = 0.6 + Math.min(0.5, fight.t * 0.15);
-                const gx = cx + Math.cos(ang) * (48 + i * 6) * stretch
-                    + Math.sin(leg.phase * 0.7 + i) * 7;
-                const gy = fight.shipY + 48 + Math.sin(leg.phase + i) * 5;
-                easeTipToward(leg, gx, gy, dt, 1.8);
+                leg.phase += dt * 1.55;
+                const along = (i / 7 - 0.5) * 96;
+                const gx = cx + along + Math.sin(leg.phase * 0.7 + i) * 6;
+                const gy = keelY + Math.sin(leg.phase + i) * 3
+                    + (fight.shipLatched ? 2 : 0);
+                easeTipToward(leg, gx, gy, dt, fight.shipLatched ? 3.4 : 2.6);
+                if (Math.hypot(leg.tipX - gx, leg.tipY - gy) < 18) tipsOnKeel++;
+            }
+            if (!fight.shipLatched && fight.t > 0.55
+                && (tipsOnKeel >= 3 || Math.abs(keelY - octY) < (octopus.size * 1.25 + 24))) {
+                fight.shipLatched = true;
+                Audio.predatorEat(0);
+                spawnSplash(cx, keelY, 16, 0.7);
+                water.disturb(cx, keelY, 40, 180);
             }
         }
-        if (fight.t > 1.5 && Math.random() < 0.15) {
-            water.disturb(cx + (Math.random() - 0.5) * 90, fight.shipY + 48, 18, 55);
+        if (fight.shipLatched && Math.random() < 0.2) {
+            water.disturb(cx + (Math.random() - 0.5) * 80, keelY, 16, 50);
         }
-        if (fight.t >= 3.2) {
+        if (fight.t >= 2.55) {
             fight.phase = "fade";
             fight.t = 0;
             spawnSplash(cx, cy, 28, 0.85);
@@ -15832,14 +16577,16 @@ function updateOctopusWhaleFight(dt) {
     } else if (fight.phase === "fade") {
         // Soft curtain in, restock under cover, then ease back into the pond.
         if (!fight.restocked) {
-            fight.fade = Math.min(1, fight.fade + dt * 0.55);
+            fight.fade = Math.min(1, fight.fade + dt * 0.7);
             if (octopus && !octopus.dead) {
-                easeToward(octopus, cx, cy + 10, dt, 12, 0.3);
+                easeToward(octopus, cx, cy + 10, dt, 18, 0.4);
+                const keelY = pirateShipKeelY(fight.shipY);
                 for (const leg of octopus.legs) {
-                    easeTipToward(leg, cx + (leg.tipX - cx) * 0.98, cy + 20, dt, 1.2);
+                    easeTipToward(leg, cx + (leg.tipX - cx) * 0.96, keelY + 8, dt, 1.6);
                 }
             }
-            if (fight.fade >= 0.9 && fight.t >= 1.15) {
+            fight.shipAlpha = Math.max(0, fight.shipAlpha - dt * 0.4);
+            if (fight.fade >= 0.88 && fight.t >= 0.85) {
                 fight.restocked = true;
                 if (octopus) octopus.dead = true;
                 octopus = null;
@@ -15851,8 +16598,8 @@ function updateOctopusWhaleFight(dt) {
                 fight.fade = Math.max(fight.fade, 0.95);
             }
         } else {
-            fight.fade = Math.max(0, fight.fade - dt * 0.55);
-            if (fight.fade <= 0.02 && fight.t >= 2.4) {
+            fight.fade = Math.max(0, fight.fade - dt * 0.7);
+            if (fight.fade <= 0.02 && fight.t >= 1.85) {
                 octopusWhaleFight = null;
             }
         }
@@ -15862,16 +16609,16 @@ function updateOctopusWhaleFight(dt) {
 function drawPirateShipSilhouette(ctx, cx, y, alpha) {
     ctx.save();
     ctx.globalAlpha = Math.min(1, alpha);
-    const s = 1.55; // larger readable silhouette
-    // Hull
+    const s = PIRATE_SHIP_DRAW_SCALE;
+    // Hull (keel at y + PIRATE_SHIP_KEEL * s; tentacles latch there)
     ctx.fillStyle = "#2e211a";
     ctx.beginPath();
     ctx.moveTo(cx - 108 * s, y + 36 * s);
     ctx.lineTo(cx - 88 * s, y + 4 * s);
     ctx.lineTo(cx + 86 * s, y + 4 * s);
     ctx.lineTo(cx + 112 * s, y + 36 * s);
-    ctx.lineTo(cx + 72 * s, y + 58 * s);
-    ctx.lineTo(cx - 72 * s, y + 58 * s);
+    ctx.lineTo(cx + 72 * s, y + PIRATE_SHIP_KEEL * s);
+    ctx.lineTo(cx - 72 * s, y + PIRATE_SHIP_KEEL * s);
     ctx.closePath();
     ctx.fill();
     // Plank lines
@@ -16518,9 +17265,12 @@ function beginSwordfishSpearEnding(sf, opts) {
         giantEnding = null;
         heroRemorseEnding = null;
         frogFinale = null;
+        bullfrogFinale = null;
+        bullfrog = null;
         octopusWhaleFight = null;
         crystalApexEnding = null;
-    } else if (povAttack || giantEnding || heroRemorseEnding || frogFinale || octopusWhaleFight || crystalApexEnding) {
+    } else if (povAttack || giantEnding || heroRemorseEnding || frogFinale || bullfrogFinale
+        || octopusWhaleFight || crystalApexEnding) {
         return;
     }
     // POV tip thrust: approach/fade ease toward the camera (no body snap to center).
@@ -17690,7 +18440,10 @@ function resetPond(opts) {
     frogGroups.length = 0;
     hungryTadpoles.length = 0;
     frogFinale = null;
+    bullfrog = null;
+    bullfrogFinale = null;
     frogCheckTimer = 0;
+    bullfrogCheckTimer = 0;
     fishes.length = 0;
     for (const f of keepPlatinum) fishes.push(f);
     foods.length = 0;
@@ -17778,8 +18531,12 @@ class Shark {
             this.tailPhase += dt * 2.4;
             return;
         }
+        if (this.pickerThrow) {
+            updatePickerThrow(this, dt);
+            return;
+        }
         if (this.pickerHeld) {
-            this.tailPhase += dt * 4.2;
+            this.tailPhase += dt * (this.pickerLiftZ > 4 ? 12 : 4.2);
             return;
         }
         // Slow, gliding hunt: more pond visitor than chase cutscene.
@@ -17943,8 +18700,10 @@ class Shark {
         tickFinaleClock(gs, dt);
         const fish = gs.fish;
         fish.insideShark = true;
-        fish.x = this.x;
-        fish.y = this.y;
+        // Ease the glow fish into the belly (no hard snap on first frames).
+        const gulp = Math.min(1, gs.t * 3.2);
+        fish.x += (this.x - fish.x) * Math.min(1, (0.35 + gulp * 2.4) * dt * 4);
+        fish.y += (this.y - fish.y) * Math.min(1, (0.35 + gulp * 2.4) * dt * 4);
 
         // Softlock guard: never hold a platinum fish forever.
         if ((gs.clock || 0) > 8) {
@@ -18051,7 +18810,7 @@ class Shark {
         const roll = rollT * Math.PI * 2;
         const flatten = Math.max(0.18, Math.abs(Math.cos(roll)));
         ctx.save();
-        ctx.translate(this.x, this.y);
+        ctx.translate(this.x, this.y - (this.pickerLiftZ || 0));
         ctx.rotate(this.dir);
         ctx.scale(1, flatten);
         ctx.globalAlpha = 0.88;
@@ -18205,7 +18964,7 @@ class Shark {
         const roll = rollT * Math.PI * 2;
         const flatten = Math.max(0.18, Math.abs(Math.cos(roll)));
         ctx.save();
-        ctx.translate(this.x, this.y);
+        ctx.translate(this.x, this.y - (this.pickerLiftZ || 0));
         ctx.rotate(this.dir);
         ctx.scale(1, flatten);
         ctx.globalAlpha = 0.9;
@@ -18299,7 +19058,7 @@ class Shark {
         const roll = rollT * Math.PI * 2;
         const flatten = Math.max(0.22, Math.abs(Math.cos(roll)));
         ctx.save();
-        ctx.translate(this.x, this.y);
+        ctx.translate(this.x, this.y - (this.pickerLiftZ || 0));
         ctx.rotate(this.dir);
         ctx.scale(1, flatten);
         ctx.globalAlpha = 0.93;
@@ -20109,6 +20868,9 @@ class CrystalSerpent {
         this.petProgress = 0;
         this.isPink = false;
         this.breedCooldown = 0;
+        this.pickerHeld = false;
+        this.pickerLiftZ = 0;
+        this.pickerThrow = null;
         this.segments = 11;
         const side = Math.floor(Math.random() * 4);
         if (side === 0) { this.x = -this.size; this.y = Math.random() * viewH; }
@@ -20196,6 +20958,15 @@ class CrystalSerpent {
         if (this.dead) return;
         if (this.octopusWrap) {
             this.tailPhase += dt * 2.4;
+            this.phase += dt * 1.1;
+            return;
+        }
+        if (this.pickerThrow) {
+            updatePickerThrow(this, dt);
+            return;
+        }
+        if (this.pickerHeld) {
+            this.tailPhase += dt * (this.pickerLiftZ > 4 ? 10 : 3.6);
             this.phase += dt * 1.1;
             return;
         }
@@ -20321,7 +21092,7 @@ class CrystalSerpent {
         const W = this.size * 0.24;
         const segs = Math.max(8, this.segments | 0);
         ctx.save();
-        ctx.translate(this.x, this.y);
+        ctx.translate(this.x, this.y - (this.pickerLiftZ || 0));
         ctx.rotate(this.dir);
         ctx.globalAlpha = this.leaving ? 0.5 : 0.94;
         if (this.isPink) {
@@ -21120,6 +21891,17 @@ function manageEcosystem(dt) {
         }
     }
     updateFrogGroups(dt);
+
+    // Rare bullfrog rolls only while frogs are on and a school is present.
+    bullfrogCheckTimer += dt;
+    if (bullfrogCheckTimer >= CONFIG.bullfrogInterval) {
+        bullfrogCheckTimer = 0;
+        if (scenery.frogs && !pondFinaleActive() && !bullfrog && !bullfrogFinale
+            && frogGroups.length > 0
+            && Math.random() < CONFIG.bullfrogChance) {
+            spawnBullfrog();
+        }
+    }
 
     for (const r of reptiles) r.update(dt);
     for (let i = reptiles.length - 1; i >= 0; i--) {
@@ -22103,6 +22885,13 @@ function tryScareReptileAt(x, y) {
 }
 
 // Right-click pets: whale and shark first, then reptiles, frogs, then ordinary fish.
+function applyDoublePetIfOwned(target, quiet, petFn) {
+    const run = petFn || ((q) => target.pet(q));
+    run(quiet);
+    // Double petter: one discrete click counts as two pets (tame / redeem progress).
+    if (doublePetterOwned && !quiet) run(false);
+}
+
 function petPondLifeAt(x, y, quiet) {
     if (crystalMantle && !crystalMantle.dead && !crystalMantle.golden && !crystalMantle.plantMorph) {
         const d = Math.hypot(x - crystalMantle.x, y - crystalMantle.y);
@@ -22111,7 +22900,7 @@ function petPondLifeAt(x, y, quiet) {
                 crystalMantle.petTimer = 1.4;
                 return;
             }
-            crystalMantle.pet(quiet);
+            applyDoublePetIfOwned(crystalMantle, quiet);
             notePetForRainbowStreak(quiet);
             markFirstInteraction();
             return;
@@ -22124,7 +22913,7 @@ function petPondLifeAt(x, y, quiet) {
                 crystalSerpent.petTimer = 1.4;
                 return;
             }
-            crystalSerpent.pet(quiet);
+            applyDoublePetIfOwned(crystalSerpent, quiet);
             notePetForRainbowStreak(quiet);
             markFirstInteraction();
             return;
@@ -22136,7 +22925,7 @@ function petPondLifeAt(x, y, quiet) {
             guard.petTimer = 1.5;
             return;
         }
-        guard.pet(quiet);
+        applyDoublePetIfOwned(guard, quiet);
         notePetForRainbowStreak(quiet);
         markFirstInteraction();
         return;
@@ -22147,7 +22936,7 @@ function petPondLifeAt(x, y, quiet) {
             pac.petTimer = 1.4;
             return;
         }
-        pac.pet();
+        applyDoublePetIfOwned(pac, quiet, () => pac.pet());
         notePetForRainbowStreak(quiet);
         markFirstInteraction();
         return;
@@ -22160,7 +22949,7 @@ function petPondLifeAt(x, y, quiet) {
                 whale.petTimer = whale.petDur;
                 return;
             }
-            whale.pet(quiet);
+            applyDoublePetIfOwned(whale, quiet);
             notePetForRainbowStreak(quiet);
             markFirstInteraction();
             return;
@@ -22170,7 +22959,7 @@ function petPondLifeAt(x, y, quiet) {
         const d = Math.hypot(x - shark.x, y - shark.y);
         if (d < shark.size * 0.55) {
             if (quiet && shark.rollTimer > 0) return;
-            shark.pet();
+            applyDoublePetIfOwned(shark, quiet, () => shark.pet());
             notePetForRainbowStreak(quiet);
             markFirstInteraction();
             return;
@@ -22183,7 +22972,7 @@ function petPondLifeAt(x, y, quiet) {
                 swordfish.petTimer = 1.4;
                 return;
             }
-            swordfish.pet();
+            applyDoublePetIfOwned(swordfish, quiet, () => swordfish.pet());
             notePetForRainbowStreak(quiet);
             markFirstInteraction();
             return;
@@ -22196,7 +22985,7 @@ function petPondLifeAt(x, y, quiet) {
                 octopus.petTimer = 1.4;
                 return;
             }
-            octopus.pet();
+            applyDoublePetIfOwned(octopus, quiet, () => octopus.pet());
             notePetForRainbowStreak(quiet);
             markFirstInteraction();
             return;
@@ -22216,7 +23005,7 @@ function petPondLifeAt(x, y, quiet) {
             bestR.petTimer = 1.4;
             return;
         }
-        bestR.pet();
+        applyDoublePetIfOwned(bestR, quiet, () => bestR.pet());
         notePetForRainbowStreak(quiet);
         markFirstInteraction();
         return;
@@ -22232,7 +23021,7 @@ function petPondLifeAt(x, y, quiet) {
         if (d < reach && d < bestFrogD) { bestFrogD = d; bestFrog = frog; }
     }
     if (bestFrog) {
-        petFrog(bestFrog, quiet);
+        applyDoublePetIfOwned(bestFrog, quiet, (q) => petFrog(bestFrog, q));
         notePetForRainbowStreak(quiet);
         markFirstInteraction();
         return;
@@ -22251,9 +23040,7 @@ function petPondLifeAt(x, y, quiet) {
         best.petTimer = 1.4;
         return;
     }
-    best.pet();
-    // Double petter: one click counts as two pets (blobfish progress, soothe, etc.).
-    if (doublePetterOwned && !quiet) best.pet();
+    applyDoublePetIfOwned(best, quiet, () => best.pet());
     notePetForRainbowStreak(quiet);
     markFirstInteraction();
 }
@@ -23391,6 +24178,8 @@ function clearPondEntitiesForLoad() {
     crystalApexEnding = null;
     apexDuel = null;
     frogFinale = null;
+    bullfrogFinale = null;
+    bullfrog = null;
     pacifistVisitors.length = 0;
     biomeGuardians.length = 0;
 }
@@ -23589,7 +24378,7 @@ try {
 } catch (err) { /* ignore */ }
 
 // ---------------------------------------------------------------------------
-// Fish picker: lift small/medium fish out of water, or drag heavier ones.
+// Fish picker: lift commons/exotics/mid-apex out of water, or drag heavier bodies.
 // ---------------------------------------------------------------------------
 function pickerCanHandle(ent, kind) {
     if (!ent || ent.dead) return false;
@@ -23598,25 +24387,39 @@ function pickerCanHandle(ent, kind) {
         if (ent.isRainbow) return false; // only the rainbow catcher stops them
         if (ent.isPlatinum) return false; // invulnerable: leave unpickable
         if (ent.isMonster) return false;
-        // Wild evil fish cannot be handled until redeemed / heroic.
-        if (ent.isPredator && !ent.redeemed && !ent.isHero) return false;
+        // Exotic visitors stay pickable even when wild evil; commons still need redeem / hero.
+        const exotic = !!(ent.type && ent.type.exotic);
+        if (ent.isPredator && !ent.redeemed && !ent.isHero && !exotic) return false;
         return true;
     }
-    // Apex: only tamed or heroic friends can be dragged (never lifted).
-    if (kind === "swordfish" || kind === "octopus" || kind === "reptile") {
+    // Apex (wild or tamed/hero): pickable. Rainbow night apex still need the catcher.
+    if (kind === "swordfish" || kind === "octopus" || kind === "reptile"
+        || kind === "shark" || kind === "serpent" || kind === "mantle") {
         if (ent.golden || ent.plantMorph || ent.leaving) return false;
-        return !!(ent.tamed || ent.isHero);
-    }
-    if (kind === "shark") {
-        if (ent.leaving) return false;
-        return !!ent.isHero;
+        if (ent.isRainbow) return false;
+        return true;
     }
     return false;
 }
 
+function pickerLiftCap(ent, kind) {
+    if (kind === "fish") {
+        return (ent.type && ent.type.exotic) ? PICKER_EXOTIC_LIFT_SIZE : PICKER_LIFT_SIZE;
+    }
+    return PICKER_APEX_LIFT_SIZE;
+}
+
 function pickerModeFor(ent, kind) {
-    if (kind !== "fish") return "drag";
-    return ent.size < PICKER_LIFT_SIZE ? "lift" : "drag";
+    return ent.size < pickerLiftCap(ent, kind) ? "lift" : "drag";
+}
+
+function pickerShiftLimbTips(ent, dx, dy) {
+    if (!ent || !ent.legs || (!dx && !dy)) return;
+    for (const leg of ent.legs) {
+        if (!leg) continue;
+        leg.tipX += dx;
+        leg.tipY += dy;
+    }
 }
 
 function pickerTargetAt(x, y) {
@@ -23645,6 +24448,22 @@ function pickerTargetAt(x, y) {
         if (d < reach && d < bestD) {
             bestD = d;
             best = { ent: octopus, kind: "octopus" };
+        }
+    }
+    if (crystalMantle && pickerCanHandle(crystalMantle, "mantle")) {
+        const d = Math.hypot(x - crystalMantle.x, y - crystalMantle.y);
+        const reach = crystalMantle.size * 0.7;
+        if (d < reach && d < bestD) {
+            bestD = d;
+            best = { ent: crystalMantle, kind: "mantle" };
+        }
+    }
+    if (crystalSerpent && pickerCanHandle(crystalSerpent, "serpent")) {
+        const d = Math.hypot(x - crystalSerpent.x, y - crystalSerpent.y);
+        const reach = crystalSerpent.size * 0.55;
+        if (d < reach && d < bestD) {
+            bestD = d;
+            best = { ent: crystalSerpent, kind: "serpent" };
         }
     }
     if (shark && pickerCanHandle(shark, "shark")) {
@@ -23706,14 +24525,17 @@ function updatePickerHold(dt) {
     hold.thrashT += dt;
 
     // Ease through water / air instead of snapping to the cursor.
-    const pull = hold.mode === "lift" ? 7.5 : 3.2;
+    const pull = hold.mode === "lift" ? PICKER_LIFT_PULL : PICKER_DRAG_PULL;
     const ease = 1 - Math.exp(-pull * dt);
+    const prevX = ent.x;
+    const prevY = ent.y;
     ent.x += (aimX - ent.x) * ease;
     ent.y += (aimY - ent.y) * ease;
+    pickerShiftLimbTips(ent, ent.x - prevX, ent.y - prevY);
 
     if (hold.mode === "lift") {
-        const targetZ = 46 + Math.min(18, ent.size * 0.35);
-        hold.liftZ += (targetZ - hold.liftZ) * (1 - Math.exp(-5.5 * dt));
+        const targetZ = 52 + Math.min(28, ent.size * 0.42);
+        hold.liftZ += (targetZ - hold.liftZ) * (1 - Math.exp(-PICKER_LIFT_RISE * dt));
         ent.pickerLiftZ = hold.liftZ;
         // Thrash: small heading wobble while above water.
         ent.dir += Math.sin(hold.thrashT * 18) * 0.08;
@@ -23729,26 +24551,30 @@ function updatePickerHold(dt) {
     }
 }
 
-function updatePickerThrow(fish, dt) {
-    const thr = fish.pickerThrow;
+function updatePickerThrow(ent, dt) {
+    const thr = ent.pickerThrow;
     if (!thr) return;
     thr.age += dt;
     const t = Math.min(1, thr.age / thr.dur);
-    fish.x = thr.sx + (thr.tx - thr.sx) * t;
-    fish.y = thr.sy + (thr.ty - thr.sy) * t;
+    const prevX = ent.x;
+    const prevY = ent.y;
+    ent.x = thr.sx + (thr.tx - thr.sx) * t;
+    ent.y = thr.sy + (thr.ty - thr.sy) * t;
+    pickerShiftLimbTips(ent, ent.x - prevX, ent.y - prevY);
     const z = thr.thrown
         ? thr.arc * Math.sin(Math.PI * t)
         : thr.startZ * (1 - t * t);
-    fish.pickerLiftZ = Math.max(0, z);
-    fish.dir += dt * (thr.thrown ? 3.2 : 1.4);
-    fish.tailPhase += dt * 12;
+    ent.pickerLiftZ = Math.max(0, z);
+    ent.dir += dt * (thr.thrown ? 3.2 : 1.4);
+    if (ent.tailPhase != null) ent.tailPhase += dt * 12;
+    else if (ent.phase != null) ent.phase += dt * 8;
     if (t >= 1) {
-        fish.pickerThrow = null;
-        fish.pickerLiftZ = 0;
-        fish.pickerHeld = false;
-        water.disturb(fish.x, fish.y, fish.size * 0.8, 180);
-        spawnSplash(fish.x, fish.y, Math.max(8, fish.size * 0.35), 0.55);
-        const pan = Math.max(-1, Math.min(1, (fish.x / viewW) * 2 - 1));
+        ent.pickerThrow = null;
+        ent.pickerLiftZ = 0;
+        ent.pickerHeld = false;
+        water.disturb(ent.x, ent.y, ent.size * 0.8, 180);
+        spawnSplash(ent.x, ent.y, Math.max(8, ent.size * 0.35), 0.55);
+        const pan = Math.max(-1, Math.min(1, (ent.x / viewW) * 2 - 1));
         if (Audio.tick) Audio.tick(pan, 280);
     }
 }
@@ -23766,7 +24592,7 @@ function releasePickerHold() {
     const startZ = hold.liftZ || 0;
     pickerHold = null;
 
-    if (mode === "lift" && hold.kind === "fish" && !ent.dead) {
+    if (mode === "lift" && !ent.dead) {
         // Drop / throw back into the water with the same arc feel as food pellets.
         const tx = pointerNow ? pointerNow.x : sx;
         const ty = pointerNow ? pointerNow.y : sy;
@@ -24071,8 +24897,8 @@ function updatePickerButtonUI() {
     btn.classList.toggle("on", pickerMode);
     btn.setAttribute("aria-pressed", pickerMode ? "true" : "false");
     btn.title = pickerMode
-        ? "Picker on: right drag lifts small fish or drags large ones"
-        : "Fish picker: right drag to lift or drag fish";
+        ? "Picker on: right drag lifts or drags fish and apex"
+        : "Fish picker: right drag to lift or drag fish and apex";
 }
 
 function updateMarketButtonUI() {
@@ -25022,6 +25848,8 @@ function devClearFinales() {
     swordfishSpearEnding = null;
     rainbowNinjaEnding = null;
     frogFinale = null;
+    bullfrogFinale = null;
+    bullfrog = null;
     octopusWhaleFight = null;
     pirateShipDrop = null;
     apexDuel = null;
@@ -25464,6 +26292,18 @@ function buildDevMenu() {
         scenery.frogs = true;
         devSyncSceneryBtn("frogs");
         spawnFrogGroup();
+    });
+    btn(apex, "Bullfrog", () => {
+        devEnsurePond();
+        scenery.frogs = true;
+        devSyncSceneryBtn("frogs");
+        if (!frogGroups.length) spawnFrogGroup();
+        spawnBullfrog();
+        if (bullfrog) {
+            const p = devSpawnPoint();
+            bullfrog.x = p.x;
+            bullfrog.y = p.y;
+        }
     });
     btn(apex, "Hero guardians", () => {
         devEnsurePond();
@@ -26182,6 +27022,40 @@ function buildDevMenu() {
         frog.x = p.x;
         frog.y = p.y;
         beginFrogFinale(frog);
+    }, { warn: true });
+    btn(endings, "Bullfrog feast", () => {
+        devEnsurePond();
+        devClearFinales();
+        scenery.frogs = true;
+        devSyncSceneryBtn("frogs");
+        if (!frogGroups.length) spawnFrogGroup();
+        spawnBullfrog();
+        if (!bullfrog) return;
+        const p = devSpawnPoint();
+        bullfrog.x = p.x;
+        bullfrog.y = p.y;
+        bullfrog.size = CONFIG.sharkSize * 0.95;
+        bullfrog.meals = CONFIG.bullfrogMealsForFinale;
+        beginBullfrogFinale("feast", bullfrog, null);
+    }, { warn: true });
+    btn(endings, "Bullfrog defeat", () => {
+        devEnsurePond();
+        devClearFinales();
+        scenery.frogs = true;
+        devSyncSceneryBtn("frogs");
+        if (!frogGroups.length) spawnFrogGroup();
+        const frog = frogGroups[frogGroups.length - 1].frog;
+        befriendFrog(frog);
+        frog.size = Math.max(frog.size, 52);
+        spawnBullfrog();
+        if (!bullfrog) return;
+        const p = devSpawnPoint();
+        bullfrog.x = p.x;
+        bullfrog.y = p.y;
+        frog.x = p.x - 40;
+        frog.y = p.y;
+        beginBullfrogFinale("defeat", bullfrog, frog);
+        bullfrog = null;
     }, { warn: true });
     btn(endings, "Octopus whale fight", () => {
         devEnsurePond();
@@ -28964,7 +29838,12 @@ function frame(now) {
         water.render(ctx);
         if (typeof drawGiantBedReveal === "function") drawGiantBedReveal(ctx);
         // Floor shadows stay on whenever sky light is casting, even on lower gfx.
-        if (lightCastsFloorShadows()) drawSunContactShadows(ctx);
+        // Draw both contact and creature casts before entities so multiply never
+        // paints phantom silhouettes on top of frogs, fish, or debris.
+        if (lightCastsFloorShadows()) {
+            drawSunContactShadows(ctx);
+            drawSunCreatureShadows(ctx);
+        }
 
         // Shore and bank scenery sit under the swimming life.
         drawShoreStones(ctx, dt);
@@ -29004,7 +29883,6 @@ function frame(now) {
         for (let i = fishes.length - 1; i >= 0; i--) {
             if (fishes[i].dead) fishes.splice(i, 1);
         }
-        if (lightCastsFloorShadows()) drawSunCreatureShadows(ctx);
         if (typeof drawTerritoryRings === "function") drawTerritoryRings(ctx);
         if (typeof drawCurrentLanes === "function") drawCurrentLanes(ctx);
         if (typeof drawWhirlpools === "function") drawWhirlpools(ctx);
@@ -29125,6 +30003,9 @@ function watchdogFinaleSoftlocks() {
     }
     if (frogFinale && finaleOvertime(frogFinale)) {
         updateFrogFinale(0.05);
+    }
+    if (bullfrogFinale && finaleOvertime(bullfrogFinale)) {
+        updateBullfrogFinale(0.05);
     }
     for (const r of reptiles || []) {
         if (r && r.rainbowFinale && finaleOvertime(r.rainbowFinale)) {
