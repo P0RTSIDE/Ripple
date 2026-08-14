@@ -28,7 +28,7 @@ Red-glow hunters. A fish becomes evil once it grows past the predator size thres
 Created when a non-hero fish eats a wild crocodile or alligator. Monsters hunt aggressively and can eat the day shark to start the POV ending. They ignore platinum fish as prey.
 
 ### Pink / breed
-Pink food blushes a fish. Two pink fish that are eligible can swim together and spawn young (with a cooldown and a soft population cap). Pink stays until another transform overrides it.
+Pink food blushes a fish. Two pink fish that are eligible can swim together and spawn young (with a cooldown and a soft population cap). After the first offspring, the blush clears so they need pink food again to breed.
 
 ### Golden
 Golden food freezes a fish into gold. It sinks to the lakebed. Hold right click on a settled gold fish to collect gold (magnet makes this much faster). Golden crocs and night predators award fixed gold when lifted.
@@ -79,7 +79,7 @@ A rare bullfrog can roll in while frogs are present. It hunts smaller frogs and 
 | Rainbow | Turns the eater into a rainbow fish. Platinum fish snack and grow a little instead. |
 | Green | Turns the eater into a lasting pond plant. |
 | Grower | Big permanent size boost. |
-| Pink / breed | Blushes the fish for breeding. |
+| Pink / breed | Blushes the fish for one litter of young. |
 | Platinum | Turns the eater into an invulnerable platinum fish. Rainbow fish, crocs, and night predators only snack and grow a little. |
 | Hero | Turns ordinary fish into hero guardians. Tames wild apex. Rainbow and platinum fish snack instead. |
 | Carcass | Large meal chunks (from some finales / events); strong growth. |
