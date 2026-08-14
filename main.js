@@ -2524,6 +2524,23 @@ function updateSoftMovables(dt) {
     }
 }
 
+// Soft edge-biased point: more gravel and cobbles near shallows, silt in the bowl.
+function pondBedShallowPos(i, w, h, salt) {
+    const preferEdge = seeded(i + salt) > 0.38;
+    let x = seeded(i + salt + 1) * w;
+    let y = seeded(i + salt + 2) * h;
+    if (preferEdge) {
+        const side = Math.floor(seeded(i + salt + 3) * 4);
+        const t = seeded(i + salt + 4);
+        const band = 0.08 + seeded(i + salt + 5) * 0.2;
+        if (side === 0) { x = t * w; y = seeded(i + salt + 6) * h * band; }
+        else if (side === 1) { x = t * w; y = h * (1 - seeded(i + salt + 6) * band); }
+        else if (side === 2) { x = seeded(i + salt + 6) * w * band; y = t * h; }
+        else { x = w * (1 - seeded(i + salt + 6) * band); y = t * h; }
+    }
+    return { x, y };
+}
+
 // Pond floor texture: dirt, mud, rocks, and settled debris, seen through the water.
 function rebuildPondBed() {
     if (!viewW || !viewH) return;
@@ -2534,6 +2551,9 @@ function rebuildPondBed() {
     c.width = w;
     c.height = h;
     const b = c.getContext("2d");
+    const cx0 = w * 0.5;
+    const cy0 = h * 0.52;
+    const basinR = Math.max(w, h) * 0.62;
 
     // Base dirt: mottled warm mud, no tiled wash.
     const base = b.createLinearGradient(0, 0, w * 0.2, h);
@@ -2544,8 +2564,41 @@ function rebuildPondBed() {
     b.fillStyle = base;
     b.fillRect(0, 0, w, h);
 
+    // Soft bowl: cooler dark silt toward the deeper center, warmer shallows at the rim.
+    const bowl = b.createRadialGradient(cx0, cy0, basinR * 0.08, cx0, cy0, basinR);
+    bowl.addColorStop(0, "rgba(18, 16, 12, 0.55)");
+    bowl.addColorStop(0.35, "rgba(28, 24, 16, 0.28)");
+    bowl.addColorStop(0.7, "rgba(70, 58, 34, 0.08)");
+    bowl.addColorStop(1, "rgba(110, 96, 62, 0.18)");
+    b.fillStyle = bowl;
+    b.fillRect(0, 0, w, h);
+
+    // Gentle silt dunes / undulations (soft ridges, not stripes).
+    const duneN = gfxQuality <= 0 ? 10 : 18;
+    for (let i = 0; i < duneN; i++) {
+        const x = seeded(i + 840) * w;
+        const y = seeded(i + 850) * h;
+        const rx = 40 + seeded(i + 860) * 120;
+        const ry = 10 + seeded(i + 870) * 28;
+        const g = b.createRadialGradient(x, y - ry * 0.2, 1, x, y, rx);
+        const lift = seeded(i + 880) > 0.45;
+        if (lift) {
+            g.addColorStop(0, "rgba(118, 102, 68, 0.22)");
+            g.addColorStop(0.55, "rgba(90, 76, 48, 0.08)");
+            g.addColorStop(1, "rgba(70, 58, 36, 0)");
+        } else {
+            g.addColorStop(0, "rgba(22, 18, 12, 0.34)");
+            g.addColorStop(0.55, "rgba(28, 24, 16, 0.12)");
+            g.addColorStop(1, "rgba(20, 16, 12, 0)");
+        }
+        b.fillStyle = g;
+        b.beginPath();
+        b.ellipse(x, y, rx, ry, (seeded(i + 890) - 0.5) * 1.2, 0, Math.PI * 2);
+        b.fill();
+    }
+
     // Broad organic silt / clay stains (irregular blobs, not a lattice).
-    const stainN = gfxQuality <= 0 ? 28 : 55;
+    const stainN = gfxQuality <= 0 ? 34 : 68;
     for (let i = 0; i < stainN; i++) {
         const x = seeded(i + 900) * w;
         const y = seeded(i + 910) * h;
@@ -2553,18 +2606,22 @@ function rebuildPondBed() {
         const ry = 12 + seeded(i + 930) * 58;
         const g = b.createRadialGradient(x - rx * 0.15, y - ry * 0.1, 1, x, y, rx);
         const kind = seeded(i + 940);
-        if (kind < 0.3) {
+        if (kind < 0.28) {
             g.addColorStop(0, "rgba(24, 20, 14, 0.72)");
             g.addColorStop(1, "rgba(24, 20, 14, 0)");
-        } else if (kind < 0.55) {
+        } else if (kind < 0.52) {
             g.addColorStop(0, "rgba(98, 82, 50, 0.5)");
             g.addColorStop(1, "rgba(72, 60, 38, 0)");
-        } else if (kind < 0.8) {
+        } else if (kind < 0.72) {
             g.addColorStop(0, "rgba(58, 64, 42, 0.4)");
             g.addColorStop(1, "rgba(40, 48, 34, 0)");
-        } else {
+        } else if (kind < 0.88) {
             g.addColorStop(0, "rgba(120, 108, 78, 0.32)");
             g.addColorStop(1, "rgba(90, 80, 55, 0)");
+        } else {
+            // Cooler clay pocket.
+            g.addColorStop(0, "rgba(64, 70, 58, 0.36)");
+            g.addColorStop(1, "rgba(44, 50, 40, 0)");
         }
         b.fillStyle = g;
         b.beginPath();
@@ -2572,8 +2629,24 @@ function rebuildPondBed() {
         b.fill();
     }
 
+    // Thin algae film in damp pockets (painterly green-brown, very soft).
+    const filmN = gfxQuality <= 0 ? 8 : 16;
+    for (let i = 0; i < filmN; i++) {
+        const x = seeded(i + 1400) * w;
+        const y = seeded(i + 1410) * h;
+        const rx = 22 + seeded(i + 1420) * 55;
+        const ry = 14 + seeded(i + 1430) * 36;
+        const g = b.createRadialGradient(x, y, 1, x, y, rx);
+        g.addColorStop(0, `rgba(${42 + seeded(i + 1440) * 18}, ${62 + seeded(i + 1445) * 28}, ${36 + seeded(i + 1450) * 14}, 0.2)`);
+        g.addColorStop(1, "rgba(40, 55, 34, 0)");
+        b.fillStyle = g;
+        b.beginPath();
+        b.ellipse(x, y, rx, ry, seeded(i + 1455) * Math.PI, 0, Math.PI * 2);
+        b.fill();
+    }
+
     // Fine silt dusting (soft noise, not a grid).
-    const siltN = gfxQuality <= 0 ? 700 : gfxQuality === 1 ? 1200 : 2200;
+    const siltN = gfxQuality <= 0 ? 900 : gfxQuality === 1 ? 1600 : 2800;
     for (let i = 0; i < siltN; i++) {
         const x = seeded(i + 980) * w;
         const y = seeded(i + 990) * h;
@@ -2585,10 +2658,22 @@ function rebuildPondBed() {
         b.fillRect(x, y, sz, 1 + seeded(i + 1030) * 1.4);
     }
 
-    // Short local sand streaks in clearer pockets (never full-width stripes).
-    for (let i = 0; i < 22; i++) {
-        const x0 = seeded(i + 960) * w;
-        const y0 = seeded(i + 965) * h;
+    // Micro grain: tiny sediment flecks for soft depth under the water.
+    const grainN = gfxQuality <= 0 ? 400 : gfxQuality === 1 ? 900 : 1600;
+    for (let i = 0; i < grainN; i++) {
+        const x = seeded(i + 1460) * w;
+        const y = seeded(i + 1470) * h;
+        const warm = seeded(i + 1480);
+        const c0 = 55 + warm * 90;
+        b.fillStyle = `rgba(${c0},${c0 * 0.82},${c0 * 0.55},${0.04 + seeded(i + 1490) * 0.1})`;
+        b.fillRect(x, y, 1, 1);
+    }
+
+    // Short local sand streaks: prefer clearer shallow pockets near the rim.
+    for (let i = 0; i < 30; i++) {
+        const p = pondBedShallowPos(i, w, h, 960);
+        const x0 = p.x;
+        const y0 = p.y;
         const span = 28 + seeded(i + 968) * 70;
         const ang = (seeded(i + 972) - 0.5) * 0.9;
         b.save();
@@ -2609,11 +2694,12 @@ function rebuildPondBed() {
         b.restore();
     }
 
-    // Mixed gravel: pebbles of varied size, hue, and clustering.
-    for (let i = 0; i < 340; i++) {
+    // Mixed gravel: pebbles of varied size, hue, and clustering (heavier near shallows).
+    for (let i = 0; i < 380; i++) {
         const cluster = seeded(i + 1035) > 0.78;
-        const cx = seeded(i + 1040) * w;
-        const cy = seeded(i + 1050) * h;
+        const p = pondBedShallowPos(i, w, h, 1040);
+        const cx = p.x;
+        const cy = p.y;
         const count = cluster ? 2 + Math.floor(seeded(i + 1052) * 4) : 1;
         for (let j = 0; j < count; j++) {
             const x = cx + (cluster ? (seeded(i * 9 + j + 1054) - 0.5) * 10 : 0);
@@ -2644,9 +2730,10 @@ function rebuildPondBed() {
     }
 
     // Larger river stones: rounded cobbles, flat slabs, and a few angular chips.
-    for (let i = 0; i < 85; i++) {
-        const x = seeded(i + 1110) * w;
-        const y = seeded(i + 1120) * h;
+    for (let i = 0; i < 92; i++) {
+        const p = pondBedShallowPos(i, w, h, 1110);
+        const x = p.x;
+        const y = p.y;
         const r = 3.5 + seeded(i + 1130) * 18;
         const shape = seeded(i + 1135);
         const facets = shape < 0.4 ? 0 : 5 + Math.floor(seeded(i + 1140) * 6);
@@ -2657,6 +2744,11 @@ function rebuildPondBed() {
         b.save();
         b.translate(x, y);
         b.rotate(seeded(i + 1160) * Math.PI);
+        // Soft contact shadow under the stone so it sits in the mud.
+        b.fillStyle = "rgba(12, 10, 8, 0.28)";
+        b.beginPath();
+        b.ellipse(r * 0.08, r * 0.22, r * 0.85, r * 0.38, 0.15, 0, Math.PI * 2);
+        b.fill();
         b.beginPath();
         if (facets === 0) {
             // Smooth cobble.
@@ -2776,10 +2868,15 @@ function rebuildPondBed() {
         b.restore();
     }
 
-    // Darker sunk pockets in the silt.
-    for (let i = 0; i < 20; i++) {
-        const x = seeded(i + 1330) * w;
-        const y = seeded(i + 1340) * h;
+    // Darker sunk pockets in the silt (biased toward the deeper bowl).
+    for (let i = 0; i < 26; i++) {
+        const towardCenter = seeded(i + 1325) > 0.35;
+        const x = towardCenter
+            ? cx0 + (seeded(i + 1330) - 0.5) * w * 0.55
+            : seeded(i + 1330) * w;
+        const y = towardCenter
+            ? cy0 + (seeded(i + 1340) - 0.5) * h * 0.5
+            : seeded(i + 1340) * h;
         const g = b.createRadialGradient(x, y, 1, x, y, 7 + seeded(i + 1350) * 16);
         g.addColorStop(0, "rgba(16, 14, 10, 0.48)");
         g.addColorStop(1, "rgba(16, 14, 10, 0)");
@@ -2789,11 +2886,12 @@ function rebuildPondBed() {
         b.fill();
     }
 
-    // Light water tint: keep the dirt readable, slight warm submerged cast.
-    const murk = b.createRadialGradient(w * 0.5, h * 0.4, w * 0.08, w * 0.5, h * 0.55, w * 0.8);
-    murk.addColorStop(0, "rgba(40, 68, 62, 0.07)");
-    murk.addColorStop(0.55, "rgba(22, 44, 46, 0.13)");
-    murk.addColorStop(1, "rgba(12, 26, 28, 0.26)");
+    // Submerged cast: cool murk deeper in the bowl, lighter near the shore.
+    const murk = b.createRadialGradient(cx0, cy0, basinR * 0.06, cx0, cy0, basinR * 1.05);
+    murk.addColorStop(0, "rgba(14, 28, 30, 0.3)");
+    murk.addColorStop(0.4, "rgba(22, 44, 46, 0.16)");
+    murk.addColorStop(0.75, "rgba(40, 68, 62, 0.07)");
+    murk.addColorStop(1, "rgba(70, 78, 52, 0.04)");
     b.fillStyle = murk;
     b.fillRect(0, 0, w, h);
 
@@ -2811,15 +2909,78 @@ function drawPondBed(ctx) {
     ctx.globalAlpha = daySun ? 0.04 : 0.06;
     ctx.fillStyle = daySun ? "rgba(42, 36, 20, 1)" : "rgba(22, 48, 46, 1)";
     ctx.fillRect(0, 0, viewW, viewH);
+
+    // Soft depth falloff toward the deeper center (reads as a real pond bowl).
+    const basin = ctx.createRadialGradient(
+        viewW * 0.5, viewH * 0.52, Math.min(viewW, viewH) * 0.08,
+        viewW * 0.5, viewH * 0.52, Math.max(viewW, viewH) * 0.62
+    );
+    if (crystalMode) {
+        basin.addColorStop(0, "rgba(18, 22, 36, 0.14)");
+        basin.addColorStop(0.55, "rgba(28, 36, 48, 0.05)");
+        basin.addColorStop(1, "rgba(40, 50, 58, 0)");
+    } else if (nightMode) {
+        basin.addColorStop(0, "rgba(8, 18, 24, 0.16)");
+        basin.addColorStop(0.55, "rgba(12, 28, 32, 0.06)");
+        basin.addColorStop(1, "rgba(20, 36, 34, 0)");
+    } else {
+        basin.addColorStop(0, "rgba(22, 18, 12, 0.14)");
+        basin.addColorStop(0.55, "rgba(40, 32, 18, 0.05)");
+        basin.addColorStop(1, "rgba(70, 58, 32, 0)");
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = basin;
+    ctx.fillRect(0, 0, viewW, viewH);
+
+    // Warm shallow rim so the edges feel closer to the surface.
+    const rim = ctx.createRadialGradient(
+        viewW * 0.5, viewH * 0.5, Math.min(viewW, viewH) * 0.28,
+        viewW * 0.5, viewH * 0.5, Math.max(viewW, viewH) * 0.72
+    );
+    rim.addColorStop(0, "rgba(0,0,0,0)");
+    rim.addColorStop(0.65, "rgba(0,0,0,0)");
+    if (daySun) {
+        rim.addColorStop(1, "rgba(120, 102, 58, 0.07)");
+    } else if (nightMode) {
+        rim.addColorStop(1, "rgba(36, 52, 48, 0.06)");
+    } else {
+        rim.addColorStop(1, "rgba(70, 78, 90, 0.05)");
+    }
+    ctx.fillStyle = rim;
+    ctx.fillRect(0, 0, viewW, viewH);
+
     if (daySun) {
         // Soft depth falloff toward the lower frame (no bright haze).
         const depth = ctx.createLinearGradient(0, 0, 0, viewH);
         depth.addColorStop(0, "rgba(255, 220, 120, 0)");
         depth.addColorStop(0.55, "rgba(70, 52, 22, 0.03)");
         depth.addColorStop(1, "rgba(28, 20, 10, 0.1)");
-        ctx.globalAlpha = 1;
         ctx.fillStyle = depth;
         ctx.fillRect(0, 0, viewW, viewH);
+    }
+
+    // Gentle silt shimmer: slow living dust, no teleports.
+    if (gfxQuality >= 1 && typeof sunPhase === "number") {
+        const t = sunPhase * 0.18;
+        const n = gfxQuality >= 2 ? 7 : 4;
+        ctx.globalCompositeOperation = "soft-light";
+        for (let i = 0; i < n; i++) {
+            const x = ((i * 173.3 + Math.sin(t * 0.7 + i * 1.4) * 48
+                + Math.cos(t * 0.45 + i) * 28) % viewW + viewW) % viewW;
+            const y = ((i * 101.7 + Math.cos(t * 0.55 + i * 1.1) * 36
+                + Math.sin(t * 0.33 + i * 0.8) * 22) % viewH + viewH) % viewH;
+            const breath = 0.55 + 0.45 * Math.abs(Math.sin(t * 0.6 + i * 0.9));
+            const rr = 28 + breath * 42 + (i % 3) * 8;
+            const g = ctx.createRadialGradient(x, y, 0, x, y, rr);
+            g.addColorStop(0, `rgba(150, 128, 82, ${0.07 * breath})`);
+            g.addColorStop(0.45, `rgba(90, 74, 48, ${0.035 * breath})`);
+            g.addColorStop(1, "rgba(50, 40, 28, 0)");
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.ellipse(x, y, rr, rr * (0.45 + (i % 3) * 0.1), i * 0.8 + t * 0.05, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.globalCompositeOperation = "source-over";
     }
     ctx.restore();
 }
@@ -3308,21 +3469,29 @@ function fillFishShadowPaths(ctx, L, W, shape, wig, opts) {
 
 function fillReptileShadowPaths(ctx, r) {
     const L = r.size;
-    const W = r.size * (r.kind === "alligator" ? 0.34 : 0.28);
-    const snout = r.kind === "alligator" ? 0.5 : 0.58;
+    const isGator = r.kind === "alligator";
+    const W = r.size * (isGator ? 0.34 : 0.28);
+    const snout = isGator ? 0.5 : 0.58;
+    // Alligator shadow keeps longer aft limb lobes (legs stream along the flanks).
+    const midW = isGator ? 1.12 : 1.0;
+    const aftW = isGator ? 1.05 : 0.9;
     ctx.beginPath();
     // Single fusiform + snout + soft limb lobes.
     ctx.moveTo(L * snout, 0);
-    if (r.kind === "alligator") {
-        ctx.bezierCurveTo(L * 0.4, -W * 0.7, L * 0.15, -W * 1.0, -L * 0.15, -W * 0.85);
+    if (isGator) {
+        ctx.bezierCurveTo(L * 0.4, -W * 0.7, L * 0.15, -W * 1.0 * midW, -L * 0.15, -W * 0.95 * midW);
     } else {
         ctx.bezierCurveTo(L * 0.35, -W * 0.35, L * 0.1, -W * 0.95, -L * 0.15, -W * 0.8);
     }
-    ctx.bezierCurveTo(-L * 0.35, -W * 0.95, -L * 0.55, -W * 0.55, -L * 0.7, -W * 0.25);
+    ctx.bezierCurveTo(-L * 0.35, -W * 0.95 * aftW, -L * 0.55, -W * 0.55, -L * 0.7, -W * 0.25);
     ctx.quadraticCurveTo(-L * 0.92, -W * 0.35, -L * 0.98, 0);
     ctx.quadraticCurveTo(-L * 0.92, W * 0.35, -L * 0.7, W * 0.25);
-    ctx.bezierCurveTo(-L * 0.55, W * 0.55, -L * 0.35, W * 0.9, -L * 0.15, W * 0.8);
-    ctx.bezierCurveTo(L * 0.1, W * 1.05, L * 0.35, W * 0.7, L * snout, 0);
+    ctx.bezierCurveTo(-L * 0.55, W * 0.55, -L * 0.35, W * 0.95 * aftW, -L * 0.15, W * 0.95 * midW);
+    if (isGator) {
+        ctx.bezierCurveTo(L * 0.15, W * 1.0 * midW, L * 0.4, W * 0.7, L * snout, 0);
+    } else {
+        ctx.bezierCurveTo(L * 0.1, W * 1.05, L * 0.35, W * 0.7, L * snout, 0);
+    }
     ctx.closePath();
     ctx.fill();
 }
@@ -13717,6 +13886,8 @@ function updateRainbowReptileFinale(r, dt) {
             return;
         }
     }
+    r.tailPhase = (r.tailPhase || 0) + dt * 4.2;
+    if (typeof r.updateLimbSwim === "function") r.updateLimbSwim(dt);
     updateFinaleWake(fin.wake, dt, 22);
 }
 
@@ -13746,6 +13917,10 @@ class Reptile {
         this.kind = kind || (Math.random() < 0.5 ? "crocodile" : "alligator");
         this.size = rand(CONFIG.reptileSize[0], CONFIG.reptileSize[1]);
         this.tailPhase = Math.random() * Math.PI * 2;
+        // Local-space foot tips; eased toward streaming swim goals (not teleported).
+        this.limbTips = null;
+        this._prevDir = null;
+        this._turnRate = 0;
         this.dead = false;
         this.leaving = false;
         this.eatPulse = 0;
@@ -14171,6 +14346,7 @@ class Reptile {
     update(dt) {
         if (this.octopusWrap) {
             this.tailPhase += dt * 1.8;
+            this.updateLimbSwim(dt);
             return;
         }
         if (this.pickerThrow) {
@@ -14179,6 +14355,7 @@ class Reptile {
         }
         if (this.pickerHeld) {
             this.tailPhase += dt * (this.pickerLiftZ > 4 ? 12 : 4);
+            this.updateLimbSwim(dt);
             return;
         }
         this.eatPulse -= dt;
@@ -14226,6 +14403,9 @@ class Reptile {
             const spd = this.speed * 2.2;
             this.x += Math.cos(this.dir) * spd * dt;
             this.y += Math.sin(this.dir) * spd * dt;
+            this._prevDir = this.dir;
+            this._turnRate = 0;
+            this.updateLimbSwim(dt);
             if (Math.random() < 0.55) {
                 water.disturb(this.x - Math.cos(this.dir) * this.size * 0.35,
                               this.y - Math.sin(this.dir) * this.size * 0.35, 12, 70);
@@ -14388,13 +14568,70 @@ class Reptile {
             water.disturb(this.x - Math.cos(this.dir) * this.size * 0.4,
                           this.y - Math.sin(this.dir) * this.size * 0.4, 10, 45);
         }
+
+        const turn = normAngle(this.dir - (this._prevDir != null ? this._prevDir : this.dir))
+            / Math.max(dt, 1e-4);
+        this._prevDir = this.dir;
+        this._turnRate = turn;
+        this.updateLimbSwim(dt);
+    }
+
+    // Steady swim: limbs adducted and streaming aft (Manter / Fish & Adams kinematics).
+    // Hind legs longer than fore; tips ease toward drag goals with phase lag. No teleports.
+    updateLimbSwim(dt) {
+        const L = this.size;
+        const isGator = this.kind === "alligator";
+        const W = L * (isGator ? 0.36 : 0.28);
+        // [hip/shoulder along, side, isHind]
+        const specs = [
+            [0.1, 1, false],
+            [-0.14, 1, true],
+            [0.1, -1, false],
+            [-0.14, -1, true],
+        ];
+        const foreLen = isGator ? 0.34 : 0.22;
+        const hindLen = isGator ? 0.56 : 0.36;
+        if (!this.limbTips || this.limbTips.length !== 4) {
+            this.limbTips = specs.map(([along, side, isHind]) => {
+                const len = isHind ? hindLen : foreLen;
+                return {
+                    x: L * (along - len),
+                    y: side * W * (isHind ? 0.62 : 0.48),
+                };
+            });
+        }
+        if (this.golden) return;
+
+        const steer = Math.max(-1, Math.min(1, (this._turnRate || 0) / 2.8));
+        const phase = this.tailPhase || 0;
+        for (let i = 0; i < 4; i++) {
+            const [along, side, isHind] = specs[i];
+            const len = isHind ? hindLen : foreLen;
+            const station = isHind ? 0.42 : 0.18;
+            // Passive drag lag behind the travelling body/tail wave.
+            const drag = Math.sin(phase - station * 2.35 - (isHind ? 0.4 : 0.12))
+                * (isHind ? 0.11 : 0.07);
+            const tuck = Math.abs(steer) * (isHind ? 0.03 : 0.02);
+            const goalX = L * (along - len + tuck);
+            const goalY = side * W * (isHind ? (isGator ? 0.68 : 0.55) : (isGator ? 0.5 : 0.42))
+                + drag * W * (isHind ? 0.42 : 0.28)
+                - steer * side * W * (isHind ? 0.1 : 0.06);
+            const tip = this.limbTips[i];
+            const rate = isHind ? 4.8 : 6.2;
+            const k = 1 - Math.exp(-rate * dt);
+            tip.x += (goalX - tip.x) * k;
+            tip.y += (goalY - tip.y) * k;
+        }
     }
 
     draw(ctx) {
         const L = this.size;
         const isGator = this.kind === "alligator";
         const W = this.size * (isGator ? 0.36 : 0.28);
-        const wig = this.golden ? 0 : Math.sin(this.tailPhase) * (this.tamed ? 0.18 : 0.3);
+        // Travelling caudal wave: amplitude grows toward the tip (real alligator sculling).
+        const amp = this.golden ? 0 : (this.tamed ? 0.16 : 0.28);
+        const phase = this.tailPhase || 0;
+        const waveAt = (u) => this.golden ? 0 : Math.sin(phase - u * 2.4) * amp * (0.25 + 0.75 * u);
         const sink = this.golden ? (this.sinkDepth || 0) : 0;
         const liftZ = this.pickerLiftZ || 0;
         if (this.plantMorph) drawPlantMorphAura(ctx, this);
@@ -14426,28 +14663,35 @@ class Reptile {
         const rainbowing = (this.isRainbow || this.friendlyBoost > 0) && !this.golden;
         const hue = rainbowing ? (performance.now() * 0.12) % 360 : 0;
 
-        // Solid tapering tail (no center notch that reads as a detached claw).
+        // Solid tapering tail with a travelling lateral wave (amp grows toward tip).
         let tailCol = this.isHero ? "#4a7a88" : (this.tamed ? "#6a8f68" : "#3d5a38");
         if (this.golden) tailCol = "#c9a24b";
         else if (rainbowing) tailCol = `hsl(${(hue + 40) % 360}, 55%, 42%)`;
+        const w0 = waveAt(0.2);
+        const w1 = waveAt(0.45);
+        const w2 = waveAt(0.7);
+        const w3 = waveAt(1.0);
         ctx.fillStyle = tailCol;
         ctx.beginPath();
-        ctx.moveTo(-L * 0.28, -W * 0.35);
+        ctx.moveTo(-L * 0.28, -W * 0.35 + w0 * W * 0.08);
         ctx.bezierCurveTo(
-            -L * 0.5, -W * (0.55 + wig * 0.15),
-            -L * 0.72, -W * (0.35 + wig * 0.25),
-            -L * 0.92, -W * (0.08 + wig * 0.2)
+            -L * 0.5, -W * (0.55 + w1 * 0.2) + w1 * W * 0.35,
+            -L * 0.72, -W * (0.35 + w2 * 0.28) + w2 * W * 0.55,
+            -L * 0.92, -W * (0.08 + w3 * 0.18) + w3 * W * 0.75
         );
-        ctx.quadraticCurveTo(-L * 0.98, 0, -L * 0.92, W * (0.08 + wig * 0.2));
+        ctx.quadraticCurveTo(
+            -L * 0.98 + w3 * W * 0.12, w3 * W * 0.85,
+            -L * 0.92, W * (0.08 + w3 * 0.18) + w3 * W * 0.75
+        );
         ctx.bezierCurveTo(
-            -L * 0.72, W * (0.35 + wig * 0.25),
-            -L * 0.5, W * (0.55 + wig * 0.15),
-            -L * 0.28, W * 0.35
+            -L * 0.72, W * (0.35 + w2 * 0.28) + w2 * W * 0.55,
+            -L * 0.5, W * (0.55 + w1 * 0.2) + w1 * W * 0.35,
+            -L * 0.28, W * 0.35 + w0 * W * 0.08
         );
         ctx.closePath();
         ctx.fill();
 
-        // Low armored body.
+        // Body fill used by limbs and torso.
         const g = ctx.createLinearGradient(0, -W, 0, W);
         if (this.golden) {
             g.addColorStop(0, "#fff3b0");
@@ -14466,6 +14710,60 @@ class Reptile {
             g.addColorStop(0.45, "#2f4630");
             g.addColorStop(1, "#6f8a5a");
         }
+
+        // Streaming swim limbs under the flanks (drawn before body so hips tuck in).
+        if (!this.limbTips) this.updateLimbSwim(1 / 60);
+        const limbSpecs = [
+            [0.1, 1, false],
+            [-0.14, 1, true],
+            [0.1, -1, false],
+            [-0.14, -1, true],
+        ];
+        const drawSwimLimb = (i) => {
+            const [along, side, isHind] = limbSpecs[i];
+            const tip = (this.limbTips && this.limbTips[i]) || {
+                x: L * (along - (isHind ? (isGator ? 0.56 : 0.36) : (isGator ? 0.34 : 0.22))),
+                y: side * W * (isHind ? 0.62 : 0.48),
+            };
+            const bx = L * along;
+            const by = side * W * (isHind ? 0.4 : 0.34);
+            const tx = tip.x;
+            const ty = tip.y;
+            const midX = bx * 0.4 + tx * 0.6;
+            const midY = (by + ty) * 0.5 + side * W * (isHind ? 0.06 : 0.04);
+            const rootW = L * (isHind ? (isGator ? 0.085 : 0.065) : (isGator ? 0.06 : 0.045));
+            const tipW = L * (isHind ? (isGator ? 0.038 : 0.028) : (isGator ? 0.028 : 0.02));
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.moveTo(bx, by - side * rootW * 0.15);
+            ctx.quadraticCurveTo(midX, midY - side * rootW * 0.55, tx, ty - side * tipW * 0.2);
+            ctx.lineTo(tx, ty + side * tipW * 0.85);
+            ctx.quadraticCurveTo(midX, midY + side * rootW * 0.35, bx - L * 0.02, by + side * rootW * 0.35);
+            ctx.closePath();
+            ctx.fill();
+            // Webbed foot: plantar face streams medially/aft (steady swim posture).
+            if (!this.golden) {
+                ctx.strokeStyle = "rgba(20,30,18,0.72)";
+                ctx.lineWidth = Math.max(1, L * (isHind ? 0.022 : 0.016));
+                ctx.lineCap = "round";
+                const aft = L * (isHind ? (isGator ? 0.08 : 0.055) : (isGator ? 0.05 : 0.035));
+                for (let d = -1; d <= 1; d++) {
+                    ctx.beginPath();
+                    ctx.moveTo(tx, ty * 0.92);
+                    ctx.lineTo(
+                        tx - aft,
+                        ty - side * L * 0.01 + d * side * L * (isHind ? 0.045 : 0.03)
+                    );
+                    ctx.stroke();
+                }
+            }
+        };
+        drawSwimLimb(1);
+        drawSwimLimb(3);
+        drawSwimLimb(0);
+        drawSwimLimb(2);
+
+        // Low armored body.
         ctx.fillStyle = g;
         ctx.beginPath();
         ctx.moveTo(L * 0.18, 0);
@@ -14473,36 +14771,6 @@ class Reptile {
         ctx.quadraticCurveTo(-L * 0.42, 0, -L * 0.36, W * 0.42);
         ctx.bezierCurveTo(-L * 0.2, W * 1.0, L * 0.02, W * 1.0, L * 0.18, 0);
         ctx.fill();
-
-        // Limbs tucked under the flanks (full opacity, rooted into the body).
-        const limbBeat = this.golden ? 0 : (0.5 + 0.5 * Math.sin(this.tailPhase * 0.85));
-        const limbBeatB = this.golden ? 0 : (0.5 + 0.5 * Math.sin(this.tailPhase * 0.85 + Math.PI));
-        const drawLimb = (along, side, beat, scale) => {
-            const lx = L * (along - beat * 0.06);
-            const ly = side * W * (0.52 + beat * 0.08);
-            const ang = side * (0.55 + beat * 0.18);
-            ctx.fillStyle = g;
-            ctx.beginPath();
-            ctx.ellipse(lx, ly, L * (0.12 + beat * 0.03) * scale, W * (0.28 + beat * 0.06) * scale, ang, 0, Math.PI * 2);
-            ctx.fill();
-            if (!this.golden) {
-                ctx.fillStyle = "rgba(20,30,18,0.7)";
-                for (let c = -1; c <= 1; c++) {
-                    const cx = lx + Math.cos(ang) * L * 0.09 * scale + c * L * 0.02;
-                    const cy = ly + Math.sin(ang) * W * 0.18 * scale + side * c * W * 0.05;
-                    ctx.beginPath();
-                    ctx.moveTo(cx, cy);
-                    ctx.lineTo(cx + Math.cos(ang) * L * 0.035, cy + Math.sin(ang) * L * 0.028 * side);
-                    ctx.lineTo(cx - side * L * 0.01, cy + side * L * 0.012);
-                    ctx.closePath();
-                    ctx.fill();
-                }
-            }
-        };
-        drawLimb(0.06, 1, limbBeat, 1.0);
-        drawLimb(-0.12, 1, limbBeatB, 0.85);
-        drawLimb(0.06, -1, limbBeatB, 0.95);
-        drawLimb(-0.12, -1, limbBeat, 0.8);
 
         // Head plate fused to the body, then a compact snout (not a needle).
         ctx.fillStyle = g;
