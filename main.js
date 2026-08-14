@@ -12737,7 +12737,7 @@ let heroRemorseEnding = null; // { fish, t, burst }
 let orcaFeastEnding = null; // night coronation after eating the orca
 let swordfishSpearEnding = null; // { sf, t, approach, fade, liveAlpha } POV tip thrust finale
 let rainbowNinjaEnding = null; // multi-rainbow ninja fight when only rainbows remain
-let crystalApexEnding = null; // { kind: "prism"|"serpent"|"mantle", t, phase, ... }
+let crystalApexEnding = null; // { kind, t, phase: approach|bloom|shatter|fade, ... }
 let whaleRemorseDone = false; // one-shot: remorse finale already fired this session
 let apexDuel = null; // croc/alligator vs shark when the pond is emptied
 let apexDuelPlayed = false; // blocks shark respawn loops after a croc finale
@@ -21372,7 +21372,8 @@ function beginCrystalApexEnding(kind, actor) {
         t: 0,
         clock: 0,
         wall0: performance.now(),
-        phase: "rise",
+        // approach → bloom → shatter → fade (spectacle waits until centered)
+        phase: "approach",
         overlay: 0.06,
         fade: 0,
         bloom: 0,
@@ -21451,9 +21452,9 @@ function updateCrystalApexEnding(dt) {
         : e.phase === "fade" ? Math.max(0, 1 - e.t * 0.5) : 0;
     e.bloom += (bloomWant - e.bloom) * ease(2.0);
 
-    const ringWant = e.phase === "bloom" ? Math.min(1, e.t / 0.9)
-        : e.phase === "shatter" ? Math.max(0, 1 - e.t * 0.7)
-        : e.phase === "rise" ? Math.min(0.35, e.t * 0.12) : 0;
+    const ringWant = e.phase === "bloom" ? Math.min(1, e.t / 0.85)
+        : e.phase === "shatter" ? Math.max(0, 1 - e.t * 0.85)
+        : e.phase === "approach" ? Math.min(0.28, e.t * 0.1) : 0;
     e.rings += (ringWant - (e.rings || 0)) * ease(2.4);
 
     if (actor) {
@@ -21461,16 +21462,14 @@ function updateCrystalApexEnding(dt) {
         if (actor.phase != null) actor.phase += dt * 2.1;
         if (actor.pulse != null) actor.pulse += dt * (2.6 + e.bloom);
 
-        if (e.phase === "rise") {
-            // Spiral inward: bank and swim, never snap to center.
-            e.orbitAng += dt * (e.kind === "serpent" ? 1.35 : e.kind === "mantle" ? 0.85 : 1.1);
-            e.orbitRad += (42 - e.orbitRad) * ease(0.85);
-            const tx = cx + Math.cos(e.orbitAng) * e.orbitRad
-                + (e.kind === "serpent" ? -12 : e.kind === "mantle" ? 8 : 0);
-            const ty = cy + Math.sin(e.orbitAng) * e.orbitRad * 0.68
-                + (e.kind === "prism" ? 8 : 0);
-            easeToward(actor, tx, ty, dt, e.kind === "mantle" ? 36 : 48, 1.25);
-            bankToward(actor, e.orbitAng + Math.PI * 0.5, dt, 1.5);
+        if (e.phase === "approach") {
+            // Swim to screen center first; later spectacle waits until close enough.
+            const maxSpd = e.kind === "mantle" ? 125 : e.kind === "serpent" ? 155 : 140;
+            easeToward(actor, cx, cy, dt, maxSpd, 2.1);
+            bankToward(actor, Math.atan2(cy - actor.y, cx - actor.x), dt, 2.0);
+            const dist = Math.hypot(actor.x - cx, actor.y - cy);
+            e.orbitRad = dist;
+            e.orbitAng = Math.atan2(actor.y - cy, actor.x - cx);
             if (e.kind === "mantle" && actor.legs) {
                 for (let i = 0; i < actor.legs.length; i++) {
                     const leg = actor.legs[i];
@@ -21488,7 +21487,7 @@ function updateCrystalApexEnding(dt) {
                     );
                 }
             }
-            if (Math.random() < 0.2) {
+            if (Math.random() < 0.22) {
                 pushFinaleWake(e.wake, actor.x, actor.y, 1, {
                     ang: actor.dir + Math.PI,
                     hue: e.kind === "prism" ? 195 : e.kind === "mantle" ? 290 : 275,
@@ -21496,19 +21495,24 @@ function updateCrystalApexEnding(dt) {
                     lift: 4,
                 });
             }
-            if (e.t >= 2.2 || e.orbitRad < 48) {
+            // Gate bloom on center reach. Failsafe only after a long swim (25s budget).
+            const closeEnough = dist < 42;
+            const approachFailsafe = e.t >= 7.5;
+            if (closeEnough || approachFailsafe) {
                 e.phase = "bloom";
                 e.t = 0;
+                e.orbitAng = Math.atan2(actor.y - cy, actor.x - cx);
+                e.orbitRad = Math.hypot(actor.x - cx, actor.y - cy);
                 pushCrystalFinaleMote(e, actor.x, actor.y, 26);
                 Audio.predatorEat(0);
             }
         } else if (e.phase === "bloom") {
             // Slow circle while swelling: reaching, not a cutscene pose.
-            const swell = e.startSize * (1 + Math.min(0.55, e.t * 0.16));
+            const swell = e.startSize * (1 + Math.min(0.5, e.t * 0.18));
             softSizeToward(actor, swell, dt, 1.55);
             e.orbitAng += dt * 0.95;
-            const br = 26 + Math.sin(e.t * 1.6) * 8;
-            easeOrbitToward(actor, cx, cy, br, e.orbitAng, dt, 30, 1.05, 0.7);
+            const br = 22 + Math.sin(e.t * 1.6) * 7;
+            easeOrbitToward(actor, cx, cy, br, e.orbitAng, dt, 32, 1.05, 0.7);
             if (Math.random() < 0.4) pushCrystalFinaleMote(e, actor.x, actor.y, 2);
             if (Math.random() < 0.25) {
                 pushFinaleWake(e.wake, actor.x, actor.y, 2, {
@@ -21532,7 +21536,7 @@ function updateCrystalApexEnding(dt) {
                     );
                 }
             }
-            if (e.t >= 2.1) {
+            if (e.t >= 1.65) {
                 e.phase = "shatter";
                 e.t = 0;
                 pushCrystalFinaleShard(e, actor.x, actor.y, e.kind === "serpent" ? 32 : 24);
@@ -21550,19 +21554,19 @@ function updateCrystalApexEnding(dt) {
             }
         } else if (e.phase === "shatter") {
             // Drift outward while shrinking (capped ease), then dissolve.
-            const shrink = Math.max(10, e.startSize * (1 - Math.min(0.92, e.t / 1.7)));
-            softSizeToward(actor, shrink, dt, 2.2);
+            const shrink = Math.max(10, e.startSize * (1 - Math.min(0.92, e.t / 1.35)));
+            softSizeToward(actor, shrink, dt, 2.4);
             const outAng = e.orbitAng + Math.PI * 0.35 + e.t * 0.8;
-            const outR = 18 + e.t * 55;
+            const outR = 18 + e.t * 58;
             easeToward(
                 actor,
                 cx + Math.cos(outAng) * outR,
                 cy + Math.sin(outAng) * outR * 0.65,
                 dt,
-                62,
+                66,
                 1.6
             );
-            e.actorAlpha = Math.max(0, 1 - e.t / 1.65);
+            e.actorAlpha = Math.max(0, 1 - e.t / 1.25);
             if (e.kind === "mantle" && actor.legs) {
                 for (let i = 0; i < actor.legs.length; i++) {
                     const leg = actor.legs[i];
@@ -21572,7 +21576,7 @@ function updateCrystalApexEnding(dt) {
                 }
             }
             if (Math.random() < 0.5) pushCrystalFinaleShard(e, actor.x, actor.y, 1);
-            if (e.t >= 1.4) {
+            if (e.t >= 1.1) {
                 e.phase = "fade";
                 e.t = 0;
                 actor.dead = true;
@@ -21591,15 +21595,15 @@ function updateCrystalApexEnding(dt) {
     }
 
     if (e.phase === "fade") {
-        e.fade = Math.min(1, e.fade + dt * 0.62);
-        if (!e.restocked && e.fade >= 0.82 && e.t >= 1.05) {
+        e.fade = Math.min(1, e.fade + dt * 0.72);
+        if (!e.restocked && e.fade >= 0.78 && e.t >= 0.85) {
             e.restocked = true;
             const keep = e;
             resetPond({ keepCrystalEnding: true, skipRepop: false });
             crystalApexEnding = keep;
             if (Audio.goldChime) Audio.goldChime(0);
         }
-        if (e.restocked && e.t >= 2.5) {
+        if (e.restocked && e.t >= 2.0) {
             crystalApexEnding = null;
             return;
         }
