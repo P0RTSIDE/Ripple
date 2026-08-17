@@ -130,8 +130,8 @@ body.pond {
 /* Hide/show chrome: always reachable, even when other menus are off. */
 #ui-toggle {
     position: fixed;
-    top: 18px;
-    right: 56px;
+    top: max(18px, env(safe-area-inset-top, 0px));
+    right: max(56px, calc(16px + env(safe-area-inset-right, 0px)));
     width: 34px;
     height: 34px;
     display: flex;
@@ -186,8 +186,8 @@ body.ui-hidden .ico-ui {
 /* Minimal corner toggle: an icon only, faint until hovered. */
 #mode-toggle {
     position: fixed;
-    top: 18px;
-    right: 18px;
+    top: max(18px, env(safe-area-inset-top, 0px));
+    right: max(18px, env(safe-area-inset-right, 0px));
     width: 34px;
     height: 34px;
     display: flex;
@@ -272,8 +272,8 @@ body.pond #mode-icon::after {
 /* Top-left gold fish tally for the hats unlock. */
 #gold-counter {
     position: fixed;
-    left: 16px;
-    top: 16px;
+    left: max(16px, env(safe-area-inset-left, 0px));
+    top: max(16px, env(safe-area-inset-top, 0px));
     z-index: 10;
     display: none;
     align-items: center;
@@ -310,8 +310,8 @@ body.pond #gold-counter {
 /* Pond aesthetics + drop sound: tucked bottom-left, quiet until hovered. */
 #pond-controls {
     position: fixed;
-    left: 16px;
-    bottom: 16px;
+    left: max(16px, env(safe-area-inset-left, 0px));
+    bottom: max(16px, env(safe-area-inset-bottom, 0px));
     display: none;
     flex-direction: column;
     gap: 8px;
@@ -340,13 +340,36 @@ body.pond #pond-controls {
     #window-controls:focus-within {
         opacity: 0.88;
     }
+
+    .scenery-btn,
+    #ambient-btn,
+    #drop-sound-btn,
+    #looks-btn,
+    #hats-btn,
+    #market-btn,
+    #progress-btn,
+    #catcher-btn,
+    #picker-btn,
+    #tunes-btn,
+    #rhythm-btn,
+    #food-btn,
+    #net-btn {
+        width: 40px;
+        min-height: 40px;
+    }
+
+    #ui-toggle,
+    #mode-toggle {
+        width: 40px;
+        height: 40px;
+    }
 }
 
 /* Window mode chrome: rhythm studio entry, same quiet corner feel. */
 #window-controls {
     position: fixed;
-    left: 16px;
-    bottom: 16px;
+    left: max(16px, env(safe-area-inset-left, 0px));
+    bottom: max(16px, env(safe-area-inset-bottom, 0px));
     display: none;
     flex-direction: column;
     gap: 8px;
@@ -538,6 +561,7 @@ body:not(.pond) #window-controls {
     border-style: dashed;
     border-color: rgba(200, 170, 80, 0.35);
     color: rgba(220, 190, 100, 0.7);
+    cursor: not-allowed;
 }
 
 #hats-btn.locked.ready,
@@ -1002,8 +1026,8 @@ body:not(.pond) #window-controls {
 /* Quiet market popup: icon tile grid above pond controls. */
 #market-panel {
     position: fixed;
-    left: 58px;
-    bottom: 16px;
+    left: max(58px, calc(16px + env(safe-area-inset-left, 0px) + 42px));
+    bottom: max(16px, env(safe-area-inset-bottom, 0px));
     z-index: 11;
     display: none;
     flex-direction: column;
@@ -1035,17 +1059,20 @@ body.pond #market-panel.open:focus-within {
 /* Progress panel: same quiet chrome as market, free local saves only. */
 #progress-panel {
     position: fixed;
-    left: 58px;
-    bottom: 16px;
+    left: max(58px, calc(16px + env(safe-area-inset-left, 0px) + 42px));
+    bottom: max(16px, env(safe-area-inset-bottom, 0px));
     z-index: 11;
     display: none;
     flex-direction: column;
     gap: 4px;
     min-width: 176px;
     padding: 8px 8px 7px;
-    background: rgba(12, 22, 20, 0.42);
+    background: rgba(12, 22, 20, 0.48);
     border: 1px solid rgba(180, 210, 200, 0.18);
     border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(4, 10, 8, 0.28);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.35s ease;
@@ -1064,18 +1091,21 @@ body.pond #progress-panel.open:focus-within {
 
 #registry-panel {
     position: fixed;
-    left: 58px;
-    bottom: 16px;
+    left: max(58px, calc(16px + env(safe-area-inset-left, 0px) + 42px));
+    bottom: max(16px, env(safe-area-inset-bottom, 0px));
     z-index: 11;
     display: none;
     flex-direction: column;
     gap: 8px;
     width: min(420px, calc(100vw - 80px));
-    max-height: min(520px, calc(100vh - 48px));
+    max-height: min(520px, calc(100vh - 48px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)));
     padding: 10px 10px 9px;
     background: rgba(12, 22, 20, 0.52);
     border: 1px solid rgba(180, 210, 200, 0.18);
     border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(4, 10, 8, 0.28);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.35s ease;
@@ -1277,6 +1307,28 @@ body.pond #registry-panel.open:focus-within {
     border-color: rgba(200, 224, 210, 0.42);
     background: rgba(180, 210, 200, 0.1);
     color: rgba(235, 245, 240, 0.95);
+    box-shadow: 0 0 0 2px rgba(140, 200, 170, 0.16);
+}
+
+.market-tile.can-buy {
+    border-color: rgba(170, 210, 150, 0.38);
+    background: rgba(60, 100, 80, 0.12);
+}
+
+.market-tile.can-buy:hover:not(:disabled),
+.market-tile.can-buy:focus-visible:not(:disabled) {
+    border-color: rgba(190, 230, 170, 0.55);
+    box-shadow: 0 0 0 2px rgba(150, 210, 140, 0.22);
+}
+
+.market-tile:active:not(:disabled) {
+    transform: scale(0.96);
+    transition: transform 0.08s ease, border-color 0.08s ease;
+}
+
+.market-tile:disabled:not(.owned) {
+    opacity: 0.32;
+    border-style: dashed;
 }
 
 .market-tile:disabled {
@@ -1748,10 +1800,25 @@ body.pond #food-stash.has-items {
     z-index: 5;
     text-align: center;
     max-width: min(280px, calc(100vw - 48px));
+    text-shadow:
+        0 1px 10px rgba(4, 10, 8, 0.7),
+        0 0 22px rgba(7, 16, 18, 0.45);
 }
 
 #hint.gone {
     opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #hint {
+        animation: none;
+        opacity: 0.45;
+    }
+
+    #surface {
+        animation: none;
+        opacity: 1;
+    }
 }
 
 @keyframes breathe {
