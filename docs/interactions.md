@@ -5,7 +5,7 @@ A personal reference for how fish, food, predators, market tools, and endings fi
 ## Fish kinds
 
 ### Common fish
-Everyday pond fish (koi, goldfish, minnows, and the rest). They eat food, grow, and can turn into special forms. Some spawn as heroes.
+Everyday pond fish (koi, goldfish, minnows, and the rest). They eat food, grow, and can turn into special forms. Some spawn as heroes. Body shapes and tail styles differ by species: koi keep a carp crescent, fancy goldfish show twin fans and head growth, bettas trail a long veil, and sunfish wear a deep paddle body.
 
 ## Progress saves
 Save progress is free and stays on your device. Use the save button beside the market: save or load in this browser, download a save file, upload a save file, or start a new pond. Fresh visits do not restore market tools, food stash, or catcher upgrades until you load a save. Nothing is stored on a paid server.
@@ -28,10 +28,10 @@ Red-glow hunters. A fish becomes evil once it grows past the predator size thres
 Created when a non-hero fish eats a wild crocodile or alligator. Monsters hunt aggressively and can eat the day shark to start the POV ending. They ignore platinum fish as prey.
 
 ### Pink / breed
-Pink food blushes a fish. Two pink fish that are eligible can swim together and spawn young (with a cooldown and a soft population cap). After the first offspring, the blush clears so they need pink food again to breed.
+Pink food blushes a fish. Two pink fish that are eligible can swim together and spawn young (with a cooldown and a soft population cap). After the first offspring, the blush clears so they need pink food again to breed. Befriended frogs can also blush on pink food and pair with a pink fish to spawn frog-fish hybrids. Two frogs do not breed with each other.
 
 ### Golden
-Golden food freezes a fish into gold. It sinks to the lakebed. Hold right click on a settled gold fish to collect gold (magnet makes this much faster). Golden crocs and night predators award fixed gold when lifted.
+Golden food freezes a fish into gold. It sinks to the lakebed. Hold right click on a settled gold fish to collect gold (magnet makes this much faster). Golden crocs and night predators award fixed gold when lifted. Helpers can turn gold the same way; collecting a gold helper pays four times the usual size-based gold award.
 
 ### Rainbow
 Rainbow food turns a fish into a fast rainbow hunter. Rainbows chase food first, then the shark or orca, and can become monsters by eating crocs. The rainbow catcher is the tool that removes them. Catching enough rainbows unlocks platinum food. Making a platinum fish unlocks moon pond.
@@ -66,20 +66,23 @@ Rare visitor. Swallows fish it swims over (not platinum, and not heroes large en
 Rare night oddity on the whale-style cadence. Pet it 50 times and it throws up 5 rainbow fish.
 
 ### Frogs and tadpoles
-Background pond life when frogs looks are on. Pet a frog enough and it befriends, eats food, and can turn heroic. Giant hero frogs have their own burst finale that releases tadpoles. Hungry tadpoles that eat enough food metamorphose into frogs. Frogs and tadpoles treat special pellets as growth snacks only (they do not take rainbow, gold, plant, platinum, or hero forms).
+Background pond life when frogs looks are on. Pet a frog enough and it befriends, eats food, and can turn heroic. Giant hero frogs have their own burst finale that releases tadpoles. Hungry tadpoles that eat enough food metamorphose into frogs. Frogs treat most special pellets as growth snacks only (they do not take rainbow, gold, plant, platinum, or hero forms). Pink breed pellets are the exception: a befriended frog blushes and can breed with a blushed fish to make a frog-fish hybrid. Frog plus frog pairs do not breed.
 
 A rare bullfrog can roll in while frogs are present. It hunts smaller frogs and tadpoles. A befriended frog that outgrows the bullfrog can eat it. Bullfrog feast and bullfrog defeat are their own endings (not the hero frog burst).
+
+### Helpers (pacifists)
+Friendly visitors that gift food and calm the pond instead of hunting. The pond axolotl will not eat the gifts it drops, but it still eats food you throw. Golden food freezes a helper into gold while keeping its helper shape, with a gold sheen. Hold right click on a settled gold helper to collect it. Gold helpers pay 4 times the usual size-based gold award for a pond fish of the same size.
 
 ## Food types
 
 | Food | Effect |
 | --- | --- |
 | Normal | Grows the fish a little. Net scooping banks it for market trades. |
-| Golden | Turns the eater into a settled gold fish. |
+| Golden | Turns the eater into a settled gold fish (helpers too). |
 | Rainbow | Turns the eater into a rainbow fish. Platinum fish snack and grow a little instead. |
 | Green | Turns the eater into a lasting pond plant. |
 | Grower | Big permanent size boost. |
-| Pink / breed | Blushes the fish for one litter of young. |
+| Pink / breed | Blushes fish and befriended frogs for one litter (fish fry or frog-fish hybrids). |
 | Platinum | Turns the eater into an invulnerable platinum fish. Rainbow fish, crocs, and night predators only snack and grow a little. |
 | Hero | Turns ordinary fish into hero guardians. Tames wild apex. Rainbow and platinum fish snack instead. |
 | Carcass | Large meal chunks (from some finales / events); strong growth. |
