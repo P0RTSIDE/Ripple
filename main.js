@@ -3999,26 +3999,59 @@ function fillTadpoleShadowPaths(ctx, t) {
 }
 
 function fillBullfrogShadowPaths(ctx, b) {
+    // Same local-space silhouette as drawBullfrogModel (stocky body, pouch, tympanum, kick legs).
     const S = b.size || 28;
-    const kick = b.kick || 0;
-    ctx.beginPath();
-    ctx.moveTo(S * 0.78, 0);
-    ctx.bezierCurveTo(S * 0.5, -S * 0.48, -S * 0.05, -S * 0.52, -S * 0.6, -S * 0.16);
-    ctx.bezierCurveTo(-S * 0.82, 0, -S * 0.58, S * 0.2, -S * 0.15, S * 0.4);
-    ctx.bezierCurveTo(S * 0.25, S * 0.5, S * 0.58, S * 0.34, S * 0.78, 0);
-    ctx.closePath();
-    ctx.fill();
+    const kick = Math.max(0, Math.min(1, b.kick || 0));
+    const pouch = Math.max(0, Math.min(1, b.pouch || 0.15));
+    const breath = 1 + Math.sin(b.breath || 0) * 0.04;
+    const tuckX = -S * (0.35 + kick * 0.85);
+    const tuckY = S * (0.22 - kick * 0.05);
+    const footSpread = S * (0.18 + kick * 0.58);
     for (const side of [-1, 1]) {
         ctx.beginPath();
         ctx.moveTo(-S * 0.18, side * S * 0.1);
         ctx.quadraticCurveTo(
-            -S * (0.5 + kick * 0.4), side * S * (0.34 + kick * 0.12),
-            -S * (0.4 + kick * 0.95), side * S * (0.24 - kick * 0.04)
+            -S * (0.48 + kick * 0.35), side * S * (0.3 + kick * 0.1),
+            tuckX, side * tuckY
         );
-        ctx.quadraticCurveTo(-S * (0.6 + kick * 0.55), side * S * 0.06, -S * 0.22, 0);
+        ctx.quadraticCurveTo(-S * (0.58 + kick * 0.48), side * S * 0.05, -S * 0.22, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(tuckX, side * tuckY * 0.85);
+        ctx.lineTo(tuckX - S * (0.18 + kick * 0.32), side * (tuckY + footSpread));
+        ctx.lineTo(tuckX - S * (0.32 + kick * 0.36), side * tuckY * 0.15);
+        ctx.lineTo(tuckX - S * (0.12 + kick * 0.18), side * (tuckY - footSpread * 0.35));
         ctx.closePath();
         ctx.fill();
     }
+    ctx.beginPath();
+    ctx.moveTo(S * 0.16, S * 0.12);
+    ctx.quadraticCurveTo(S * 0.38, S * 0.32, S * 0.24, S * 0.36);
+    ctx.quadraticCurveTo(S * 0.08, S * 0.24, S * 0.1, S * 0.1);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(S * 0.14, -S * 0.06);
+    ctx.quadraticCurveTo(S * 0.3, -S * 0.24, S * 0.2, -S * 0.3);
+    ctx.quadraticCurveTo(S * 0.06, -S * 0.16, S * 0.08, -S * 0.02);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(S * 0.7, 0);
+    ctx.bezierCurveTo(S * 0.48, -S * 0.42 * breath, -S * 0.08, -S * 0.46 * breath, -S * 0.52, -S * 0.14);
+    ctx.bezierCurveTo(-S * 0.7, 0, -S * 0.5, S * 0.18, -S * 0.15, S * 0.36);
+    ctx.bezierCurveTo(S * 0.22, S * 0.46, S * 0.52, S * 0.32, S * 0.7, 0);
+    ctx.closePath();
+    ctx.fill();
+    const pouchR = S * (0.2 + pouch * 0.32);
+    ctx.beginPath();
+    ctx.ellipse(S * 0.22, S * 0.22, pouchR * 1.2, pouchR * (0.8 + pouch * 0.3), 0.12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(S * 0.48, -S * 0.05, S * 0.34, S * 0.28 * breath, -0.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(S * 0.34, S * 0.02, S * 0.15, 0, Math.PI * 2);
+    ctx.fill();
 }
 
 // Pacifist helper casts: reuse the same local-space geometry as each helper draw model.
@@ -6308,6 +6341,20 @@ function updateFrogGroups(dt) {
             if (frog.size >= CONFIG.sharkSize * 0.98 && !frogFinale) {
                 beginFrogFinale(frog);
                 continue;
+            }
+        }
+
+        // Smaller frogs steer away from a nearby bullfrog (wild or befriended).
+        if (!steered && bullfrog && !bullfrog.dead && !bullfrogFinale
+            && frog.size < bullfrog.size * 0.98) {
+            const threatD = Math.hypot(frog.x - bullfrog.x, frog.y - bullfrog.y);
+            if (threatD < CONFIG.fleeRange * 0.9 && threatD > 1) {
+                steered = true;
+                const fleeAng = Math.atan2(frog.y - bullfrog.y, frog.x - bullfrog.x);
+                const diff = normAngle(fleeAng - frog.dir);
+                frog.dir += Math.max(-3.2 * dt, Math.min(3.2 * dt, diff));
+                frog.speed = (40 + frog.size * 0.4) * CONFIG.fleeSpeedMult * 0.82;
+                frog.kick = 0.55 + 0.4 * Math.abs(Math.sin(frog.age * 6.5));
             }
         }
 
@@ -23850,6 +23897,14 @@ function drawNetCursor(ctx) {
 }
 let firstInteractionDone = false;
 
+(function initStartHint() {
+    const hint = document.getElementById("hint");
+    if (!hint) return;
+    const coarse = typeof window.matchMedia === "function"
+        && window.matchMedia("(pointer: coarse)").matches;
+    hint.textContent = coarse ? "tap anywhere" : "click anywhere";
+})();
+
 // Normalized size in [0,1] from how long the button has been held.
 function chargeFromHold(heldSec, ev) {
     let v = CONFIG.minCharge + heldSec / CONFIG.holdGrowTime;
@@ -24777,6 +24832,7 @@ function updateFoodButtonUI() {
     btn.title = foodCreationEnabled
         ? "Fish food on: click the pond to drop"
         : "Fish food off: click to turn on";
+    btn.setAttribute("aria-label", foodCreationEnabled ? "Fish food on" : "Fish food off");
 }
 
 const foodBtn = document.getElementById("food-btn");
@@ -24807,6 +24863,7 @@ netBtn.addEventListener("click", (e) => {
     netBtn.title = netMode
         ? "Net on: right click sweeps food"
         : "Net: scoop food with right click";
+    netBtn.setAttribute("aria-label", netMode ? "Net on" : "Net tool");
 });
 
 const hatsBtn = document.getElementById("hats-btn");

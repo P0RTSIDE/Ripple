@@ -68,7 +68,7 @@ Rare night oddity on the whale-style cadence. Pet it 50 times and it throws up 5
 ### Frogs and tadpoles
 Background pond life when frogs looks are on. Pet a frog enough and it befriends, eats food, and can turn heroic. Giant hero frogs have their own burst finale that releases tadpoles. Hungry tadpoles that eat enough food metamorphose into frogs. Frogs treat most special pellets as growth snacks only (they do not take rainbow, gold, plant, platinum, or hero forms). Pink breed pellets are the exception: a befriended frog blushes and can breed with a blushed fish to make a frog-fish hybrid. Frog plus frog pairs do not breed.
 
-A rare bullfrog can roll in while frogs are present. It hunts smaller frogs and tadpoles. A befriended frog that outgrows the bullfrog can eat it. Bullfrog feast and bullfrog defeat are their own endings (not the hero frog burst).
+A rare bullfrog can roll in while frogs are present. It hunts smaller frogs and tadpoles. Smaller frogs flee when it gets close. A befriended frog that outgrows the bullfrog can eat it back. Bullfrog feast and bullfrog defeat are their own endings (not the hero frog burst).
 
 ### Helpers (pacifists)
 Friendly visitors that gift food and calm the pond instead of hunting. The pond axolotl will not eat the gifts it drops, but it still eats food you throw. Golden food freezes a helper into gold while keeping its helper shape, with a gold sheen. Hold right click on a settled gold helper to collect it. Gold helpers pay 4 times the usual size-based gold award for a pond fish of the same size.
