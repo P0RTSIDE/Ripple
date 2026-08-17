@@ -105,6 +105,7 @@ const CONFIG = {
     breedCooldown: 6.5,     // seconds before a pink pair can breed again
     apexBreedCooldown: 9,   // longer rest for apex / pacifist hybrid pairs
     maxApexHybrids: 8,      // living apex-hybrid fry cap
+    maxFrogHybrids: 8,      // living frog-fish hybrid fry cap
     maxBreedPop: 24,        // soft cap on living fish from breeding (above fishCount)
     foodStashMax: 14,       // pellets saved from the net (normal + specials)
     frogInterval: 42,       // seconds between frog spawn chance rolls
@@ -540,6 +541,7 @@ const PICKER_DRAG_PULL = 6.8; // water drag follow (was ~3.2)
 const PICKER_LIFT_RISE = 7.2; // how fast liftZ climbs (was ~5.5)
 const GOLD_CROCODILE_AWARD = 40; // fixed gold for lifting a golden alligator/crocodile
 const GOLD_NIGHT_PREDATOR_AWARD = 55; // fixed gold for lifting a golden swordfish / octopus
+const GOLD_HELPER_MULT = 4; // gold pacifist helpers pay 4x size-based pond-fish gold
 const CATCHER_NIGHT_RAINBOW_REWARD = 3; // rainbow fish spawned when catching a rainbow night predator
 const GOLD_HOLD_TIME = 2.8; // default hold to pick up settled gold
 const MAGNET_HOLD_MULT = 0.32; // magnet: lift gold much faster
@@ -596,53 +598,53 @@ const MINOR_PENT = [1, 6 / 5, 4 / 3, 3 / 2, 9 / 5];
 // bitePartial and biteBright shape each species' chew timbre.
 const FISH_TYPES = [
     // Traditional koi varieties: fuller bodies, barbels, slower graceful glide.
-    { name: "kohaku",   shape: "koi", koi: true, body: "#f7f2ea", belly: "#ffffff", pattern: "hi",      patternColor: "#c23a2e", size: [22, 32], speed: [20, 32], wave: "sine",     register: 1.0,  bite: 6, dur: 0.42, turn: 2.4, wiggle: 1.05, scale: PENTATONIC, petWave: "sine",     petFreq: 300, petDur: 0.42, bitePartial: 0.22, biteBright: 1.0, whiskers: true },
-    { name: "sanke",    shape: "koi", koi: true, body: "#f5f0e6", belly: "#fffaf2", pattern: "sanke",   patternColor: "#c23a2e", size: [21, 30], speed: [20, 34], wave: "sine",     register: 1.05, bite: 6, dur: 0.4,  turn: 2.5, wiggle: 1.08, scale: PENTATONIC, petWave: "triangle", petFreq: 320, petDur: 0.4,  bitePartial: 0.25, biteBright: 1.05, whiskers: true },
-    { name: "showa",    shape: "koi", koi: true, body: "#2a2a2c", belly: "#f0e6dc", pattern: "showa",   patternColor: "#c23a2e", size: [22, 31], speed: [19, 31], wave: "sine",     register: 0.95, bite: 6, dur: 0.42, turn: 2.3, wiggle: 1.0,  scale: PENTATONIC, petWave: "sine",     petFreq: 290, petDur: 0.44, bitePartial: 0.2,  biteBright: 0.95, whiskers: true },
-    { name: "asagi",    shape: "koi", koi: true, body: "#6a8fa8", belly: "#f2d5c0", pattern: "asagi",   patternColor: "#d8e6f0", size: [20, 29], speed: [22, 34], wave: "triangle", register: 1.1,  bite: 5, dur: 0.38, turn: 2.6, wiggle: 1.12, scale: PENTATONIC, petWave: "triangle", petFreq: 340, petDur: 0.38, bitePartial: 0.28, biteBright: 1.1, whiskers: true },
-    { name: "ogon",     shape: "koi", koi: true, body: "#e0b24a", belly: "#fff0c4", pattern: "scales",  patternColor: "#f0d080", size: [20, 28], speed: [21, 33], wave: "sine",     register: 1.15, bite: 5, dur: 0.4,  turn: 2.5, wiggle: 1.1,  scale: PENTATONIC, petWave: "sine",     petFreq: 350, petDur: 0.4,  bitePartial: 0.3,  biteBright: 1.2, whiskers: true },
-    { name: "koi",      shape: "koi", koi: true, body: "#e8853a", belly: "#fff1dc", pattern: "blotches", patternColor: "#f5f0e6", size: [20, 30], speed: [22, 36], wave: "sine",     register: 1.0,  bite: 6, dur: 0.4,  turn: 2.6, wiggle: 1.12, scale: PENTATONIC, petWave: "sine",     petFreq: 300, petDur: 0.42, bitePartial: 0.22, biteBright: 1.0, whiskers: true },
-    { name: "shiro",    shape: "koi", koi: true, body: "#f4f0e8", belly: "#ffffff", pattern: "blotches", patternColor: "#c23b3b", size: [19, 28], speed: [22, 35], wave: "sine",     register: 1.1,  bite: 5, dur: 0.38, turn: 2.7, wiggle: 1.1,  scale: PENTATONIC, petWave: "triangle", petFreq: 340, petDur: 0.38, bitePartial: 0.28, biteBright: 1.15, whiskers: true },
-    { name: "carp",     shape: "oval",    body: "#5f7d8f", belly: "#c3dbe8", pattern: "scales",   patternColor: "#7a9aaa", size: [23, 31], speed: [18, 30], wave: "triangle", register: 0.5,  bite: 9, dur: 0.6,  turn: 2.0, wiggle: 0.8,  scale: PENTATONIC, petWave: "triangle", petFreq: 180, petDur: 0.55, bitePartial: 0.12, biteBright: 0.7 },
-    { name: "goldfish", shape: "round",   body: "#e07a2f", belly: "#ffd7a8", pattern: null,       patternColor: null,      size: [14, 20], speed: [22, 34], wave: "sine",     register: 1.15, bite: 4, dur: 0.35, turn: 3.2, wiggle: 1.2,  scale: PENTATONIC, petWave: "sine",     petFreq: 380, petDur: 0.32, bitePartial: 0.32, biteBright: 1.25 },
-    { name: "minnow",   shape: "slim",    body: "#d6e6f2", belly: "#ffffff", pattern: null,       patternColor: null,      size: [10, 14], speed: [42, 62], wave: "sine",     register: 2.0,  bite: 3, dur: 0.22, turn: 5.0, wiggle: 1.4,  dart: true, scale: PENTATONIC, petWave: "sine",     petFreq: 520, petDur: 0.22, bitePartial: 0.4,  biteBright: 1.4 },
-    { name: "tetra",    shape: "diamond", body: "#48b0c4", belly: "#d8f4ff", pattern: "stripe",   patternColor: "#1a3a55", size: [9, 13],  speed: [46, 66], wave: "square",   register: 1.5,  bite: 3, dur: 0.18, turn: 6.0, wiggle: 1.6,  dart: true, scale: PENTATONIC, petWave: "square",   petFreq: 460, petDur: 0.2,  bitePartial: 0.45, biteBright: 1.5 },
+    { name: "kohaku",   shape: "koi", koi: true, body: "#f7f2ea", belly: "#ffffff", pattern: "hi",      patternColor: "#c23a2e", size: [22, 32], speed: [20, 32], wave: "sine",     register: 1.0,  bite: 6, dur: 0.42, turn: 2.4, wiggle: 1.05, scale: PENTATONIC, petWave: "sine",     petFreq: 300, petDur: 0.42, bitePartial: 0.22, biteBright: 1.0, whiskers: true, tail: "crescent" },
+    { name: "sanke",    shape: "koi", koi: true, body: "#f5f0e6", belly: "#fffaf2", pattern: "sanke",   patternColor: "#c23a2e", size: [21, 30], speed: [20, 34], wave: "sine",     register: 1.05, bite: 6, dur: 0.4,  turn: 2.5, wiggle: 1.08, scale: PENTATONIC, petWave: "triangle", petFreq: 320, petDur: 0.4,  bitePartial: 0.25, biteBright: 1.05, whiskers: true, tail: "crescent" },
+    { name: "showa",    shape: "koi", koi: true, body: "#2a2a2c", belly: "#f0e6dc", pattern: "showa",   patternColor: "#c23a2e", size: [22, 31], speed: [19, 31], wave: "sine",     register: 0.95, bite: 6, dur: 0.42, turn: 2.3, wiggle: 1.0,  scale: PENTATONIC, petWave: "sine",     petFreq: 290, petDur: 0.44, bitePartial: 0.2,  biteBright: 0.95, whiskers: true, tail: "crescent" },
+    { name: "asagi",    shape: "koi", koi: true, body: "#6a8fa8", belly: "#f2d5c0", pattern: "asagi",   patternColor: "#d8e6f0", size: [20, 29], speed: [22, 34], wave: "triangle", register: 1.1,  bite: 5, dur: 0.38, turn: 2.6, wiggle: 1.12, scale: PENTATONIC, petWave: "triangle", petFreq: 340, petDur: 0.38, bitePartial: 0.28, biteBright: 1.1, whiskers: true, tail: "crescent" },
+    { name: "ogon",     shape: "koi", koi: true, body: "#e0b24a", belly: "#fff0c4", pattern: "scales",  patternColor: "#f0d080", size: [20, 28], speed: [21, 33], wave: "sine",     register: 1.15, bite: 5, dur: 0.4,  turn: 2.5, wiggle: 1.1,  scale: PENTATONIC, petWave: "sine",     petFreq: 350, petDur: 0.4,  bitePartial: 0.3,  biteBright: 1.2, whiskers: true, tail: "crescent" },
+    { name: "koi",      shape: "koi", koi: true, body: "#e8853a", belly: "#fff1dc", pattern: "blotches", patternColor: "#f5f0e6", size: [20, 30], speed: [22, 36], wave: "sine",     register: 1.0,  bite: 6, dur: 0.4,  turn: 2.6, wiggle: 1.12, scale: PENTATONIC, petWave: "sine",     petFreq: 300, petDur: 0.42, bitePartial: 0.22, biteBright: 1.0, whiskers: true, tail: "crescent" },
+    { name: "shiro",    shape: "koi", koi: true, body: "#f4f0e8", belly: "#ffffff", pattern: "blotches", patternColor: "#c23b3b", size: [19, 28], speed: [22, 35], wave: "sine",     register: 1.1,  bite: 5, dur: 0.38, turn: 2.7, wiggle: 1.1,  scale: PENTATONIC, petWave: "triangle", petFreq: 340, petDur: 0.38, bitePartial: 0.28, biteBright: 1.15, whiskers: true, tail: "crescent" },
+    { name: "carp",     shape: "oval",    body: "#5f7d8f", belly: "#c3dbe8", pattern: "scales",   patternColor: "#7a9aaa", size: [23, 31], speed: [18, 30], wave: "triangle", register: 0.5,  bite: 9, dur: 0.6,  turn: 2.0, wiggle: 0.8,  scale: PENTATONIC, petWave: "triangle", petFreq: 180, petDur: 0.55, bitePartial: 0.12, biteBright: 0.7, tail: "crescent", slim: 0.62 },
+    { name: "goldfish", shape: "round",   body: "#e07a2f", belly: "#ffd7a8", pattern: null,       patternColor: null,      size: [14, 20], speed: [22, 34], wave: "sine",     register: 1.15, bite: 4, dur: 0.35, turn: 3.2, wiggle: 1.05, scale: PENTATONIC, petWave: "sine",     petFreq: 380, petDur: 0.32, bitePartial: 0.32, biteBright: 1.25, tail: "twin", slim: 0.92 },
+    { name: "minnow",   shape: "slim",    body: "#d6e6f2", belly: "#ffffff", pattern: null,       patternColor: null,      size: [10, 14], speed: [42, 62], wave: "sine",     register: 2.0,  bite: 3, dur: 0.22, turn: 5.0, wiggle: 1.4,  dart: true, scale: PENTATONIC, petWave: "sine",     petFreq: 520, petDur: 0.22, bitePartial: 0.4,  biteBright: 1.4, tail: "fork" },
+    { name: "tetra",    shape: "diamond", body: "#48b0c4", belly: "#d8f4ff", pattern: "stripe",   patternColor: "#1a3a55", size: [9, 13],  speed: [46, 66], wave: "square",   register: 1.5,  bite: 3, dur: 0.18, turn: 6.0, wiggle: 1.6,  dart: true, scale: PENTATONIC, petWave: "square",   petFreq: 460, petDur: 0.2,  bitePartial: 0.45, biteBright: 1.5, tail: "fork", slim: 0.95 },
     { name: "eel",      shape: "eel",     body: "#4a5d3a", belly: "#9fb27a", pattern: "bands",    patternColor: "#2d3a22", size: [26, 36], speed: [16, 26], wave: "sawtooth", register: 0.75, bite: 7, dur: 0.8,  turn: 2.4, wiggle: 2.4,  scale: MINOR_PENT, petWave: "sawtooth", petFreq: 210, petDur: 0.65, bitePartial: 0.08, biteBright: 0.55 },
-    { name: "angel",    shape: "angel",   body: "#c9a24b", belly: "#fff0c2", pattern: "spots",    patternColor: "#7a5520", size: [16, 21], speed: [22, 34], wave: "triangle", register: 1.25, bite: 5, dur: 0.5,  turn: 2.6, wiggle: 0.9,  scale: PENTATONIC, petWave: "triangle", petFreq: 360, petDur: 0.48, bitePartial: 0.3,  biteBright: 1.1 },
-    { name: "betta",    shape: "longfin", body: "#b03a6e", belly: "#f0b8d0", pattern: null,       patternColor: null,      size: [13, 18], speed: [20, 32], wave: "triangle", register: 1.35, bite: 4, dur: 0.45, turn: 3.4, wiggle: 1.8,  scale: PENTATONIC, petWave: "sine",     petFreq: 410, petDur: 0.5,  bitePartial: 0.35, biteBright: 1.2 },
-    { name: "catfish",  shape: "flathead", body: "#6b5a4a", belly: "#cbb8a0", pattern: null,      patternColor: null,      size: [20, 28], speed: [16, 26], wave: "sawtooth", register: 0.65, bite: 8, dur: 0.55, turn: 2.1, wiggle: 0.7,  whiskers: true, scale: MINOR_PENT, petWave: "triangle", petFreq: 160, petDur: 0.6,  bitePartial: 0.1,  biteBright: 0.6 },
-    { name: "sunfish",  shape: "round",   body: "#d4a23a", belly: "#fff2c4", pattern: "spots",    patternColor: "#6a4a18", size: [15, 22], speed: [24, 36], wave: "sine",     register: 1.05, bite: 5, dur: 0.4,  turn: 3.0, wiggle: 1.0,  scale: PENTATONIC, petWave: "triangle", petFreq: 330, petDur: 0.36, bitePartial: 0.25, biteBright: 1.05 },
-    { name: "pike",     shape: "arrow",   body: "#5a7a55", belly: "#d6e0c8", pattern: "bands",    patternColor: "#3a4e35", size: [24, 34], speed: [28, 44], wave: "triangle", register: 0.7,  bite: 8, dur: 0.5,  turn: 2.5, wiggle: 1.1,  scale: MINOR_PENT, petWave: "sawtooth", petFreq: 240, petDur: 0.4,  bitePartial: 0.15, biteBright: 0.8 },
+    { name: "angel",    shape: "angel",   body: "#c9a24b", belly: "#fff0c2", pattern: "spots",    patternColor: "#7a5520", size: [16, 21], speed: [22, 34], wave: "triangle", register: 1.25, bite: 5, dur: 0.5,  turn: 2.6, wiggle: 0.9,  scale: PENTATONIC, petWave: "triangle", petFreq: 360, petDur: 0.48, bitePartial: 0.3,  biteBright: 1.1, tail: "lyre" },
+    { name: "betta",    shape: "longfin", body: "#b03a6e", belly: "#f0b8d0", pattern: null,       patternColor: null,      size: [13, 18], speed: [20, 32], wave: "triangle", register: 1.35, bite: 4, dur: 0.45, turn: 3.4, wiggle: 1.55, scale: PENTATONIC, petWave: "sine",     petFreq: 410, petDur: 0.5,  bitePartial: 0.35, biteBright: 1.2, tail: "veil", slim: 0.58 },
+    { name: "catfish",  shape: "flathead", body: "#6b5a4a", belly: "#cbb8a0", pattern: null,      patternColor: null,      size: [20, 28], speed: [16, 26], wave: "sawtooth", register: 0.65, bite: 8, dur: 0.55, turn: 2.1, wiggle: 0.7,  whiskers: true, scale: MINOR_PENT, petWave: "triangle", petFreq: 160, petDur: 0.6,  bitePartial: 0.1,  biteBright: 0.6, tail: "truncate", slim: 0.7 },
+    { name: "sunfish",  shape: "deep",    body: "#d4a23a", belly: "#fff2c4", pattern: "spots",    patternColor: "#6a4a18", size: [15, 22], speed: [24, 36], wave: "sine",     register: 1.05, bite: 5, dur: 0.4,  turn: 3.0, wiggle: 0.95, scale: PENTATONIC, petWave: "triangle", petFreq: 330, petDur: 0.36, bitePartial: 0.25, biteBright: 1.05, tail: "truncate", slim: 1.02 },
+    { name: "pike",     shape: "arrow",   body: "#5a7a55", belly: "#d6e0c8", pattern: "bands",    patternColor: "#3a4e35", size: [24, 34], speed: [28, 44], wave: "triangle", register: 0.7,  bite: 8, dur: 0.5,  turn: 2.5, wiggle: 1.1,  scale: MINOR_PENT, petWave: "sawtooth", petFreq: 240, petDur: 0.4,  bitePartial: 0.15, biteBright: 0.8, tail: "lunate" },
     // More pond commons.
-    { name: "bekko",    shape: "koi", koi: true, body: "#f6f1e8", belly: "#ffffff", pattern: "spots", patternColor: "#2a2a2c", size: [20, 29], speed: [21, 33], wave: "sine", register: 1.02, bite: 5, dur: 0.4, turn: 2.55, wiggle: 1.06, scale: PENTATONIC, petWave: "sine", petFreq: 310, petDur: 0.4, bitePartial: 0.24, biteBright: 1.05, whiskers: true },
-    { name: "utanuri",  shape: "koi", koi: true, body: "#3a3a3c", belly: "#e8ddd0", pattern: "blotches", patternColor: "#f0e8dc", size: [21, 30], speed: [19, 30], wave: "sine", register: 0.92, bite: 6, dur: 0.43, turn: 2.35, wiggle: 1.0, scale: PENTATONIC, petWave: "triangle", petFreq: 280, petDur: 0.44, bitePartial: 0.2, biteBright: 0.95, whiskers: true },
-    // Oranda: round body plus raspberry head wen. Ranchu: egg body, wen, no dorsal.
-    { name: "oranda",   shape: "round", body: "#e86830", belly: "#ffe0b8", pattern: null, patternColor: null, size: [15, 21], speed: [20, 30], wave: "sine", register: 1.2, bite: 4, dur: 0.36, turn: 3.0, wiggle: 1.15, scale: PENTATONIC, petWave: "sine", petFreq: 370, petDur: 0.34, bitePartial: 0.3, biteBright: 1.2, wen: true },
-    { name: "ranchu",   shape: "round", body: "#d95a28", belly: "#ffd4a0", pattern: "spots", patternColor: "#fff0dc", size: [14, 19], speed: [18, 28], wave: "triangle", register: 1.18, bite: 4, dur: 0.38, turn: 2.9, wiggle: 1.05, scale: PENTATONIC, petWave: "triangle", petFreq: 360, petDur: 0.36, bitePartial: 0.28, biteBright: 1.15, wen: true, noDorsal: true },
-    { name: "comet",    shape: "longfin", body: "#f0a040", belly: "#fff2d0", pattern: null, patternColor: null, size: [14, 20], speed: [26, 40], wave: "sine", register: 1.25, bite: 4, dur: 0.32, turn: 3.6, wiggle: 1.45, scale: PENTATONIC, petWave: "sine", petFreq: 400, petDur: 0.3, bitePartial: 0.34, biteBright: 1.25 },
-    { name: "shubunkin", shape: "longfin", body: "#4a8ab0", belly: "#d8ecf8", pattern: "blotches", patternColor: "#e07040", size: [13, 19], speed: [24, 38], wave: "triangle", register: 1.22, bite: 4, dur: 0.34, turn: 3.5, wiggle: 1.5, scale: PENTATONIC, petWave: "triangle", petFreq: 390, petDur: 0.32, bitePartial: 0.33, biteBright: 1.22 },
-    { name: "guppy",    shape: "longfin", body: "#38a888", belly: "#c8f0e0", pattern: "spots", patternColor: "#f0c050", size: [9, 13], speed: [34, 52], wave: "square", register: 1.7, bite: 3, dur: 0.22, turn: 5.2, wiggle: 1.7, dart: true, scale: PENTATONIC, petWave: "square", petFreq: 500, petDur: 0.22, bitePartial: 0.42, biteBright: 1.4 },
-    { name: "platy",    shape: "oval", body: "#e85868", belly: "#ffd0d8", pattern: null, patternColor: null, size: [11, 15], speed: [28, 42], wave: "sine", register: 1.4, bite: 3, dur: 0.28, turn: 4.2, wiggle: 1.25, scale: PENTATONIC, petWave: "sine", petFreq: 430, petDur: 0.28, bitePartial: 0.35, biteBright: 1.25 },
-    { name: "molly",    shape: "oval", body: "#2a2a32", belly: "#c8c8d4", pattern: "scales", patternColor: "#4a4a55", size: [12, 16], speed: [26, 40], wave: "triangle", register: 1.3, bite: 4, dur: 0.3, turn: 3.8, wiggle: 1.15, scale: PENTATONIC, petWave: "triangle", petFreq: 400, petDur: 0.3, bitePartial: 0.3, biteBright: 1.15 },
+    { name: "bekko",    shape: "koi", koi: true, body: "#f6f1e8", belly: "#ffffff", pattern: "spots", patternColor: "#2a2a2c", size: [20, 29], speed: [21, 33], wave: "sine", register: 1.02, bite: 5, dur: 0.4, turn: 2.55, wiggle: 1.06, scale: PENTATONIC, petWave: "sine", petFreq: 310, petDur: 0.4, bitePartial: 0.24, biteBright: 1.05, whiskers: true, tail: "crescent" },
+    { name: "utanuri",  shape: "koi", koi: true, body: "#3a3a3c", belly: "#e8ddd0", pattern: "blotches", patternColor: "#f0e8dc", size: [21, 30], speed: [19, 30], wave: "sine", register: 0.92, bite: 6, dur: 0.43, turn: 2.35, wiggle: 1.0, scale: PENTATONIC, petWave: "triangle", petFreq: 280, petDur: 0.44, bitePartial: 0.2, biteBright: 0.95, whiskers: true, tail: "crescent" },
+    // Oranda: egg body plus raspberry wen and twin caudal. Ranchu: arched egg, wen, no dorsal, twin caudal.
+    { name: "oranda",   shape: "egg", body: "#e86830", belly: "#ffe0b8", pattern: null, patternColor: null, size: [15, 21], speed: [20, 30], wave: "sine", register: 1.2, bite: 4, dur: 0.36, turn: 3.0, wiggle: 0.95, scale: PENTATONIC, petWave: "sine", petFreq: 370, petDur: 0.34, bitePartial: 0.3, biteBright: 1.2, wen: true, tail: "twin", slim: 0.98 },
+    { name: "ranchu",   shape: "egg", body: "#d95a28", belly: "#ffd4a0", pattern: "spots", patternColor: "#fff0dc", size: [14, 19], speed: [18, 28], wave: "triangle", register: 1.18, bite: 4, dur: 0.38, turn: 2.9, wiggle: 0.85, scale: PENTATONIC, petWave: "triangle", petFreq: 360, petDur: 0.36, bitePartial: 0.28, biteBright: 1.15, wen: true, noDorsal: true, tail: "twin", slim: 1.08 },
+    { name: "comet",    shape: "slim", body: "#f0a040", belly: "#fff2d0", pattern: null, patternColor: null, size: [14, 20], speed: [26, 40], wave: "sine", register: 1.25, bite: 4, dur: 0.32, turn: 3.6, wiggle: 1.45, scale: PENTATONIC, petWave: "sine", petFreq: 400, petDur: 0.3, bitePartial: 0.34, biteBright: 1.25, tail: "comet", slim: 0.52 },
+    { name: "shubunkin", shape: "slim", body: "#4a8ab0", belly: "#d8ecf8", pattern: "blotches", patternColor: "#e07040", size: [13, 19], speed: [24, 38], wave: "triangle", register: 1.22, bite: 4, dur: 0.34, turn: 3.5, wiggle: 1.5, scale: PENTATONIC, petWave: "triangle", petFreq: 390, petDur: 0.32, bitePartial: 0.33, biteBright: 1.22, tail: "comet", slim: 0.52 },
+    { name: "guppy",    shape: "slim", body: "#38a888", belly: "#c8f0e0", pattern: "spots", patternColor: "#f0c050", size: [9, 13], speed: [34, 52], wave: "square", register: 1.7, bite: 3, dur: 0.22, turn: 5.2, wiggle: 1.55, dart: true, scale: PENTATONIC, petWave: "square", petFreq: 500, petDur: 0.22, bitePartial: 0.42, biteBright: 1.4, tail: "lyre", slim: 0.5 },
+    { name: "platy",    shape: "oval", body: "#e85868", belly: "#ffd0d8", pattern: null, patternColor: null, size: [11, 15], speed: [28, 42], wave: "sine", register: 1.4, bite: 3, dur: 0.28, turn: 4.2, wiggle: 1.25, scale: PENTATONIC, petWave: "sine", petFreq: 430, petDur: 0.28, bitePartial: 0.35, biteBright: 1.25, tail: "truncate", slim: 0.68 },
+    { name: "molly",    shape: "oval", body: "#2a2a32", belly: "#c8c8d4", pattern: "scales", patternColor: "#4a4a55", size: [12, 16], speed: [26, 40], wave: "triangle", register: 1.3, bite: 4, dur: 0.3, turn: 3.8, wiggle: 1.15, scale: PENTATONIC, petWave: "triangle", petFreq: 400, petDur: 0.3, bitePartial: 0.3, biteBright: 1.15, tail: "lyre", slim: 0.64 },
     { name: "danio",    shape: "slim", body: "#f0e8a0", belly: "#fffef0", pattern: "stripe", patternColor: "#2a3a4a", size: [10, 14], speed: [44, 64], wave: "sine", register: 1.85, bite: 3, dur: 0.2, turn: 5.6, wiggle: 1.55, dart: true, slim: 0.52, scale: PENTATONIC, petWave: "sine", petFreq: 540, petDur: 0.2, bitePartial: 0.42, biteBright: 1.4 },
     { name: "rasbora",  shape: "slim", body: "#c45a48", belly: "#f8d8c8", pattern: "stripe", patternColor: "#6a2818", size: [9, 13], speed: [40, 58], wave: "triangle", register: 1.75, bite: 3, dur: 0.22, turn: 5.4, wiggle: 1.5, dart: true, slim: 0.5, scale: PENTATONIC, petWave: "triangle", petFreq: 510, petDur: 0.22, bitePartial: 0.4, biteBright: 1.35 },
     { name: "barbus",   shape: "oval", body: "#c88848", belly: "#f0dcb0", pattern: "bands", patternColor: "#6a4020", size: [14, 20], speed: [24, 38], wave: "sine", register: 1.1, bite: 5, dur: 0.36, turn: 3.2, wiggle: 1.1, scale: PENTATONIC, petWave: "sine", petFreq: 340, petDur: 0.34, bitePartial: 0.26, biteBright: 1.05 },
     { name: "loach",    shape: "eel", body: "#8a6a48", belly: "#e0d0b0", pattern: "bands", patternColor: "#4a3820", size: [16, 24], speed: [18, 30], wave: "sawtooth", register: 0.85, bite: 5, dur: 0.5, turn: 2.8, wiggle: 1.8, whiskers: true, scale: MINOR_PENT, petWave: "sawtooth", petFreq: 220, petDur: 0.5, bitePartial: 0.12, biteBright: 0.7 },
-    { name: "perch",    shape: "oval", body: "#c8a050", belly: "#f0e4b8", pattern: "bands", patternColor: "#5a4820", size: [16, 23], speed: [24, 38], wave: "triangle", register: 1.0, bite: 5, dur: 0.38, turn: 3.0, wiggle: 1.05, scale: PENTATONIC, petWave: "triangle", petFreq: 320, petDur: 0.36, bitePartial: 0.24, biteBright: 1.0 },
-    { name: "bass",     shape: "oval", body: "#4a6a48", belly: "#d0dcc0", pattern: "scales", patternColor: "#6a8a60", size: [18, 26], speed: [22, 36], wave: "sine", register: 0.8, bite: 6, dur: 0.45, turn: 2.6, wiggle: 0.95, scale: MINOR_PENT, petWave: "sine", petFreq: 250, petDur: 0.42, bitePartial: 0.18, biteBright: 0.85 },
-    { name: "trout",    shape: "slim", body: "#6a8a78", belly: "#f0d8c0", pattern: "spots", patternColor: "#c45a40", size: [18, 26], speed: [30, 46], wave: "triangle", register: 0.95, bite: 6, dur: 0.4, turn: 3.0, wiggle: 1.15, slim: 0.56, scale: PENTATONIC, petWave: "triangle", petFreq: 300, petDur: 0.38, bitePartial: 0.22, biteBright: 1.0 },
-    { name: "salmon",   shape: "slim", body: "#d87868", belly: "#ffe8dc", pattern: "scales", patternColor: "#e8a090", size: [20, 28], speed: [28, 44], wave: "sine", register: 0.88, bite: 6, dur: 0.42, turn: 2.7, wiggle: 1.08, slim: 0.54, scale: PENTATONIC, petWave: "sine", petFreq: 280, petDur: 0.4, bitePartial: 0.2, biteBright: 0.95 },
+    { name: "perch",    shape: "oval", body: "#c8a050", belly: "#f0e4b8", pattern: "bands", patternColor: "#5a4820", size: [16, 23], speed: [24, 38], wave: "triangle", register: 1.0, bite: 5, dur: 0.38, turn: 3.0, wiggle: 1.05, scale: PENTATONIC, petWave: "triangle", petFreq: 320, petDur: 0.36, bitePartial: 0.24, biteBright: 1.0, tail: "emarginate", slim: 0.7 },
+    { name: "bass",     shape: "deep", body: "#4a6a48", belly: "#d0dcc0", pattern: "scales", patternColor: "#6a8a60", size: [18, 26], speed: [22, 36], wave: "sine", register: 0.8, bite: 6, dur: 0.45, turn: 2.6, wiggle: 0.95, scale: MINOR_PENT, petWave: "sine", petFreq: 250, petDur: 0.42, bitePartial: 0.18, biteBright: 0.85, tail: "emarginate", slim: 0.88 },
+    { name: "trout",    shape: "slim", body: "#6a8a78", belly: "#f0d8c0", pattern: "spots", patternColor: "#c45a40", size: [18, 26], speed: [30, 46], wave: "triangle", register: 0.95, bite: 6, dur: 0.4, turn: 3.0, wiggle: 1.15, slim: 0.56, scale: PENTATONIC, petWave: "triangle", petFreq: 300, petDur: 0.38, bitePartial: 0.22, biteBright: 1.0, tail: "fork" },
+    { name: "salmon",   shape: "slim", body: "#d87868", belly: "#ffe8dc", pattern: "scales", patternColor: "#e8a090", size: [20, 28], speed: [28, 44], wave: "sine", register: 0.88, bite: 6, dur: 0.42, turn: 2.7, wiggle: 1.08, slim: 0.54, scale: PENTATONIC, petWave: "sine", petFreq: 280, petDur: 0.4, bitePartial: 0.2, biteBright: 0.95, tail: "fork" },
     { name: "chub",     shape: "oval", body: "#8aa0a8", belly: "#e0ecef", pattern: null, patternColor: null, size: [15, 22], speed: [20, 32], wave: "sine", register: 0.9, bite: 5, dur: 0.4, turn: 2.8, wiggle: 0.95, scale: PENTATONIC, petWave: "sine", petFreq: 290, petDur: 0.38, bitePartial: 0.2, biteBright: 0.9 },
     { name: "dace",     shape: "slim", body: "#b8c8a8", belly: "#f0f4e8", pattern: "stripe", patternColor: "#5a6a48", size: [12, 17], speed: [32, 48], wave: "triangle", register: 1.35, bite: 4, dur: 0.28, turn: 4.4, wiggle: 1.3, dart: true, slim: 0.52, scale: PENTATONIC, petWave: "triangle", petFreq: 420, petDur: 0.26, bitePartial: 0.34, biteBright: 1.25 },
     { name: "rudd",     shape: "oval", body: "#d07050", belly: "#ffe0c8", pattern: "scales", patternColor: "#e09070", size: [14, 20], speed: [22, 34], wave: "sine", register: 1.08, bite: 5, dur: 0.36, turn: 3.1, wiggle: 1.05, scale: PENTATONIC, petWave: "sine", petFreq: 335, petDur: 0.34, bitePartial: 0.26, biteBright: 1.08 },
     { name: "roach",    shape: "oval", body: "#c0a878", belly: "#f4ead0", pattern: null, patternColor: null, size: [13, 19], speed: [22, 34], wave: "triangle", register: 1.12, bite: 4, dur: 0.34, turn: 3.2, wiggle: 1.08, scale: PENTATONIC, petWave: "triangle", petFreq: 345, petDur: 0.32, bitePartial: 0.27, biteBright: 1.1 },
-    { name: "bream",    shape: "discus", body: "#a8b090", belly: "#e8f0d8", pattern: "scales", patternColor: "#c0c8a8", size: [16, 23], speed: [18, 28], wave: "sine", register: 0.85, bite: 5, dur: 0.44, turn: 2.5, wiggle: 0.9, scale: PENTATONIC, petWave: "sine", petFreq: 270, petDur: 0.42, bitePartial: 0.18, biteBright: 0.88 },
+    { name: "bream",    shape: "discus", body: "#a8b090", belly: "#e8f0d8", pattern: "scales", patternColor: "#c0c8a8", size: [16, 23], speed: [18, 28], wave: "sine", register: 0.85, bite: 5, dur: 0.44, turn: 2.5, wiggle: 0.9, scale: PENTATONIC, petWave: "sine", petFreq: 270, petDur: 0.42, bitePartial: 0.18, biteBright: 0.88, tail: "fork", slim: 1.18 },
     { name: "ide",      shape: "oval", body: "#d8b070", belly: "#fff0d8", pattern: "blotches", patternColor: "#f0e0c0", size: [17, 24], speed: [20, 32], wave: "sine", register: 0.95, bite: 5, dur: 0.4, turn: 2.7, wiggle: 0.98, scale: PENTATONIC, petWave: "sine", petFreq: 300, petDur: 0.38, bitePartial: 0.22, biteBright: 0.98 },
-    { name: "gar",      shape: "arrow", body: "#6a8058", belly: "#d0dcc0", pattern: "scales", patternColor: "#4a6040", size: [26, 36], speed: [20, 34], wave: "sawtooth", register: 0.6, bite: 7, dur: 0.55, turn: 2.0, wiggle: 0.85, scale: MINOR_PENT, petWave: "sawtooth", petFreq: 190, petDur: 0.55, bitePartial: 0.1, biteBright: 0.65 },
-    { name: "bowfin",   shape: "oval", body: "#4a5540", belly: "#b8c0a0", pattern: "spots", patternColor: "#2a3220", size: [22, 30], speed: [18, 30], wave: "triangle", register: 0.62, bite: 7, dur: 0.52, turn: 2.2, wiggle: 0.9, scale: MINOR_PENT, petWave: "triangle", petFreq: 200, petDur: 0.5, bitePartial: 0.12, biteBright: 0.7 },
-    { name: "bluegill", shape: "round", body: "#4a8a68", belly: "#e8d070", pattern: "bands", patternColor: "#2a5a40", size: [13, 18], speed: [24, 36], wave: "sine", register: 1.15, bite: 4, dur: 0.34, turn: 3.3, wiggle: 1.1, scale: PENTATONIC, petWave: "sine", petFreq: 360, petDur: 0.32, bitePartial: 0.28, biteBright: 1.12 },
-    { name: "pumpkin",  shape: "round", body: "#d88838", belly: "#ffe8b8", pattern: "bands", patternColor: "#8a5020", size: [12, 17], speed: [22, 34], wave: "triangle", register: 1.12, bite: 4, dur: 0.34, turn: 3.2, wiggle: 1.08, scale: PENTATONIC, petWave: "triangle", petFreq: 350, petDur: 0.32, bitePartial: 0.27, biteBright: 1.1 },
-    { name: "crappie",  shape: "oval", body: "#c8c8b0", belly: "#f0f0e0", pattern: "spots", patternColor: "#5a5a48", size: [14, 20], speed: [24, 36], wave: "sine", register: 1.08, bite: 4, dur: 0.35, turn: 3.1, wiggle: 1.05, scale: PENTATONIC, petWave: "sine", petFreq: 340, petDur: 0.33, bitePartial: 0.26, biteBright: 1.08 },
+    { name: "gar",      shape: "arrow", body: "#6a8058", belly: "#d0dcc0", pattern: "scales", patternColor: "#4a6040", size: [26, 36], speed: [20, 34], wave: "sawtooth", register: 0.6, bite: 7, dur: 0.55, turn: 2.0, wiggle: 0.85, scale: MINOR_PENT, petWave: "sawtooth", petFreq: 190, petDur: 0.55, bitePartial: 0.1, biteBright: 0.65, tail: "lunate" },
+    { name: "bowfin",   shape: "oval", body: "#4a5540", belly: "#b8c0a0", pattern: "spots", patternColor: "#2a3220", size: [22, 30], speed: [18, 30], wave: "triangle", register: 0.62, bite: 7, dur: 0.52, turn: 2.2, wiggle: 0.9, scale: MINOR_PENT, petWave: "triangle", petFreq: 200, petDur: 0.5, bitePartial: 0.12, biteBright: 0.7, tail: "emarginate" },
+    { name: "bluegill", shape: "deep", body: "#4a8a68", belly: "#e8d070", pattern: "bands", patternColor: "#2a5a40", size: [13, 18], speed: [24, 36], wave: "sine", register: 1.15, bite: 4, dur: 0.34, turn: 3.3, wiggle: 1.0, scale: PENTATONIC, petWave: "sine", petFreq: 360, petDur: 0.32, bitePartial: 0.28, biteBright: 1.12, tail: "truncate", slim: 1.05 },
+    { name: "pumpkin",  shape: "deep", body: "#d88838", belly: "#ffe8b8", pattern: "bands", patternColor: "#8a5020", size: [12, 17], speed: [22, 34], wave: "triangle", register: 1.12, bite: 4, dur: 0.34, turn: 3.2, wiggle: 0.98, scale: PENTATONIC, petWave: "triangle", petFreq: 350, petDur: 0.32, bitePartial: 0.27, biteBright: 1.1, tail: "truncate", slim: 1.0 },
+    { name: "crappie",  shape: "deep", body: "#c8c8b0", belly: "#f0f0e0", pattern: "spots", patternColor: "#5a5a48", size: [14, 20], speed: [24, 36], wave: "sine", register: 1.08, bite: 4, dur: 0.35, turn: 3.1, wiggle: 1.0, scale: PENTATONIC, petWave: "sine", petFreq: 340, petDur: 0.33, bitePartial: 0.26, biteBright: 1.08, tail: "truncate", slim: 0.92 },
     { name: "walleye",  shape: "slim", body: "#c0b060", belly: "#f0e8c0", pattern: "bands", patternColor: "#6a6030", size: [20, 28], speed: [26, 40], wave: "triangle", register: 0.78, bite: 6, dur: 0.42, turn: 2.6, wiggle: 1.05, slim: 0.55, scale: MINOR_PENT, petWave: "triangle", petFreq: 240, petDur: 0.4, bitePartial: 0.16, biteBright: 0.82 },
     { name: "sauger",   shape: "slim", body: "#a89858", belly: "#e8dcb0", pattern: "spots", patternColor: "#5a5028", size: [18, 26], speed: [26, 40], wave: "sine", register: 0.82, bite: 6, dur: 0.4, turn: 2.7, wiggle: 1.08, slim: 0.54, scale: MINOR_PENT, petWave: "sine", petFreq: 250, petDur: 0.38, bitePartial: 0.17, biteBright: 0.85 },
     { name: "smelt",    shape: "slim", body: "#d0e0e8", belly: "#ffffff", pattern: null, patternColor: null, size: [10, 15], speed: [38, 56], wave: "sine", register: 1.8, bite: 3, dur: 0.22, turn: 5.0, wiggle: 1.45, dart: true, slim: 0.48, scale: PENTATONIC, petWave: "sine", petFreq: 530, petDur: 0.2, bitePartial: 0.42, biteBright: 1.4 },
@@ -653,19 +655,19 @@ const FISH_TYPES = [
 
 // Medium-rare exotic visitors: odd swim habits, rarer than commons, commoner than crocs.
 const EXOTIC_TYPES = [
-    { name: "discus",   exotic: true, odd: "spiral", shape: "discus",  body: "#c45a8c", belly: "#f0c8dc", pattern: "bands",  patternColor: "#7a2850", size: [16, 22], speed: [16, 26], wave: "triangle", register: 1.4,  bite: 4, dur: 0.42, turn: 4.2, wiggle: 1.3, scale: PENTATONIC, petWave: "sine",     petFreq: 430, petDur: 0.45, bitePartial: 0.3,  biteBright: 1.2 },
-    { name: "dragonet", exotic: true, odd: "zigzag", shape: "slim",    body: "#2f8f7a", belly: "#b8f0dc", pattern: "spots",  patternColor: "#f0d060", size: [12, 17], speed: [30, 48], wave: "square",   register: 1.6,  bite: 3, dur: 0.28, turn: 5.5, wiggle: 1.7, slim: 0.52, scale: PENTATONIC, petWave: "square",   petFreq: 480, petDur: 0.28, bitePartial: 0.4,  biteBright: 1.35 },
-    { name: "glass",    exotic: true, odd: "jitter", shape: "slim",    body: "#a8d4e8", belly: "#e8f6ff", pattern: null,     patternColor: null,      size: [10, 15], speed: [38, 58], wave: "sine",     register: 1.9,  bite: 3, dur: 0.2,  turn: 6.5, wiggle: 1.9, slim: 0.48, scale: PENTATONIC, petWave: "sine",     petFreq: 560, petDur: 0.22, bitePartial: 0.5,  biteBright: 1.55, ghost: 0.55 },
-    { name: "mandarin", exotic: true, odd: "drift",  shape: "round",   body: "#3a6ec4", belly: "#f0a040", pattern: "blotches", patternColor: "#e8d050", size: [13, 18], speed: [14, 24], wave: "triangle", register: 1.3,  bite: 4, dur: 0.48, turn: 3.8, wiggle: 1.4, scale: MINOR_PENT, petWave: "triangle", petFreq: 390, petDur: 0.5,  bitePartial: 0.28, biteBright: 1.15 },
-    { name: "arowana",  exotic: true, odd: "glide",  shape: "arrow",   body: "#c9a24b", belly: "#fff0c8", pattern: "scales", patternColor: "#8a6a28", size: [28, 40], speed: [22, 36], wave: "sawtooth", register: 0.55, bite: 8, dur: 0.65, turn: 1.8, wiggle: 0.85, scale: MINOR_PENT, petWave: "triangle", petFreq: 200, petDur: 0.6,  bitePartial: 0.12, biteBright: 0.75 },
-    { name: "peacock",  exotic: true, odd: "spiral", shape: "oval", body: "#2a6a9a", belly: "#e8b060", pattern: "spots", patternColor: "#f0d050", size: [15, 21], speed: [18, 28], wave: "triangle", register: 1.25, bite: 4, dur: 0.4, turn: 3.6, wiggle: 1.2, scale: PENTATONIC, petWave: "triangle", petFreq: 410, petDur: 0.42, bitePartial: 0.3, biteBright: 1.18 },
-    { name: "flowerhorn", exotic: true, odd: "drift", shape: "round", body: "#d05040", belly: "#f8c8a0", pattern: "blotches", patternColor: "#f0e080", size: [17, 24], speed: [16, 26], wave: "sine", register: 1.05, bite: 5, dur: 0.45, turn: 3.0, wiggle: 1.1, scale: MINOR_PENT, petWave: "sine", petFreq: 340, petDur: 0.45, bitePartial: 0.24, biteBright: 1.05, hump: true },
-    { name: "oscar",    exotic: true, odd: "glide", shape: "oval", body: "#3a2a20", belly: "#e07040", pattern: "blotches", patternColor: "#f0a060", size: [20, 28], speed: [18, 30], wave: "sawtooth", register: 0.7, bite: 6, dur: 0.5, turn: 2.4, wiggle: 0.95, scale: MINOR_PENT, petWave: "triangle", petFreq: 230, petDur: 0.5, bitePartial: 0.14, biteBright: 0.78 },
+    { name: "discus",   exotic: true, odd: "spiral", shape: "discus",  body: "#c45a8c", belly: "#f0c8dc", pattern: "bands",  patternColor: "#7a2850", size: [16, 22], speed: [16, 26], wave: "triangle", register: 1.4,  bite: 4, dur: 0.42, turn: 4.2, wiggle: 1.3, scale: PENTATONIC, petWave: "sine",     petFreq: 430, petDur: 0.45, bitePartial: 0.3,  biteBright: 1.2, tail: "lyre" },
+    { name: "dragonet", exotic: true, odd: "zigzag", shape: "slim",    body: "#2f8f7a", belly: "#b8f0dc", pattern: "spots",  patternColor: "#f0d060", size: [12, 17], speed: [30, 48], wave: "square",   register: 1.6,  bite: 3, dur: 0.28, turn: 5.5, wiggle: 1.35, slim: 0.55, scale: PENTATONIC, petWave: "square",   petFreq: 480, petDur: 0.28, bitePartial: 0.4,  biteBright: 1.35, tail: "truncate", labriform: true },
+    { name: "glass",    exotic: true, odd: "jitter", shape: "slim",    body: "#a8d4e8", belly: "#e8f6ff", pattern: null,     patternColor: null,      size: [10, 15], speed: [38, 58], wave: "sine",     register: 1.9,  bite: 3, dur: 0.2,  turn: 6.5, wiggle: 1.9, slim: 0.48, scale: PENTATONIC, petWave: "sine",     petFreq: 560, petDur: 0.22, bitePartial: 0.5,  biteBright: 1.55, ghost: 0.55, tail: "fork" },
+    { name: "mandarin", exotic: true, odd: "drift",  shape: "round",   body: "#3a6ec4", belly: "#f0a040", pattern: "blotches", patternColor: "#e8d050", size: [13, 18], speed: [14, 24], wave: "triangle", register: 1.3,  bite: 4, dur: 0.48, turn: 3.8, wiggle: 1.1, scale: MINOR_PENT, petWave: "triangle", petFreq: 390, petDur: 0.5,  bitePartial: 0.28, biteBright: 1.15, slim: 0.85, tail: "truncate", labriform: true },
+    { name: "arowana",  exotic: true, odd: "glide",  shape: "arrow",   body: "#c9a24b", belly: "#fff0c8", pattern: "scales", patternColor: "#8a6a28", size: [28, 40], speed: [22, 36], wave: "sawtooth", register: 0.55, bite: 8, dur: 0.65, turn: 1.8, wiggle: 0.85, scale: MINOR_PENT, petWave: "triangle", petFreq: 200, petDur: 0.6,  bitePartial: 0.12, biteBright: 0.75, tail: "lunate" },
+    { name: "peacock",  exotic: true, odd: "spiral", shape: "deep", body: "#2a6a9a", belly: "#e8b060", pattern: "spots", patternColor: "#f0d050", size: [15, 21], speed: [18, 28], wave: "triangle", register: 1.25, bite: 4, dur: 0.4, turn: 3.6, wiggle: 1.1, scale: PENTATONIC, petWave: "triangle", petFreq: 410, petDur: 0.42, bitePartial: 0.3, biteBright: 1.18, slim: 0.95, tail: "truncate" },
+    { name: "flowerhorn", exotic: true, odd: "drift", shape: "deep", body: "#d05040", belly: "#f8c8a0", pattern: "blotches", patternColor: "#f0e080", size: [17, 24], speed: [16, 26], wave: "sine", register: 1.05, bite: 5, dur: 0.45, turn: 3.0, wiggle: 1.0, scale: MINOR_PENT, petWave: "sine", petFreq: 340, petDur: 0.45, bitePartial: 0.24, biteBright: 1.05, hump: true, slim: 1.0, tail: "truncate" },
+    { name: "oscar",    exotic: true, odd: "glide", shape: "deep", body: "#3a2a20", belly: "#e07040", pattern: "blotches", patternColor: "#f0a060", size: [20, 28], speed: [18, 30], wave: "sawtooth", register: 0.7, bite: 6, dur: 0.5, turn: 2.4, wiggle: 0.95, scale: MINOR_PENT, petWave: "triangle", petFreq: 230, petDur: 0.5, bitePartial: 0.14, biteBright: 0.78, slim: 0.9, tail: "emarginate" },
     { name: "clownknife", exotic: true, odd: "zigzag", shape: "eel", body: "#2a2a30", belly: "#c8c8d0", pattern: "bands", patternColor: "#f0f0f4", size: [24, 34], speed: [22, 36], wave: "sawtooth", register: 0.68, bite: 6, dur: 0.55, turn: 2.8, wiggle: 1.6, scale: MINOR_PENT, petWave: "sawtooth", petFreq: 210, petDur: 0.52, bitePartial: 0.12, biteBright: 0.72 },
     { name: "datnoid",  exotic: true, odd: "glide", shape: "arrow", body: "#e8d8a0", belly: "#fff8e0", pattern: "bands", patternColor: "#2a2a28", size: [22, 32], speed: [20, 34], wave: "triangle", register: 0.75, bite: 6, dur: 0.48, turn: 2.5, wiggle: 1.0, scale: MINOR_PENT, petWave: "triangle", petFreq: 240, petDur: 0.46, bitePartial: 0.16, biteBright: 0.85 },
     { name: "bichir",   exotic: true, odd: "drift", shape: "eel", body: "#5a4838", belly: "#c8b090", pattern: "scales", patternColor: "#3a2a20", size: [24, 34], speed: [12, 22], wave: "sawtooth", register: 0.5, bite: 7, dur: 0.7, turn: 1.6, wiggle: 1.4, scale: MINOR_PENT, petWave: "sawtooth", petFreq: 170, petDur: 0.65, bitePartial: 0.08, biteBright: 0.55 },
     { name: "stingray", exotic: true, odd: "spiral", shape: "ray", body: "#6a7080", belly: "#d0d4dc", pattern: "spots", patternColor: "#3a4050", size: [18, 26], speed: [14, 24], wave: "sine", register: 0.65, bite: 5, dur: 0.6, turn: 2.0, wiggle: 0.85, scale: MINOR_PENT, petWave: "sine", petFreq: 200, petDur: 0.6, bitePartial: 0.1, biteBright: 0.65 },
-    { name: "puffer",   exotic: true, odd: "jitter", shape: "puffer", body: "#e0c070", belly: "#fff4d0", pattern: "spots", patternColor: "#6a5020", size: [12, 17], speed: [16, 28], wave: "square", register: 1.5, bite: 3, dur: 0.3, turn: 4.5, wiggle: 1.35, scale: PENTATONIC, petWave: "square", petFreq: 450, petDur: 0.3, bitePartial: 0.36, biteBright: 1.3 },
+    { name: "puffer",   exotic: true, odd: "jitter", shape: "puffer", body: "#e0c070", belly: "#fff4d0", pattern: "spots", patternColor: "#6a5020", size: [12, 17], speed: [16, 28], wave: "square", register: 1.5, bite: 3, dur: 0.3, turn: 4.5, wiggle: 1.35, scale: PENTATONIC, petWave: "square", petFreq: 450, petDur: 0.3, bitePartial: 0.36, biteBright: 1.3, tail: "truncate" },
 ];
 
 // Night deep-sea oddity: sagging gelatinous body, rare apex-cadence visitor.
@@ -691,7 +693,7 @@ const NIGHT_FISH_TYPES = [
     { name: "frostgill", night: true, shape: "oval", body: "#b8d0e8", belly: "#f4faff", pattern: "scales", patternColor: "#d8e8f8", size: [16, 23], speed: [16, 28], wave: "sine", register: 1.15, bite: 4, dur: 0.4, turn: 2.6, wiggle: 0.98, scale: PENTATONIC, petWave: "sine", petFreq: 330, petDur: 0.4, bitePartial: 0.26, biteBright: 1.12 },
     { name: "umbrael", night: true, shape: "eel", body: "#2a3848", belly: "#8090a8", pattern: "bands", patternColor: "#101820", size: [24, 34], speed: [14, 24], wave: "sawtooth", register: 0.7, bite: 6, dur: 0.7, turn: 2.2, wiggle: 2.1, scale: MINOR_PENT, petWave: "sawtooth", petFreq: 200, petDur: 0.6, bitePartial: 0.1, biteBright: 0.6 },
     { name: "starflare", night: true, shape: "angel", body: "#405878", belly: "#e0f0ff", pattern: "spots", patternColor: "#f0e8a0", size: [13, 18], speed: [30, 48], wave: "triangle", register: 1.55, bite: 3, dur: 0.26, turn: 5.0, wiggle: 1.4, dart: true, scale: PENTATONIC, petWave: "triangle", petFreq: 470, petDur: 0.28, bitePartial: 0.4, biteBright: 1.35 },
-    { name: "nocturne", night: true, shape: "longfin", body: "#4a3868", belly: "#c8b0e8", pattern: null, patternColor: null, size: [12, 17], speed: [18, 28], wave: "triangle", register: 1.3, bite: 4, dur: 0.45, turn: 3.2, wiggle: 1.6, scale: MINOR_PENT, petWave: "sine", petFreq: 380, petDur: 0.48, bitePartial: 0.32, biteBright: 1.15 },
+    { name: "nocturne", night: true, shape: "longfin", body: "#4a3868", belly: "#c8b0e8", pattern: null, patternColor: null, size: [12, 17], speed: [18, 28], wave: "triangle", register: 1.3, bite: 4, dur: 0.45, turn: 3.2, wiggle: 1.45, scale: MINOR_PENT, petWave: "sine", petFreq: 380, petDur: 0.48, bitePartial: 0.32, biteBright: 1.15, tail: "veil", slim: 0.56 },
     { name: "tideglass", night: true, shape: "slim", body: "#6890b0", belly: "#d8ecff", pattern: null, patternColor: null, size: [11, 16], speed: [34, 52], wave: "sine", register: 1.7, bite: 3, dur: 0.22, turn: 5.8, wiggle: 1.7, slim: 0.48, scale: PENTATONIC, petWave: "sine", petFreq: 520, petDur: 0.22, bitePartial: 0.45, biteBright: 1.4, ghost: 0.6 },
     { name: "voidperch", night: true, shape: "oval", body: "#303848", belly: "#98a0b8", pattern: "bands", patternColor: "#181c28", size: [15, 22], speed: [20, 32], wave: "triangle", register: 0.95, bite: 5, dur: 0.4, turn: 2.8, wiggle: 1.0, scale: MINOR_PENT, petWave: "triangle", petFreq: 290, petDur: 0.38, bitePartial: 0.22, biteBright: 0.95 },
 ];
@@ -701,10 +703,10 @@ const CRYSTAL_FISH_TYPES = [
     { name: "gemkoi", crystal: true, shape: "koi", koi: true, body: "#c8a0e8", belly: "#f0e8ff", pattern: "hi", patternColor: "#70d0e8", size: [20, 30], speed: [17, 28], wave: "sine", register: 1.05, bite: 5, dur: 0.42, turn: 2.3, wiggle: 1.0, scale: PENTATONIC, petWave: "sine", petFreq: 340, petDur: 0.42, bitePartial: 0.26, biteBright: 1.2, whiskers: true },
     { name: "amethyst", crystal: true, shape: "oval", body: "#7a48b0", belly: "#e0c8f8", pattern: "scales", patternColor: "#b080e0", size: [16, 24], speed: [18, 30], wave: "triangle", register: 1.2, bite: 4, dur: 0.38, turn: 2.8, wiggle: 1.1, scale: PENTATONIC, petWave: "triangle", petFreq: 380, petDur: 0.38, bitePartial: 0.3, biteBright: 1.25 },
     { name: "opalminnow", crystal: true, shape: "slim", body: "#e8f0ff", belly: "#ffffff", pattern: "stripe", patternColor: "#90c0e8", size: [9, 13], speed: [42, 62], wave: "sine", register: 2.0, bite: 3, dur: 0.2, turn: 5.6, wiggle: 1.55, dart: true, slim: 0.48, scale: PENTATONIC, petWave: "sine", petFreq: 560, petDur: 0.2, bitePartial: 0.45, biteBright: 1.5, ghost: 0.65 },
-    { name: "prismatic", crystal: true, shape: "longfin", body: "#48c0c8", belly: "#e0fff8", pattern: "blotches", patternColor: "#e080d0", size: [13, 18], speed: [20, 32], wave: "triangle", register: 1.4, bite: 4, dur: 0.4, turn: 3.4, wiggle: 1.55, scale: PENTATONIC, petWave: "sine", petFreq: 420, petDur: 0.42, bitePartial: 0.34, biteBright: 1.3 },
+    { name: "prismatic", crystal: true, shape: "longfin", body: "#48c0c8", belly: "#e0fff8", pattern: "blotches", patternColor: "#e080d0", size: [13, 18], speed: [20, 32], wave: "triangle", register: 1.4, bite: 4, dur: 0.4, turn: 3.4, wiggle: 1.4, scale: PENTATONIC, petWave: "sine", petFreq: 420, petDur: 0.42, bitePartial: 0.34, biteBright: 1.3, tail: "veil", slim: 0.55 },
     { name: "quartzangel", crystal: true, shape: "angel", body: "#d0e0f0", belly: "#ffffff", pattern: "spots", patternColor: "#a070d0", size: [15, 21], speed: [18, 28], wave: "triangle", register: 1.25, bite: 4, dur: 0.48, turn: 2.7, wiggle: 0.95, scale: PENTATONIC, petWave: "triangle", petFreq: 360, petDur: 0.46, bitePartial: 0.28, biteBright: 1.15 },
     { name: "jadeel", crystal: true, shape: "eel", body: "#2a8058", belly: "#a0e0c0", pattern: "bands", patternColor: "#104030", size: [24, 34], speed: [14, 24], wave: "sawtooth", register: 0.72, bite: 6, dur: 0.7, turn: 2.2, wiggle: 2.2, scale: MINOR_PENT, petWave: "sawtooth", petFreq: 210, petDur: 0.6, bitePartial: 0.1, biteBright: 0.65 },
-    { name: "rubygill", crystal: true, shape: "round", body: "#c04058", belly: "#ffd0d8", pattern: "bands", patternColor: "#801828", size: [13, 18], speed: [24, 36], wave: "sine", register: 1.18, bite: 4, dur: 0.34, turn: 3.3, wiggle: 1.1, scale: PENTATONIC, petWave: "sine", petFreq: 370, petDur: 0.32, bitePartial: 0.28, biteBright: 1.2 },
+    { name: "rubygill", crystal: true, shape: "deep", body: "#c04058", belly: "#ffd0d8", pattern: "bands", patternColor: "#801828", size: [13, 18], speed: [24, 36], wave: "sine", register: 1.18, bite: 4, dur: 0.34, turn: 3.3, wiggle: 1.05, scale: PENTATONIC, petWave: "sine", petFreq: 370, petDur: 0.32, bitePartial: 0.28, biteBright: 1.2, tail: "truncate", slim: 1.02 },
     { name: "sapphire", crystal: true, shape: "slim", body: "#2858b0", belly: "#c8dcff", pattern: "stripe", patternColor: "#f0e080", size: [14, 20], speed: [28, 44], wave: "triangle", register: 1.35, bite: 4, dur: 0.32, turn: 4.2, wiggle: 1.35, slim: 0.52, scale: PENTATONIC, petWave: "triangle", petFreq: 440, petDur: 0.3, bitePartial: 0.35, biteBright: 1.3 },
     { name: "topazkoi", crystal: true, shape: "koi", koi: true, body: "#e8b040", belly: "#fff4d0", pattern: "blotches", patternColor: "#f0e8a0", size: [19, 28], speed: [16, 26], wave: "sine", register: 1.0, bite: 5, dur: 0.44, turn: 2.2, wiggle: 0.98, scale: PENTATONIC, petWave: "sine", petFreq: 320, petDur: 0.44, bitePartial: 0.24, biteBright: 1.15, whiskers: true },
     { name: "obsidian", crystal: true, shape: "oval", body: "#1a1828", belly: "#6870a0", pattern: "scales", patternColor: "#404060", size: [17, 25], speed: [16, 28], wave: "sawtooth", register: 0.8, bite: 5, dur: 0.45, turn: 2.4, wiggle: 0.95, scale: MINOR_PENT, petWave: "triangle", petFreq: 240, petDur: 0.45, bitePartial: 0.16, biteBright: 0.85 },
@@ -715,7 +717,7 @@ const CRYSTAL_EXOTIC_TYPES = [
     { name: "geode", crystal: true, exotic: true, odd: "spiral", shape: "round", body: "#4a3868", belly: "#e8c070", pattern: "spots", patternColor: "#90e0f0", size: [14, 20], speed: [12, 22], wave: "triangle", register: 1.1, bite: 4, dur: 0.5, turn: 3.2, wiggle: 1.2, scale: MINOR_PENT, petWave: "triangle", petFreq: 300, petDur: 0.5, bitePartial: 0.22, biteBright: 1.1 },
     { name: "prismglass", crystal: true, exotic: true, odd: "jitter", shape: "slim", body: "#c8e8ff", belly: "#ffffff", pattern: null, patternColor: null, size: [11, 16], speed: [36, 56], wave: "sine", register: 1.85, bite: 3, dur: 0.22, turn: 6.2, wiggle: 1.85, slim: 0.46, scale: PENTATONIC, petWave: "sine", petFreq: 540, petDur: 0.22, bitePartial: 0.48, biteBright: 1.55, ghost: 0.5 },
     { name: "facetray", crystal: true, exotic: true, odd: "glide", shape: "ray", body: "#70a0d0", belly: "#e8f4ff", pattern: "blotches", patternColor: "#d080e0", size: [18, 26], speed: [14, 24], wave: "sine", register: 0.7, bite: 5, dur: 0.58, turn: 2.0, wiggle: 0.85, scale: MINOR_PENT, petWave: "sine", petFreq: 220, petDur: 0.55, bitePartial: 0.12, biteBright: 0.75 },
-    { name: "aurorafin", crystal: true, exotic: true, odd: "drift", shape: "longfin", body: "#5080c8", belly: "#f0c0e8", pattern: "blotches", patternColor: "#70e0c0", size: [14, 20], speed: [16, 28], wave: "triangle", register: 1.35, bite: 4, dur: 0.45, turn: 3.5, wiggle: 1.5, scale: PENTATONIC, petWave: "triangle", petFreq: 400, petDur: 0.45, bitePartial: 0.32, biteBright: 1.25 },
+    { name: "aurorafin", crystal: true, exotic: true, odd: "drift", shape: "longfin", body: "#5080c8", belly: "#f0c0e8", pattern: "blotches", patternColor: "#70e0c0", size: [14, 20], speed: [16, 28], wave: "triangle", register: 1.35, bite: 4, dur: 0.45, turn: 3.5, wiggle: 1.4, scale: PENTATONIC, petWave: "triangle", petFreq: 400, petDur: 0.45, bitePartial: 0.32, biteBright: 1.25, tail: "veil", slim: 0.56 },
     { name: "shardpike", crystal: true, exotic: true, odd: "zigzag", shape: "arrow", body: "#a0c8e8", belly: "#f0f8ff", pattern: "bands", patternColor: "#6070a0", size: [22, 32], speed: [26, 42], wave: "sawtooth", register: 0.75, bite: 6, dur: 0.48, turn: 2.6, wiggle: 1.15, scale: MINOR_PENT, petWave: "sawtooth", petFreq: 250, petDur: 0.42, bitePartial: 0.16, biteBright: 0.9 },
 ];
 
@@ -3225,67 +3227,114 @@ function pathObstacleShadow(ctx, o) {
     }
 }
 
+// Resolve caudal style from type (twin / veil / truncate / etc.) with shape fallbacks.
+function fishTailStyle(type, shape) {
+    if (type && type.tail) return type.tail;
+    if (shape === "ray") return "whip";
+    if (shape === "eel") return "ribbon";
+    if (shape === "blob") return "blob";
+    if (shape === "arrow") return "lunate";
+    if (shape === "koi") return "crescent";
+    if (shape === "longfin") return "comet";
+    if (shape === "angel" || shape === "discus" || shape === "diamond") return "lyre";
+    if (shape === "egg") return "twin";
+    if (shape === "deep" || shape === "flathead" || shape === "puffer") return "truncate";
+    if (shape === "round") return "fork";
+    return "fork";
+}
+
 function fishShadowDims(f) {
     const shape = (f.type && f.type.shape) || "oval";
     const slim = fishSlimForShape(shape, f.type);
     const L = f.size;
     const W = f.size * 0.5 * slim;
-    return { L, W, shape };
+    return { L, W, shape, tail: fishTailStyle(f.type, shape) };
 }
 
 // Same swim pose Fish.draw uses that frame (tail phase, thrash, shape follow-through).
 function fishLiveSwimPose(f) {
     const shape = (f.type && f.type.shape) || "oval";
+    const tail = fishTailStyle(f.type, shape);
     const golden = !!f.golden;
     const wigAmt = golden ? 0 : ((f.type && f.type.wiggle) || 1);
     const liftZ = f.pickerLiftZ || 0;
     const thrash = !golden && liftZ > 2 ? Math.sin((f.tailPhase || 0) * 2.4) * 0.35 : 0;
-    let wig = Math.sin(f.tailPhase || 0) * 0.5 * wigAmt + thrash * 0.2;
+    const phase = f.tailPhase || 0;
+    let wig = Math.sin(phase) * 0.5 * wigAmt + thrash * 0.2;
+    // Fancy egg bodies: less mid-body flex, more caudal flutter (near-ostraciiform).
+    if (!golden && (shape === "egg" || shape === "round" || shape === "puffer" || shape === "deep")) {
+        wig *= 0.62;
+        wig += Math.sin(phase * 1.35) * 0.18 * wigAmt;
+    }
+    // Flowing ornamental caudals lag the peduncle beat slightly.
+    if (!golden && (tail === "veil" || tail === "lyre" || tail === "comet" || tail === "twin")) {
+        wig = Math.sin(phase - 0.35) * 0.55 * wigAmt + thrash * 0.15;
+        if (tail === "veil") wig += Math.sin(phase * 0.55) * 0.12;
+        if (tail === "twin") wig *= 0.85;
+    }
     if (!golden && shape === "ray") {
-        wig += Math.sin(f._flap || f.tailPhase || 0) * 0.28;
+        wig += Math.sin(f._flap || phase) * 0.28;
     } else if (!golden && shape === "eel") {
-        wig += Math.sin(f._ribbon || (f.tailPhase || 0) * 1.4) * 0.22;
+        wig += Math.sin(f._ribbon || phase * 1.4) * 0.22;
     } else if (!golden && (shape === "angel" || shape === "discus")) {
         wig *= 0.72;
-        wig += Math.sin((f.tailPhase || 0) * 0.55) * 0.12;
+        wig += Math.sin(phase * 0.55) * 0.12;
     }
-    const bobY = (!golden && (shape === "angel" || shape === "discus"))
-        ? Math.sin((f.tailPhase || 0) * 0.7) * (2.2 + f.size * 0.04)
+    // Labriform: pectoral rowing with soft body sway (mandarin / dragonet).
+    let pecFlap = 0;
+    if (!golden && f.type && f.type.labriform) {
+        wig *= 0.45;
+        pecFlap = Math.sin(phase * 1.8) * 0.55;
+        wig += pecFlap * 0.08;
+    }
+    const bobY = (!golden && (shape === "angel" || shape === "discus"
+        || (f.type && f.type.labriform)))
+        ? Math.sin(phase * (f.type && f.type.labriform ? 1.6 : 0.7))
+            * (2.2 + f.size * 0.04) * (f.type && f.type.labriform ? 0.55 : 1)
         : 0;
     const discPulse = (!golden && shape === "ray")
-        ? 1 + Math.sin(f._flap || f.tailPhase || 0) * 0.04
+        ? 1 + Math.sin(f._flap || phase) * 0.04
         : 1;
     const ribbonYaw = (!golden && shape === "eel")
-        ? Math.sin(f._ribbon || f.tailPhase || 0) * 0.12
+        ? Math.sin(f._ribbon || phase) * 0.12
         : 0;
     const sink = golden ? (f.sinkDepth || 0) : 0;
     return {
         shape,
+        tail,
         wig,
         thrash,
         bobY,
         discPulse,
         ribbonYaw,
+        pecFlap,
         liftZ,
         sink,
         noDorsal: !!(f.type && f.type.noDorsal),
+        labriform: !!(f.type && f.type.labriform),
     };
 }
 
-function fishCaudalPeduncleX(L, shape) {
-    if (shape === "ray") return -L * 0.45;
-    if (shape === "koi" || shape === "longfin") return -L * 0.38;
+function fishCaudalPeduncleX(L, shape, tail) {
+    const t = tail || fishTailStyle(null, shape);
+    if (shape === "ray" || t === "whip") return -L * 0.45;
+    if (t === "veil") return -L * 0.34;
+    if (t === "comet" || t === "lyre") return -L * 0.36;
+    if (t === "twin") return -L * 0.34;
+    if (t === "crescent" || shape === "koi" || shape === "longfin") return -L * 0.38;
     if (isTallDiscFishShape(shape)) return -L * 0.32;
-    if (shape === "eel") return -L * 0.92;
-    if (shape === "blob") return -L * 0.55;
-    if (shape === "arrow") return -L * 0.72;
+    if (shape === "eel" || t === "ribbon") return -L * 0.92;
+    if (shape === "blob" || t === "blob") return -L * 0.55;
+    if (shape === "arrow" || t === "lunate") return -L * 0.72;
+    if (t === "truncate" || t === "emarginate") return -L * 0.38;
     return -L * 0.4;
 }
 
 // Ease the caudal around the peduncle with the live wag (draw + shadow share this).
-function withFishCaudalSwing(ctx, L, shape, wig, drawFn) {
-    const ped = fishCaudalPeduncleX(L, shape);
-    const yaw = (wig || 0) * (shape === "ray" || shape === "eel" ? 0.12 : 0.22);
+function withFishCaudalSwing(ctx, L, shape, wig, drawFn, tail) {
+    const ped = fishCaudalPeduncleX(L, shape, tail);
+    const soft = tail === "veil" || tail === "lyre" || tail === "twin" || tail === "comet";
+    const yaw = (wig || 0) * (shape === "ray" || shape === "eel" ? 0.12 : soft ? 0.28 : 0.22);
     ctx.save();
     ctx.translate(ped, 0);
     ctx.rotate(yaw);
@@ -3294,20 +3343,91 @@ function withFishCaudalSwing(ctx, L, shape, wig, drawFn) {
     ctx.restore();
 }
 
-// Caudal fork / whip / ribbon: same outline the fish draw uses (shadow stamp opaque-merges parts).
-function pathFishCaudal(ctx, L, W, shape, wig) {
+// Caudal fork / whip / ribbon / twin / veil: same outline the fish draw uses.
+function pathFishCaudal(ctx, L, W, shape, wig, opts) {
     wig = wig || 0;
-    const isKoi = shape === "koi";
-    const isRay = shape === "ray";
-    const isEel = shape === "eel";
+    const tail = (opts && opts.tail) || fishTailStyle(opts && opts.type, shape);
+    const isRay = shape === "ray" || tail === "whip";
+    const isEel = shape === "eel" || tail === "ribbon";
     const isTall = isTallDiscFishShape(shape);
     ctx.beginPath();
     if (isRay) {
         ctx.moveTo(-L * 0.45, 0);
         ctx.quadraticCurveTo(-L * 0.85, -W * (0.08 + wig * 0.05), -L * 1.45, wig * W * 0.15);
         ctx.quadraticCurveTo(-L * 0.9, W * 0.06, -L * 0.45, 0);
+    } else if (tail === "twin") {
+        // Fancy goldfish twin caudal: thick multi-lobed fan (side view of paired lobes).
+        const sway = wig * 0.4;
+        ctx.moveTo(-L * 0.34, 0);
+        ctx.bezierCurveTo(-L * 0.48, -W * (0.45 + sway * 0.5), -L * 0.62, -W * (1.05 + sway), -L * 0.92, -W * (1.25 + sway));
+        ctx.quadraticCurveTo(-L * 1.12, -W * (0.85 + sway * 0.6), -L * 1.08, -W * (0.35 + sway * 0.3));
+        ctx.quadraticCurveTo(-L * 0.95, -W * 0.55, -L * 0.78, -W * 0.15);
+        ctx.quadraticCurveTo(-L * 0.88, -W * 0.08, -L * 0.78, 0);
+        ctx.quadraticCurveTo(-L * 0.88, W * 0.08, -L * 0.78, W * 0.15);
+        ctx.quadraticCurveTo(-L * 0.95, W * 0.55, -L * 1.08, W * (0.35 + sway * 0.3));
+        ctx.quadraticCurveTo(-L * 1.12, W * (0.85 + sway * 0.6), -L * 0.92, W * (1.25 + sway));
+        ctx.bezierCurveTo(-L * 0.62, W * (1.05 + sway), -L * 0.48, W * (0.45 + sway * 0.5), -L * 0.34, 0);
+    } else if (tail === "veil") {
+        // Betta halfmoon / veil: continuous flowing sheet, soft trailing arc (not a deep fork).
+        const droop = 0.2 + wig * 0.14;
+        const flare = 1 + wig * 0.08;
+        ctx.moveTo(-L * 0.34, -W * 0.06);
+        ctx.bezierCurveTo(
+            -L * 0.55, -W * (1.15 * flare),
+            -L * 0.95, -W * (1.95 * flare),
+            -L * 1.42, -W * ((1.25 + droop) * flare)
+        );
+        ctx.quadraticCurveTo(-L * 1.58, -W * 0.15, -L * 1.6, W * (0.35 + droop));
+        ctx.bezierCurveTo(
+            -L * 1.35, W * ((1.85 + droop) * flare),
+            -L * 0.75, W * (1.35 * flare),
+            -L * 0.34, W * 0.1
+        );
+        ctx.quadraticCurveTo(-L * 0.36, 0.02, -L * 0.34, -W * 0.06);
+    } else if (tail === "lyre") {
+        // Angel / guppy lyre: elongated tips with a scooped mid notch.
+        const sway = wig * L * 0.08;
+        ctx.moveTo(-L * 0.36, 0);
+        ctx.bezierCurveTo(-L * 0.55 + sway * 0.2, -W * 0.7, -L * 0.9 + sway, -W * (1.55 + wig * 0.25), -L * 1.28 + sway, -W * (1.35 + wig * 0.2));
+        ctx.quadraticCurveTo(-L * 0.95, -W * 0.35, -L * 0.7, -W * 0.08);
+        ctx.quadraticCurveTo(-L * 0.88, 0, -L * 0.7, W * 0.08);
+        ctx.quadraticCurveTo(-L * 0.95, W * 0.35, -L * 1.28 + sway, W * (1.35 + wig * 0.2));
+        ctx.bezierCurveTo(-L * 0.9 + sway, W * (1.55 + wig * 0.25), -L * 0.55 + sway * 0.2, W * 0.7, -L * 0.36, 0);
+    } else if (tail === "comet") {
+        // Single long flowing fork (comet / shubunkin).
+        const spread = 1.35;
+        ctx.moveTo(-L * 0.36, 0);
+        ctx.bezierCurveTo(-L * 0.6, -W * (0.7 + wig * 0.2) * spread, -L * 1.05, -W * (1.45 + wig) * spread, -L * 1.48, -W * (1.05 + wig * 0.6) * spread);
+        ctx.quadraticCurveTo(-L * 1.1, -W * 0.25, -L * 0.78, -W * 0.06);
+        ctx.quadraticCurveTo(-L * 0.62, 0, -L * 0.78, W * 0.06);
+        ctx.quadraticCurveTo(-L * 1.1, W * 0.25, -L * 1.48, W * (1.05 + wig * 0.6) * spread);
+        ctx.bezierCurveTo(-L * 1.05, W * (1.45 + wig) * spread, -L * 0.6, W * (0.7 + wig * 0.2) * spread, -L * 0.36, 0);
+    } else if (tail === "crescent") {
+        // Koi / carp: strong forked crescent joined at a narrow peduncle.
+        const spread = 1.18;
+        ctx.moveTo(-L * 0.38, 0);
+        ctx.bezierCurveTo(-L * 0.55, -W * (0.75 + wig * 0.2) * spread, -L * 0.82, -W * (1.35 + wig) * spread, -L * 1.15, -W * (1.05 + wig * 0.5) * spread);
+        ctx.quadraticCurveTo(-L * 0.9, -W * 0.28, -L * 0.7, -W * 0.06);
+        ctx.quadraticCurveTo(-L * 0.58, 0, -L * 0.7, W * 0.06);
+        ctx.quadraticCurveTo(-L * 0.9, W * 0.28, -L * 1.15, W * (1.05 + wig * 0.5) * spread);
+        ctx.bezierCurveTo(-L * 0.82, W * (1.35 + wig) * spread, -L * 0.55, W * (0.75 + wig * 0.2) * spread, -L * 0.38, 0);
+    } else if (tail === "truncate") {
+        // Sunfish / cichlid paddle: soft rounded blade, slight mid notch.
+        const sway = wig * L * 0.06;
+        ctx.moveTo(-L * 0.38, 0);
+        ctx.quadraticCurveTo(-L * 0.55 + sway * 0.3, -W * 0.85, -L * 0.78 + sway, -W * 1.05);
+        ctx.quadraticCurveTo(-L * 0.92 + sway, -W * 0.35, -L * 0.88 + sway, 0);
+        ctx.quadraticCurveTo(-L * 0.92 + sway, W * 0.35, -L * 0.78 + sway, W * 1.05);
+        ctx.quadraticCurveTo(-L * 0.55 + sway * 0.3, W * 0.85, -L * 0.38, 0);
+    } else if (tail === "emarginate") {
+        // Perch / bass: shallow notch, less extreme than a full fork.
+        ctx.moveTo(-L * 0.4, 0);
+        ctx.bezierCurveTo(-L * 0.55, -W * 0.55, -L * 0.7, -W * (1.05 + wig * 0.25), -L * 0.95, -W * (0.95 + wig * 0.3));
+        ctx.quadraticCurveTo(-L * 0.78, -W * 0.2, -L * 0.65, 0);
+        ctx.quadraticCurveTo(-L * 0.78, W * 0.2, -L * 0.95, W * (0.95 + wig * 0.3));
+        ctx.bezierCurveTo(-L * 0.7, W * (1.05 + wig * 0.25), -L * 0.55, W * 0.55, -L * 0.4, 0);
     } else if (shape === "koi" || shape === "longfin") {
-        const spread = isKoi ? 1.22 : 1.28;
+        const spread = shape === "koi" ? 1.22 : 1.28;
         ctx.moveTo(-L * 0.38, 0);
         ctx.bezierCurveTo(-L * 0.58, -W * (0.85 + wig * 0.25) * spread, -L * 0.88, -W * (1.55 + wig) * spread, -L * 1.22, -W * (1.25 + wig) * spread);
         ctx.quadraticCurveTo(-L * 0.95, -W * 0.35, -L * 0.72, -W * 0.08);
@@ -3326,17 +3446,18 @@ function pathFishCaudal(ctx, L, W, shape, wig) {
         ctx.quadraticCurveTo(-L * 1.08, -W * (0.7 + wig * 0.2), -L * 1.28, -W * (0.25 + wig * 0.15));
         ctx.quadraticCurveTo(-L * 1.12, 0, -L * 1.28, W * (0.25 + wig * 0.15));
         ctx.quadraticCurveTo(-L * 1.08, W * (0.7 + wig * 0.2), -L * 0.92, 0);
-    } else if (shape === "blob") {
+    } else if (shape === "blob" || tail === "blob") {
         ctx.moveTo(-L * 0.55, W * 0.05);
         ctx.quadraticCurveTo(-L * 0.78, -W * 0.55, -L * 0.95, -W * (0.35 + wig * 0.2));
         ctx.quadraticCurveTo(-L * 0.72, W * 0.05, -L * 0.95, W * (0.75 + wig * 0.25));
         ctx.quadraticCurveTo(-L * 0.7, W * 0.55, -L * 0.55, W * 0.05);
-    } else if (shape === "arrow") {
+    } else if (shape === "arrow" || tail === "lunate") {
         ctx.moveTo(-L * 0.72, 0);
         ctx.bezierCurveTo(-L * 0.85, -W * 0.35, -L * 0.98, -W * (0.75 + wig * 0.25), -L * 1.18, -W * (0.55 + wig * 0.2));
         ctx.quadraticCurveTo(-L * 0.95, 0, -L * 1.18, W * (0.55 + wig * 0.2));
         ctx.bezierCurveTo(-L * 0.98, W * (0.75 + wig * 0.25), -L * 0.85, W * 0.35, -L * 0.72, 0);
     } else {
+        // Standard carangiform fork.
         ctx.moveTo(-L * 0.4, 0);
         ctx.bezierCurveTo(-L * 0.55, -W * 0.45, -L * 0.72, -W * (0.9 + wig * 0.35), -L * 1.02, -W * (1.12 + wig * 0.45));
         ctx.quadraticCurveTo(-L * 0.78, -W * 0.2, -L * 0.62, 0);
@@ -3390,9 +3511,13 @@ function fillFishFinShadowExtras(ctx, L, W, shape, wig, opts) {
             : shape === "angel" ? 2.05
             : shape === "discus" ? 1.85
             : shape === "diamond" ? 1.75
+            : shape === "deep" ? 1.95
+            : shape === "egg" ? 1.35
             : shape === "arrow" ? 1.15
             : shape === "koi" ? 1.4 : 1.55;
-        const startX = shape === "arrow" ? L * 0.05 : -L * 0.08;
+        const startX = shape === "arrow" ? L * 0.05
+            : shape === "deep" ? -L * 0.02
+            : -L * 0.08;
         const finWag = 1 + wig * 0.04;
         ctx.beginPath();
         ctx.moveTo(startX, -W * 0.72);
@@ -3409,7 +3534,7 @@ function fillFishFinShadowExtras(ctx, L, W, shape, wig, opts) {
             ctx.closePath();
             ctx.fill();
         }
-        if (shape !== "blob" && shape !== "longfin" && shape !== "angel") {
+        if (shape !== "blob" && shape !== "longfin" && shape !== "angel" && shape !== "egg") {
             ctx.beginPath();
             ctx.moveTo(-L * 0.22, -W * 0.55);
             ctx.quadraticCurveTo(-L * 0.18, -W * 0.85, -L * 0.08, -W * 0.52);
@@ -3419,9 +3544,14 @@ function fillFishFinShadowExtras(ctx, L, W, shape, wig, opts) {
         }
     }
     if (shape !== "blob") {
-        const isTall = isTallDiscFishShape(shape);
+        const isTall = isTallDiscFishShape(shape) || shape === "deep";
+        const tail = (opts && opts.tail) || fishTailStyle(opts && opts.type, shape);
         ctx.beginPath();
-        if (isTall) {
+        if (tail === "veil") {
+            ctx.moveTo(-L * 0.05, W * 0.45);
+            ctx.quadraticCurveTo(-L * 0.2, W * (1.55 + wig * 0.15), -L * 0.85, W * (1.35 + wig * 0.2));
+            ctx.quadraticCurveTo(-L * 0.45, W * 0.75, -L * 0.05, W * 0.45);
+        } else if (isTall) {
             ctx.moveTo(-L * 0.05, W * 0.7);
             ctx.quadraticCurveTo(L * 0.08, W * 1.85, -L * 0.22, W * 1.95 + wig * W * 0.1);
             ctx.quadraticCurveTo(-L * 0.18, W * 0.95, -L * 0.05, W * 0.7);
@@ -3445,9 +3575,15 @@ function fillFishFinShadowExtras(ctx, L, W, shape, wig, opts) {
         ctx.closePath();
         ctx.fill();
         ctx.beginPath();
-        ctx.moveTo(-L * 0.02, W * 0.38);
-        ctx.quadraticCurveTo(L * 0.02, W * 0.82, -L * 0.18, W * 0.92);
-        ctx.quadraticCurveTo(-L * 0.14, W * 0.52, -L * 0.02, W * 0.38);
+        if (tail === "veil" || tail === "lyre") {
+            ctx.moveTo(L * 0.02, W * 0.35);
+            ctx.quadraticCurveTo(L * 0.05, W * 1.15, -L * 0.35, W * (1.45 + wig * 0.1));
+            ctx.quadraticCurveTo(-L * 0.12, W * 0.7, L * 0.02, W * 0.35);
+        } else {
+            ctx.moveTo(-L * 0.02, W * 0.38);
+            ctx.quadraticCurveTo(L * 0.02, W * 0.82, -L * 0.18, W * 0.92);
+            ctx.quadraticCurveTo(-L * 0.14, W * 0.52, -L * 0.02, W * 0.38);
+        }
         ctx.closePath();
         ctx.fill();
     }
@@ -3457,13 +3593,15 @@ function fillFishShadowPaths(ctx, L, W, shape, wig, opts) {
     // Map night spear silhouette onto the long arrow body.
     if (shape === "long") shape = "arrow";
     wig = wig || 0;
+    const tail = (opts && opts.tail) || fishTailStyle(opts && opts.type, shape);
+    const bodyOpts = { wig, noDorsal: !!(opts && opts.noDorsal) };
     // Same body + caudal + fin paths as Fish.draw so the cast matches the living silhouette.
-    pathFishBody(ctx, L, W, shape, { wig });
+    pathFishBody(ctx, L, W, shape, bodyOpts);
     ctx.fill();
     withFishCaudalSwing(ctx, L, shape, wig, () => {
-        pathFishCaudal(ctx, L, W, shape, wig);
+        pathFishCaudal(ctx, L, W, shape, wig, { tail, type: opts && opts.type });
         ctx.fill();
-    });
+    }, tail);
     fillFishFinShadowExtras(ctx, L, W, shape, wig, opts);
 }
 
@@ -4128,7 +4266,22 @@ function drawSunCreatureShadows(ctx) {
             f.dir + pose.thrash * 0.45 + pose.ribbonYaw,
             (c) => {
                 c.scale(scale * pose.discPulse, scale * (shape === "eel" ? 1 : pose.discPulse));
-                fillFishShadowPaths(c, L, W, shape, pose.wig, { noDorsal: pose.noDorsal });
+                if (f.frogHybrid && !f.golden && !f.isRainbow) {
+                    fillFrogShadowPaths(c, { size: L * 0.95 });
+                    // Caudal wedge so the hybrid shadow matches the fish fin.
+                    c.beginPath();
+                    c.moveTo(-L * 0.4, 0);
+                    c.lineTo(-L * 1.05, -L * 0.22);
+                    c.lineTo(-L * 1.05, L * 0.22);
+                    c.closePath();
+                    c.fill();
+                } else {
+                    fillFishShadowPaths(c, L, W, shape, pose.wig, {
+                        noDorsal: pose.noDorsal,
+                        tail: pose.tail,
+                        type: f.type,
+                    });
+                }
             }
         );
     }
@@ -4186,7 +4339,10 @@ function drawSunCreatureShadows(ctx) {
     }
     for (const pv of pacifistVisitors || []) {
         if (!castsFloorShadow(pv)) continue;
-        withFloorShadow(ctx, pv.x, pv.y, pv.size * (pv.kind === "garden" || pv.kind === "lumen" ? 1.6 : 1), 0.72, pv.dir, (c) => {
+        const sink = pv.golden ? (pv.sinkDepth || 0) : 0;
+        const yOff = pv.golden ? sink * 6 : 0;
+        const alpha = pv.golden ? 0.62 : 0.72;
+        withFloorShadow(ctx, pv.x, pv.y + yOff, pv.size * (pv.kind === "garden" || pv.kind === "lumen" ? 1.6 : 1), alpha, pv.dir, (c) => {
             fillPacifistShadowPaths(c, pv);
         });
     }
@@ -5078,6 +5234,9 @@ function spawnFrogGroup() {
         biteTimer: 0,
         prey: null,
         dead: false,
+        isPondFrog: true,
+        isPink: false,       // breed blush from pink pellets (befriended frogs only)
+        breedCooldown: 0,
     };
     const tadpoles = [];
     for (let i = 0; i < 6; i++) {
@@ -5159,17 +5318,81 @@ function befriendFrog(frog) {
     spawnSplash(frog.x, frog.y, frog.size * 0.35, 0.4);
 }
 
+function frogToneBodyHex(tone) {
+    const t = tone == null ? 0.5 : tone;
+    const r = 50 + Math.floor(t * 30);
+    const g = 105 + Math.floor(t * 50);
+    const b = 70 + Math.floor(t * 30);
+    return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
+
+function frogToneBellyHex(tone) {
+    const t = tone == null ? 0.5 : tone;
+    const r = 130 + Math.floor(t * 35);
+    const g = 155 + Math.floor(t * 28);
+    const b = 100 + Math.floor(t * 20);
+    return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
+
+function isPondFrog(ent) {
+    return !!(ent && ent.isPondFrog);
+}
+
+function canBreedFrog(frog) {
+    return !!(frog && frog.isPondFrog && frog.befriended && frog.isPink
+        && !frog.dead
+        && (frog.breedCooldown || 0) <= 0
+        && !(frogFinale && frogFinale.frog === frog));
+}
+
+function frogTurnPink(frog) {
+    if (!frog || frog.dead || !frog.befriended) return false;
+    frog.isPink = true;
+    if (frog.breedCooldown == null) frog.breedCooldown = 0;
+    const pan = Math.max(-1, Math.min(1, (frog.x / viewW) * 2 - 1));
+    Audio.fishNote({
+        freq: 340,
+        wave: "sine",
+        pan,
+        dur: 0.45,
+        level: 0.1,
+        partialAmt: 0.28,
+        bright: 1.2,
+    });
+    water.disturb(frog.x, frog.y, frog.size * 0.55, 140);
+    spawnSplash(frog.x, frog.y, frog.size * 0.26, 0.35);
+    return true;
+}
+
+function findPinkFishMateForFrog(frog) {
+    if (!canBreedFrog(frog)) return null;
+    let best = null;
+    let bd = Infinity;
+    for (const f of fishes) {
+        if (!canBreedFish(f)) continue;
+        const d = Math.hypot(f.x - frog.x, f.y - frog.y);
+        if (d < bd) { bd = d; best = f; }
+    }
+    return best;
+}
+
 function frogBiteFood(frog) {
     const food = frog.foodTarget;
     if (!food || food.eaten) return;
     const pan = Math.max(-1, Math.min(1, (frog.x / viewW) * 2 - 1));
     food.eaten = true;
     frog.foodTarget = null;
+    // Pink breed pellets blush befriended frogs the same way they blush fish.
+    if (food.pink) {
+        frogTurnPink(frog);
+        frog.biteTimer = 0.28;
+        return;
+    }
     let growAmt = 4 + food.size * 0.08;
     if (food.grower) growAmt = CONFIG.growerBoost * 0.85;
     else if (food.carcass) growAmt = 16;
     else if (food.golden || food.rainbow || food.platinum || food.hero) growAmt = 10;
-    else if (food.pink || food.green) growAmt = 6;
+    else if (food.green) growAmt = 6;
     frog.size = Math.min(CONFIG.sharkSize * 1.35, frog.size + growAmt);
     frog.speed = Math.min(70, (frog.speed || 30) + 1.5);
     Audio.fishNote({
@@ -5193,7 +5416,19 @@ function frogTryFood(frog, dt) {
     if (!frog.befriended || frog.dead) return null;
     const range = CONFIG.perception * 1.4;
     if (!frog.foodTarget || frog.foodTarget.eaten) {
-        frog.foodTarget = nearestFood(frog.x, frog.y, range);
+        // Prefer pink breed pellets when the frog is not already blushed.
+        if (!frog.isPink) {
+            let bestPink = null;
+            let bestD = range;
+            for (const f of foods) {
+                if (f.eaten || !f.pink || f.sinkProgress > 0.7) continue;
+                const d = Math.hypot(frog.x - f.x, frog.y - f.y);
+                if (d < bestD) { bestD = d; bestPink = f; }
+            }
+            frog.foodTarget = bestPink || nearestFood(frog.x, frog.y, range);
+        } else {
+            frog.foodTarget = nearestFood(frog.x, frog.y, range);
+        }
     }
     if (!frog.foodTarget) return null;
     frog.biteTimer -= dt;
@@ -6025,6 +6260,9 @@ function updateFrogGroups(dt) {
             frog.nextBlink = 2 + Math.random() * 3.5;
         }
         if (frog.blink > 0) frog.blink = Math.max(0, frog.blink - dt);
+        if (frog.breedCooldown > 0) {
+            frog.breedCooldown = Math.max(0, frog.breedCooldown - dt);
+        }
 
         let steered = false;
         if (frog.befriended) {
@@ -6038,7 +6276,26 @@ function updateFrogGroups(dt) {
                 frog.kick = 0.55 + 0.4 * Math.abs(Math.sin(frog.age * 5));
                 const dist = Math.hypot(prey.x - frog.x, prey.y - frog.y);
                 if (dist < frog.size * 0.55 + prey.size * 0.4 + 10) frogEatPrey(frog, prey);
-            } else {
+            } else if (canBreedFrog(frog)) {
+                const mate = findPinkFishMateForFrog(frog);
+                if (mate) {
+                    steered = true;
+                    const dist = Math.hypot(mate.x - frog.x, mate.y - frog.y);
+                    const touch = pinkBreedRange(frog, mate);
+                    const desired = Math.atan2(mate.y - frog.y, mate.x - frog.x);
+                    const diff = normAngle(desired - frog.dir);
+                    frog.dir += Math.max(-2.8 * dt, Math.min(2.8 * dt, diff));
+                    frog.kick = 0.4 + 0.45 * Math.abs(Math.sin(frog.age * 6));
+                    if (dist <= touch) {
+                        frog.speed = Math.max(10, frog.speed * 0.35);
+                        spawnFrogFishHybrid(frog, mate);
+                    } else {
+                        const close = Math.max(0.35, Math.min(1, (dist - touch) / Math.max(40, touch)));
+                        frog.speed = 36 + frog.size * 0.3 + 28 * close;
+                    }
+                }
+            }
+            if (!steered) {
                 const foodChase = frogTryFood(frog, dt);
                 if (foodChase) {
                     steered = true;
@@ -6211,18 +6468,30 @@ function drawFrogModel(ctx, frog, alpha) {
     const kick = frog.kick || 0;
     const breath = 1 + Math.sin(frog.breath) * 0.04;
     const tone = frog.tone;
-    const r = 50 + Math.floor(tone * 30);
-    const g = 105 + Math.floor(tone * 50);
-    const b = 70 + Math.floor(tone * 30);
-    const bellyR = 130 + Math.floor(tone * 35);
-    const bellyG = 155 + Math.floor(tone * 28);
-    const bellyB = 100 + Math.floor(tone * 20);
+    let r = 50 + Math.floor(tone * 30);
+    let g = 105 + Math.floor(tone * 50);
+    let b = 70 + Math.floor(tone * 30);
+    let bellyR = 130 + Math.floor(tone * 35);
+    let bellyG = 155 + Math.floor(tone * 28);
+    let bellyB = 100 + Math.floor(tone * 20);
+    if (frog.isPink) {
+        r = Math.min(255, Math.floor(r * 0.45 + 255 * 0.55));
+        g = Math.min(255, Math.floor(g * 0.45 + 126 * 0.55));
+        b = Math.min(255, Math.floor(b * 0.45 + 182 * 0.55));
+        bellyR = Math.min(255, Math.floor(bellyR * 0.5 + 255 * 0.5));
+        bellyG = Math.min(255, Math.floor(bellyG * 0.5 + 200 * 0.5));
+        bellyB = Math.min(255, Math.floor(bellyB * 0.5 + 220 * 0.5));
+    }
 
     ctx.save();
     ctx.translate(frog.x, frog.y);
     ctx.rotate(frog.dir + (frog.pitch || 0));
     // Submerged look: cooler, a bit translucent.
     ctx.globalAlpha = 0.62 * alpha;
+    if (frog.isPink) {
+        ctx.shadowColor = "rgba(255,140,190,0.65)";
+        ctx.shadowBlur = gfxQuality <= 0 ? 0 : 12;
+    }
 
     // Hind legs: tucked along the body when kick~0, swept back when kick~1.
     const tuckX = -S * (0.35 + kick * 0.85);
@@ -6351,6 +6620,146 @@ function drawFrogModel(ctx, frog, alpha) {
     ctx.restore();
 }
 
+// Frog-fish hybrid: froggy body and kick legs with a fish caudal / dorsal fin.
+function drawFrogFishHybridModel(ctx, fish) {
+    const S = fish.size;
+    const kick = 0.35 + 0.45 * Math.abs(Math.sin((fish.age || 0) * 5.2));
+    const breath = 1 + Math.sin((fish.age || 0) * 2.1) * 0.035;
+    const pose = typeof fishLiveSwimPose === "function" ? fishLiveSwimPose(fish) : { thrash: 0, bobY: 0 };
+    const bodyHex = fish.type && fish.type.body ? fish.type.body : "#5a8a58";
+    const bellyHex = fish.type && fish.type.belly ? fish.type.belly : "#c8d8a0";
+    const body = parseHexColor(bodyHex) || { r: 90, g: 138, b: 88 };
+    const belly = parseHexColor(bellyHex) || { r: 200, g: 216, b: 160 };
+    const r = body.r, g = body.g, b = body.b;
+    const bellyR = belly.r, bellyG = belly.g, bellyB = belly.b;
+
+    ctx.save();
+    ctx.translate(fish.x + (pose.thrash || 0) * 2, fish.y + (pose.bobY || 0));
+    ctx.rotate(fish.dir + (pose.thrash || 0) * 0.35);
+    ctx.globalAlpha = 0.88;
+    if (fish.isHero) {
+        ctx.shadowColor = "rgba(60,140,210,0.45)";
+        ctx.shadowBlur = gfxQuality <= 0 ? 0 : 10;
+    }
+
+    // Hind kick legs (frog).
+    const tuckX = -S * (0.32 + kick * 0.7);
+    const tuckY = S * (0.18 - kick * 0.04);
+    const footSpread = S * (0.12 + kick * 0.45);
+    for (const side of [-1, 1]) {
+        ctx.fillStyle = `rgba(${Math.max(0, r - 12)},${Math.max(0, g - 18)},${Math.max(0, b - 10)},0.9)`;
+        ctx.beginPath();
+        ctx.moveTo(-S * 0.15, side * S * 0.06);
+        ctx.quadraticCurveTo(-S * (0.4 + kick * 0.3), side * S * (0.24 + kick * 0.08), tuckX, side * tuckY);
+        ctx.quadraticCurveTo(-S * (0.5 + kick * 0.4), side * S * 0.04, -S * 0.2, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = `rgba(${r},${Math.min(255, g + 18)},${Math.min(255, b + 12)},0.48)`;
+        ctx.beginPath();
+        ctx.moveTo(tuckX, side * tuckY * 0.85);
+        ctx.lineTo(tuckX - S * (0.16 + kick * 0.28), side * (tuckY + footSpread));
+        ctx.lineTo(tuckX - S * (0.28 + kick * 0.32), side * tuckY * 0.15);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    // Fish caudal fin behind the kick.
+    const tw = Math.sin((fish.age || 0) * 7 + kick) * 0.2;
+    ctx.fillStyle = `rgba(${Math.max(0, r - 20)},${Math.max(0, g - 10)},${Math.max(0, b - 5)},0.78)`;
+    ctx.beginPath();
+    ctx.moveTo(-S * 0.45, 0);
+    ctx.quadraticCurveTo(-S * 0.85, -S * (0.32 + tw), -S * 1.15, -S * (0.08 + tw * 0.5));
+    ctx.quadraticCurveTo(-S * 0.95, 0, -S * 1.15, S * (0.08 - tw * 0.5));
+    ctx.quadraticCurveTo(-S * 0.85, S * (0.32 - tw), -S * 0.45, 0);
+    ctx.fill();
+
+    // Soft dorsal fin (fish cue).
+    ctx.fillStyle = `rgba(${r},${g},${b},0.55)`;
+    ctx.beginPath();
+    ctx.moveTo(-S * 0.05, -S * 0.28 * breath);
+    ctx.quadraticCurveTo(S * 0.05, -S * 0.55, S * 0.28, -S * 0.22);
+    ctx.quadraticCurveTo(S * 0.1, -S * 0.32, -S * 0.05, -S * 0.28 * breath);
+    ctx.fill();
+
+    // Froggy torso with fish color mix.
+    const bodyG = ctx.createLinearGradient(0, -S * 0.32, 0, S * 0.32);
+    bodyG.addColorStop(0, `rgba(${Math.min(255, r + 18)},${Math.min(255, g + 22)},${Math.min(255, b + 16)},0.95)`);
+    bodyG.addColorStop(0.45, `rgba(${r},${g},${b},0.94)`);
+    bodyG.addColorStop(1, `rgba(${bellyR},${bellyG},${bellyB},0.92)`);
+    ctx.fillStyle = bodyG;
+    ctx.beginPath();
+    ctx.moveTo(S * 0.72, 0);
+    ctx.bezierCurveTo(S * 0.5, -S * 0.34 * breath, -S * 0.05, -S * 0.38 * breath, -S * 0.48, -S * 0.1);
+    ctx.bezierCurveTo(-S * 0.62, 0, -S * 0.48, S * 0.12, -S * 0.12, S * 0.3);
+    ctx.bezierCurveTo(S * 0.22, S * 0.38, S * 0.52, S * 0.26, S * 0.72, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Mottling from frog parent.
+    ctx.fillStyle = `rgba(${Math.max(0, r - 30)},${Math.max(0, g - 35)},${Math.max(0, b - 18)},0.26)`;
+    for (const [sx, sy, sr] of [[0.08, -0.1, 0.09], [-0.12, 0.07, 0.07], [0.3, 0.04, 0.055]]) {
+        ctx.beginPath();
+        ctx.ellipse(S * sx, S * sy, S * sr, S * sr * 0.65, 0.2, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Frog-style raised eye.
+    const ex = S * 0.52;
+    const ey = -S * 0.2;
+    ctx.fillStyle = `rgba(${Math.min(255, r + 16)},${Math.min(255, g + 24)},${Math.min(255, b + 12)},0.95)`;
+    ctx.beginPath();
+    ctx.ellipse(ex, ey, S * 0.1, S * 0.09, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(245,248,240,0.92)";
+    ctx.beginPath();
+    ctx.ellipse(ex, ey, S * 0.065, S * 0.06, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = fish.isHero ? "rgba(30,90,160,0.95)" : "rgba(18,26,22,0.95)";
+    ctx.beginPath();
+    ctx.arc(ex + S * 0.01, ey, S * 0.034, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (fish.isHero) {
+        ctx.fillStyle = "rgba(40,120,190,0.18)";
+        ctx.beginPath();
+        ctx.ellipse(-S * 0.02, 0, S * 0.9, S * 0.4, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    if (fish.petTimer > 0) {
+        ctx.strokeStyle = "rgba(180,220,160,0.45)";
+        ctx.lineWidth = Math.max(1.1, S * 0.07);
+        ctx.beginPath();
+        ctx.ellipse(-S * 0.02, 0, S * (1.0 + fish.petTimer * 0.06), S * 0.46, 0, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+
+    ctx.shadowBlur = 0;
+    ctx.restore();
+}
+
+// Gold look for pacifist helpers: same lakebed palette as golden pond fish.
+function pacifistGoldGradient(ctx, p, halfH) {
+    const deep = !!(p && (p.sinkDepth || 0) > 0.85);
+    const g = ctx.createLinearGradient(0, -halfH, 0, halfH);
+    if (deep) {
+        g.addColorStop(0, "#d4b86a");
+        g.addColorStop(0.55, "#b8891e");
+        g.addColorStop(1, "#8a6a18");
+    } else {
+        g.addColorStop(0, "#fff3b0");
+        g.addColorStop(0.55, "#f0c437");
+        g.addColorStop(1, "#a9791a");
+    }
+    return g;
+}
+
+function pacifistApplyGoldShadow(ctx, p) {
+    if (!p || !p.golden) return false;
+    ctx.shadowColor = "rgba(255,200,80,0.55)";
+    ctx.shadowBlur = gfxQuality <= 0 ? 0 : 12;
+    return true;
+}
+
 // Pond axolotl: frog-cousin silhouette (not a recycled fish oval).
 // Soft salamander body, feathery external gills, diagonal paddle gait, flat tail.
 function drawPacifistAxolotlModel(ctx, p, alpha) {
@@ -6363,20 +6772,31 @@ function drawPacifistAxolotlModel(ctx, p, alpha) {
     // Diagonal walk: front-left with hind-right, opposite pair out of phase.
     const gaitA = 0.5 + 0.5 * Math.sin(limb);
     const gaitB = 0.5 + 0.5 * Math.sin(limb + Math.PI);
-    const bodyWiggle = Math.sin(limb * 0.85) * 0.08;
+    const bodyWiggle = p.golden ? 0 : Math.sin(limb * 0.85) * 0.08;
 
-    const r = tamed ? 248 : 232;
-    const g = tamed ? 170 : 130;
-    const b = tamed ? 190 : 160;
-    const bellyR = 255;
-    const bellyG = 230;
-    const bellyB = 235;
+    let r = tamed ? 248 : 232;
+    let g = tamed ? 170 : 130;
+    let b = tamed ? 190 : 160;
+    let bellyR = 255;
+    let bellyG = 230;
+    let bellyB = 235;
+    if (p.golden) {
+        const deep = (p.sinkDepth || 0) > 0.85;
+        r = deep ? 184 : 240;
+        g = deep ? 137 : 196;
+        b = deep ? 30 : 55;
+        bellyR = deep ? 212 : 255;
+        bellyG = deep ? 184 : 243;
+        bellyB = deep ? 106 : 176;
+    }
 
     ctx.save();
     ctx.translate(p.x, p.y);
     ctx.rotate(p.dir + bodyWiggle);
     ctx.globalAlpha = (alpha == null ? 0.94 : alpha);
-    if (p.rainbowMood > 0) {
+    if (pacifistApplyGoldShadow(ctx, p)) {
+        // gold sheen already set
+    } else if (p.rainbowMood > 0) {
         const hue = (performance.now() * 0.18) % 360;
         ctx.shadowColor = `hsla(${hue}, 90%, 65%, 0.8)`;
         ctx.shadowBlur = gfxQuality <= 0 ? 0 : 16;
@@ -6580,17 +7000,24 @@ function drawPacifistOctopusHelper(ctx, p, alpha) {
     ctx.translate(p.x, p.y);
     ctx.rotate(p.dir);
     ctx.globalAlpha = alpha == null ? 0.94 : alpha;
-    if (p.tamed) {
+    if (!pacifistApplyGoldShadow(ctx, p) && p.tamed) {
         ctx.shadowColor = crystal ? "rgba(180,140,255,0.7)" : "rgba(90,180,160,0.55)";
         ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
     }
 
-    const armFill = crystal
+    let armFill = crystal
         ? (p.tamed ? "#a070d8" : "#7048b0")
         : (p.tamed ? "#48a888" : "#2f6a58");
-    const mantleA = crystal ? "#f0e8ff" : "#80c8b0";
-    const mantleB = crystal ? "#a070d8" : "#388870";
-    const mantleC = crystal ? "#503088" : "#1a5040";
+    let mantleA = crystal ? "#f0e8ff" : "#80c8b0";
+    let mantleB = crystal ? "#a070d8" : "#388870";
+    let mantleC = crystal ? "#503088" : "#1a5040";
+    if (p.golden) {
+        const deep = (p.sinkDepth || 0) > 0.85;
+        armFill = deep ? "#c9a24b" : "#e0b030";
+        mantleA = deep ? "#d4b86a" : "#fff3b0";
+        mantleB = deep ? "#b8891e" : "#f0c437";
+        mantleC = deep ? "#8a6a18" : "#a9791a";
+    }
 
     // Hard local-space trailing tentacles (never a radial urchin or tadpole cone).
     for (let i = 0; i < 8; i++) {
@@ -6678,14 +7105,19 @@ function drawPacifistBelugaHelper(ctx, p, alpha) {
     ctx.translate(p.x, p.y);
     ctx.rotate(p.dir);
     ctx.globalAlpha = alpha == null ? 0.94 : alpha;
-    if (p.tamed) {
+    if (!pacifistApplyGoldShadow(ctx, p) && p.tamed) {
         ctx.shadowColor = "rgba(200,230,255,0.7)";
         ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
     }
-    const g = ctx.createLinearGradient(0, -W, 0, W);
-    g.addColorStop(0, "#ffffff");
-    g.addColorStop(0.5, p.tamed ? "#eef6ff" : "#f7fafc");
-    g.addColorStop(1, "#c5d0dc");
+    const g = p.golden
+        ? pacifistGoldGradient(ctx, p, W)
+        : (() => {
+            const lg = ctx.createLinearGradient(0, -W, 0, W);
+            lg.addColorStop(0, "#ffffff");
+            lg.addColorStop(0.5, p.tamed ? "#eef6ff" : "#f7fafc");
+            lg.addColorStop(1, "#c5d0dc");
+            return lg;
+        })();
     ctx.fillStyle = g;
     // One continuous white body into melon (not stacked blobs).
     ctx.beginPath();
@@ -6743,14 +7175,19 @@ function drawPacifistWhaleHelper(ctx, p, alpha) {
     ctx.translate(p.x, p.y);
     ctx.rotate(p.dir);
     ctx.globalAlpha = alpha == null ? 0.94 : alpha;
-    if (p.tamed) {
+    if (!pacifistApplyGoldShadow(ctx, p) && p.tamed) {
         ctx.shadowColor = "rgba(120,180,220,0.65)";
         ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
     }
-    const g = ctx.createLinearGradient(0, -W, 0, W);
-    g.addColorStop(0, "#7a9aac");
-    g.addColorStop(0.45, p.tamed ? "#4a7088" : "#2f4a5c");
-    g.addColorStop(1, "#d8e4ec");
+    const g = p.golden
+        ? pacifistGoldGradient(ctx, p, W)
+        : (() => {
+            const lg = ctx.createLinearGradient(0, -W, 0, W);
+            lg.addColorStop(0, "#7a9aac");
+            lg.addColorStop(0.45, p.tamed ? "#4a7088" : "#2f4a5c");
+            lg.addColorStop(1, "#d8e4ec");
+            return lg;
+        })();
     ctx.fillStyle = g;
     // Wide horizontal fluke.
     ctx.beginPath();
@@ -6817,20 +7254,25 @@ function drawPacifistTurtleHelper(ctx, p, alpha) {
     ctx.translate(p.x, p.y);
     ctx.rotate(p.dir);
     ctx.globalAlpha = alpha == null ? 0.94 : alpha;
-    if (p.tamed) {
+    if (!pacifistApplyGoldShadow(ctx, p) && p.tamed) {
         ctx.shadowColor = crystal ? "rgba(160,200,255,0.65)" : "rgba(140,200,120,0.55)";
         ctx.shadowBlur = gfxQuality <= 0 ? 0 : 12;
     }
-    const g = ctx.createLinearGradient(0, -W, 0, W);
-    if (crystal) {
-        g.addColorStop(0, "#d0e8ff");
-        g.addColorStop(0.5, p.tamed ? "#90c0e8" : "#70a0d0");
-        g.addColorStop(1, "#4060a0");
-    } else {
-        g.addColorStop(0, "#b8c890");
-        g.addColorStop(0.45, p.tamed ? "#7a9a58" : "#5a7a40");
-        g.addColorStop(1, "#3a4824");
-    }
+    const g = p.golden
+        ? pacifistGoldGradient(ctx, p, W)
+        : (() => {
+            const lg = ctx.createLinearGradient(0, -W, 0, W);
+            if (crystal) {
+                lg.addColorStop(0, "#d0e8ff");
+                lg.addColorStop(0.5, p.tamed ? "#90c0e8" : "#70a0d0");
+                lg.addColorStop(1, "#4060a0");
+            } else {
+                lg.addColorStop(0, "#b8c890");
+                lg.addColorStop(0.45, p.tamed ? "#7a9a58" : "#5a7a40");
+                lg.addColorStop(1, "#3a4824");
+            }
+            return lg;
+        })();
     ctx.fillStyle = g;
 
     // Broad swimming flippers rooted under the shell rim (not floating off).
@@ -6934,20 +7376,25 @@ function drawPacifistNurseHelper(ctx, p, alpha) {
     ctx.translate(p.x, p.y);
     ctx.rotate(p.dir);
     ctx.globalAlpha = alpha == null ? 0.94 : alpha;
-    if (p.tamed) {
+    if (!pacifistApplyGoldShadow(ctx, p) && p.tamed) {
         ctx.shadowColor = crystal ? "rgba(180,140,255,0.65)" : "rgba(200,170,100,0.5)";
         ctx.shadowBlur = gfxQuality <= 0 ? 0 : 12;
     }
-    const g = ctx.createLinearGradient(0, -W, 0, W);
-    if (crystal) {
-        g.addColorStop(0, "#e8d8ff");
-        g.addColorStop(0.55, p.tamed ? "#9060c8" : "#6848a0");
-        g.addColorStop(1, "#40a0b8");
-    } else {
-        g.addColorStop(0, "#d8c49a");
-        g.addColorStop(0.55, p.tamed ? "#a88858" : "#8a6a40");
-        g.addColorStop(1, "#5a4830");
-    }
+    const g = p.golden
+        ? pacifistGoldGradient(ctx, p, W)
+        : (() => {
+            const lg = ctx.createLinearGradient(0, -W, 0, W);
+            if (crystal) {
+                lg.addColorStop(0, "#e8d8ff");
+                lg.addColorStop(0.55, p.tamed ? "#9060c8" : "#6848a0");
+                lg.addColorStop(1, "#40a0b8");
+            } else {
+                lg.addColorStop(0, "#d8c49a");
+                lg.addColorStop(0.55, p.tamed ? "#a88858" : "#8a6a40");
+                lg.addColorStop(1, "#5a4830");
+            }
+            return lg;
+        })();
     ctx.fillStyle = g;
     // Heterocercal caudal.
     ctx.beginPath();
@@ -7043,14 +7490,19 @@ function drawPacifistSailHelper(ctx, p, alpha) {
     ctx.translate(p.x, p.y);
     ctx.rotate(p.dir);
     ctx.globalAlpha = alpha == null ? 0.94 : alpha;
-    if (p.tamed || p.rainbowMood > 0) {
+    if (!pacifistApplyGoldShadow(ctx, p) && (p.tamed || p.rainbowMood > 0)) {
         ctx.shadowColor = "rgba(100,200,255,0.7)";
         ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
     }
-    const g = ctx.createLinearGradient(0, -W, 0, W);
-    g.addColorStop(0, "#70c8e8");
-    g.addColorStop(0.45, p.tamed ? "#40a0d0" : "#2a88b8");
-    g.addColorStop(1, "#184868");
+    const g = p.golden
+        ? pacifistGoldGradient(ctx, p, W)
+        : (() => {
+            const lg = ctx.createLinearGradient(0, -W, 0, W);
+            lg.addColorStop(0, "#70c8e8");
+            lg.addColorStop(0.45, p.tamed ? "#40a0d0" : "#2a88b8");
+            lg.addColorStop(1, "#184868");
+            return lg;
+        })();
     ctx.fillStyle = g;
     // Slim body.
     ctx.beginPath();
@@ -7334,6 +7786,8 @@ function fishSlimForShape(shape, type) {
         case "eel": return 0.34;
         case "arrow": return 0.4;
         case "round": return 0.78;
+        case "egg": return 1.02;
+        case "deep": return 1.0;
         case "puffer": return 0.98;
         case "diamond": return 0.9;
         case "angel": return 1.08;
@@ -7446,34 +7900,48 @@ function pathFishBody(ctx, L, W, shape, opts) {
         return;
     }
 
-    // Fusiform families: oval, slim, round, koi, longfin (default).
-    const head = shape === "round" ? L * 0.42
+    // Fusiform families: oval, slim, round, egg, deep, koi, longfin (default).
+    const isEgg = shape === "egg" || (shape === "round" && opts && opts.noDorsal);
+    const isDeep = shape === "deep";
+    const head = shape === "round" || isEgg ? L * (isEgg ? 0.38 : 0.42)
+        : isDeep ? L * 0.44
         : shape === "koi" ? L * 0.48
         : shape === "slim" ? L * 0.54
         : shape === "longfin" ? L * 0.46
         : L * 0.5;
     const back = shape === "slim" ? W * 0.78
+        : isEgg ? W * (opts && opts.noDorsal ? 1.22 : 1.18)
         : shape === "round" ? W * 1.12
+        : isDeep ? W * 1.28
         : shape === "koi" ? W * 1.04
         : shape === "longfin" ? W * 0.95
         : W;
     const belly = shape === "slim" ? W * 0.7
+        : isEgg ? W * 1.28
         : shape === "round" ? W * 1.18
+        : isDeep ? W * 1.32
         : shape === "koi" ? W * 1.08
         : shape === "longfin" ? W * 0.98
         : W * 1.0;
     const ped = shape === "slim" ? -L * 0.48
+        : isEgg ? -L * 0.32
         : shape === "round" ? -L * 0.36
+        : isDeep ? -L * 0.34
         : shape === "longfin" ? -L * 0.38
         : -L * 0.42;
-    const nape = shape === "koi" ? 0.9 : shape === "round" ? 1.05 : 1;
+    // Ranchu / egg: arched nape with soft forehead; deep bodies have a taller shoulder.
+    const nape = shape === "koi" ? 0.9
+        : isEgg ? (opts && opts.noDorsal ? 1.22 : 1.12)
+        : isDeep ? 1.18
+        : shape === "round" ? 1.05
+        : 1;
     ctx.beginPath();
     ctx.moveTo(head, 0);
     // Snout to nape with a living forehead rise.
     ctx.bezierCurveTo(head * 0.78, -back * 0.28, head * 0.4, -back * 0.92 * nape, L * 0.05, -back * 1.1);
     ctx.bezierCurveTo(ped * 0.15, -back * 1.0, ped * 0.5, -back * 0.58, ped * 0.85, -back * 0.26);
     ctx.bezierCurveTo(ped * 0.96, -back * 0.1, ped, -back * 0.03, ped, 0);
-    // Peduncle through belly to jaw (rounder chin on koi / round).
+    // Peduncle through belly to jaw (deeper chin on egg / deep / round).
     ctx.bezierCurveTo(ped, belly * 0.06, ped * 0.9, belly * 0.35, ped * 0.5, belly * 0.68);
     ctx.bezierCurveTo(ped * 0.1, belly * 1.02, L * 0.05, belly * 1.12, head * 0.42, belly * 0.58);
     ctx.bezierCurveTo(head * 0.72, belly * 0.3, head * 0.92, belly * 0.12, head, 0);
@@ -7492,15 +7960,15 @@ function clipFishBody(ctx, L, W, shape) {
 }
 
 // Soft dorsal darkening + belly lift for a rounder, more solid fish read.
-function paintFishBodyVolume(ctx, L, W, shape, body, belly, wig) {
-    const tall = isTallDiscFishShape(shape) || shape === "ray";
+function paintFishBodyVolume(ctx, L, W, shape, body, belly, wig, opts) {
+    const tall = isTallDiscFishShape(shape) || shape === "ray" || shape === "deep" || shape === "egg";
     const g = ctx.createLinearGradient(0, -W * (tall ? 1.35 : 1.15), 0, W * (tall ? 1.35 : 1.15));
     g.addColorStop(0, body);
     g.addColorStop(0.38, body);
     g.addColorStop(0.72, belly);
     g.addColorStop(1, belly);
     ctx.fillStyle = g;
-    pathFishBody(ctx, L, W, shape || "oval", { wig: wig || 0 });
+    pathFishBody(ctx, L, W, shape || "oval", { wig: wig || 0, noDorsal: !!(opts && opts.noDorsal) });
     ctx.fill();
 
     if (gfxQuality <= 0) return;
@@ -7512,7 +7980,7 @@ function paintFishBodyVolume(ctx, L, W, shape, body, belly, wig) {
     shade.addColorStop(0, "rgba(10,25,40,0.55)");
     shade.addColorStop(1, "rgba(10,25,40,0)");
     ctx.fillStyle = shade;
-    pathFishBody(ctx, L, W, shape || "oval", { wig: wig || 0 });
+    pathFishBody(ctx, L, W, shape || "oval", { wig: wig || 0, noDorsal: !!(opts && opts.noDorsal) });
     ctx.fill();
     ctx.restore();
 
@@ -9142,6 +9610,8 @@ class Food {
         this.platinum = !!(flags && flags.platinum);
         this.hero = !!(flags && flags.hero);
         this.carcass = !!(flags && flags.carcass);
+        // Axolotl helper gifts: other eaters welcome; the giver skips these.
+        this.fromAxolotlGift = !!(flags && flags.fromAxolotlGift);
         this.rare = isRareFoodFlags(this);
         this.eaten = false;
         this.age = 0;
@@ -10749,6 +11219,7 @@ class Fish {
     }
 
     // Nearest eligible pink partner for breeding (both may seek each other).
+    // Includes blushed befriended frogs for frog-fish hybrids.
     findPinkMate() {
         if (!canBreedFish(this)) return null;
         let best = null;
@@ -10757,6 +11228,12 @@ class Fish {
             if (f === this || !canBreedFish(f)) continue;
             const d = Math.hypot(f.x - this.x, f.y - this.y);
             if (d < bd) { bd = d; best = f; }
+        }
+        for (const g of frogGroups) {
+            const fr = g.frog;
+            if (!canBreedFrog(fr)) continue;
+            const d = Math.hypot(fr.x - this.x, fr.y - this.y);
+            if (d < bd) { bd = d; best = fr; }
         }
         return best;
     }
@@ -11063,7 +11540,8 @@ class Fish {
                     // Ease together instead of orbiting past a tight center hitbox.
                     hardChase = false;
                     speed = this.baseSpeed * 0.28;
-                    spawnBreedOffspring(this, mate);
+                    if (isPondFrog(mate)) spawnFrogFishHybrid(mate, this);
+                    else spawnBreedOffspring(this, mate);
                 } else {
                     hardChase = true;
                     // Close the last gap gently so large bodies can still meet small partners.
@@ -11869,6 +12347,12 @@ class Fish {
         if (povAttack && povAttack.fish === this) return; // drawn in POV overlay
         if (this.insideShark) return; // hidden while the shark carries the glow fish
 
+        // Frog-fish hybrids use a dedicated blend model unless gold / rainbow / platinum.
+        if (this.frogHybrid && !this.golden && !this.isRainbow && !this.isPlatinum) {
+            drawFrogFishHybridModel(ctx, this);
+            return;
+        }
+
         const shape = this.type.shape || "oval";
         const slim = fishSlimForShape(shape, this.type);
         const L = this.size;
@@ -12022,12 +12506,13 @@ class Fish {
             ctx.shadowBlur = 0;
         }
 
-        // Caudal fin: lobed peduncle fork, whip (ray), or soft ribbon tip (eel).
+        // Caudal fin: lobed peduncle fork, twin fan, veil, whip (ray), or soft ribbon tip (eel).
+        const tailStyle = pose.tail || fishTailStyle(this.type, shape);
         withPeacePart("tail", () => {
             const tailFill = contrastTailFill(body, belly);
             ctx.fillStyle = tailFill;
             withFishCaudalSwing(ctx, L, shape, wig, () => {
-                pathFishCaudal(ctx, L, W, shape, wig);
+                pathFishCaudal(ctx, L, W, shape, wig, { tail: tailStyle, type: this.type });
                 ctx.fill();
                 if (isRay) {
                     ctx.beginPath();
@@ -12041,7 +12526,7 @@ class Fish {
                 ctx.strokeStyle = "rgba(12, 22, 28, 0.32)";
                 ctx.lineWidth = Math.max(0.7, L * 0.018);
                 ctx.stroke();
-            });
+            }, tailStyle);
             // Fin ray strokes for depth without heavy fill cost.
             if (!isRay && shape !== "blob" && L > 14) {
                 ctx.save();
@@ -12049,28 +12534,33 @@ class Fish {
                 ctx.strokeStyle = "rgba(15,30,40,0.55)";
                 ctx.lineWidth = Math.max(0.5, L * 0.012);
                 ctx.lineCap = "round";
-                const baseX = isTall ? -L * 0.34 : isEel ? -L * 0.9 : shape === "arrow" ? -L * 0.7 : -L * 0.42;
+                const baseX = fishCaudalPeduncleX(L, shape, tailStyle);
                 withFishCaudalSwing(ctx, L, shape, wig, () => {
                     for (let r = -2; r <= 2; r++) {
                         if (r === 0) continue;
+                        const reach = tailStyle === "veil" || tailStyle === "comet" ? 0.62
+                            : tailStyle === "twin" ? 0.42
+                            : 0.48;
                         ctx.beginPath();
                         ctx.moveTo(baseX, r * W * 0.06);
                         ctx.quadraticCurveTo(
                             baseX - L * 0.22,
                             r * W * (0.55 + wig * 0.15),
-                            baseX - L * (0.48 + Math.abs(r) * 0.04),
+                            baseX - L * (reach + Math.abs(r) * 0.04),
                             r * W * (0.95 + wig * 0.2)
                         );
                         ctx.stroke();
                     }
-                });
+                }, tailStyle);
                 ctx.restore();
             }
         });
 
         // Body: volumetric silhouette with dorsal shade and belly lift.
         withPeacePart("body", () => {
-            paintFishBodyVolume(ctx, L, W, shape, body, belly, wig);
+            paintFishBodyVolume(ctx, L, W, shape, body, belly, wig, {
+                noDorsal: !!this.type.noDorsal,
+            });
             if (!this.golden && !this.isMonster && !isRay) {
                 drawFishLateralLine(ctx, L, W);
             }
@@ -12146,14 +12636,18 @@ class Fish {
                     ctx.globalAlpha /= 0.55;
                 }
             } else if (!this.golden && !this.type.noDorsal) {
-                const tall = shape === "longfin" ? 2.35
+                const tall = shape === "longfin" || tailStyle === "veil" ? 2.35
                     : shape === "angel" ? 2.05
                     : shape === "discus" ? 1.85
                     : shape === "diamond" ? 1.75
+                    : shape === "deep" ? 1.95
                     : shape === "arrow" ? 1.15
+                    : shape === "egg" ? 1.35
                     : isKoi ? 1.4 : 1.55;
-                const startX = shape === "arrow" ? L * 0.05 : -L * 0.08;
-                const softFin = shape === "longfin" || shape === "angel";
+                const startX = shape === "arrow" ? L * 0.05
+                    : shape === "deep" ? -L * 0.02
+                    : -L * 0.08;
+                const softFin = shape === "longfin" || shape === "angel" || tailStyle === "veil";
                 const finWag = 1 + wig * 0.04;
                 ctx.fillStyle = body;
                 ctx.globalAlpha *= softFin ? 0.48 : 0.82;
@@ -12187,7 +12681,7 @@ class Fish {
                     ctx.globalAlpha /= 0.82;
                 }
             }
-            if (shape === "longfin" || shape === "angel") {
+            if (shape === "longfin" || shape === "angel" || tailStyle === "veil") {
                 ctx.save();
                 ctx.globalCompositeOperation = "lighter";
                 ctx.fillStyle = body;
@@ -12201,7 +12695,8 @@ class Fish {
                 ctx.restore();
             }
             // Soft adipose / rear dorsal nub on most shapes.
-            if (!this.golden && !isRay && !isEel && shape !== "blob" && shape !== "longfin" && shape !== "angel") {
+            if (!this.golden && !isRay && !isEel && shape !== "blob" && shape !== "longfin"
+                && shape !== "angel" && shape !== "egg" && tailStyle !== "veil") {
                 ctx.fillStyle = body;
                 ctx.globalAlpha *= 0.45;
                 ctx.beginPath();
@@ -12224,11 +12719,18 @@ class Fish {
                     ctx.quadraticCurveTo(-L * 0.25, W * (0.95 + wig * 0.1), -L * 0.8, W * 0.35);
                     ctx.quadraticCurveTo(-L * 0.2, W * 0.7, L * 0.05, W * 0.45);
                     ctx.fill();
-                } else if (isTall) {
+                } else if (isTall || shape === "deep") {
                     ctx.beginPath();
                     ctx.moveTo(-L * 0.05, W * 0.7);
                     ctx.quadraticCurveTo(L * 0.08, W * 1.85, -L * 0.22, W * 1.95 + wig * W * 0.1);
                     ctx.quadraticCurveTo(-L * 0.18, W * 0.95, -L * 0.05, W * 0.7);
+                    ctx.fill();
+                } else if (tailStyle === "veil") {
+                    // Betta: long trailing anal skirt.
+                    ctx.beginPath();
+                    ctx.moveTo(-L * 0.05, W * 0.45);
+                    ctx.quadraticCurveTo(-L * 0.2, W * (1.55 + wig * 0.15), -L * 0.85, W * (1.35 + wig * 0.2));
+                    ctx.quadraticCurveTo(-L * 0.45, W * 0.75, -L * 0.05, W * 0.45);
                     ctx.fill();
                 } else {
                     ctx.beginPath();
@@ -12253,26 +12755,40 @@ class Fish {
                 ctx.quadraticCurveTo(L * 0.1, W * 0.28, L * 0.2, W * 0.15);
                 ctx.fill();
             } else {
-                // Pectoral fan.
+                // Pectoral fan (labriform species beat harder).
+                const pec = pose.pecFlap || 0;
+                const pecSpread = 1 + pec * 0.22;
                 ctx.beginPath();
                 ctx.moveTo(L * 0.08, W * 0.22);
-                ctx.bezierCurveTo(L * 0.22, W * 0.55, L * 0.12, W * 0.95, -L * 0.02, W * 0.88);
+                ctx.bezierCurveTo(
+                    L * 0.22 * pecSpread, W * 0.55 * pecSpread,
+                    L * 0.12, W * 0.95 * pecSpread,
+                    -L * 0.02, W * 0.88 * pecSpread
+                );
                 ctx.quadraticCurveTo(-L * 0.06, W * 0.48, L * 0.08, W * 0.22);
                 ctx.fill();
                 // Matching upper pectoral hint (subtle).
                 ctx.globalAlpha *= 0.55;
                 ctx.beginPath();
                 ctx.moveTo(L * 0.06, -W * 0.15);
-                ctx.quadraticCurveTo(L * 0.16, -W * 0.55, L * 0.02, -W * 0.72);
+                ctx.quadraticCurveTo(L * 0.16, -W * 0.55 * pecSpread, L * 0.02, -W * 0.72 * pecSpread);
                 ctx.quadraticCurveTo(-L * 0.02, -W * 0.35, L * 0.06, -W * 0.15);
                 ctx.fill();
                 ctx.globalAlpha /= 0.55;
-                // Pelvic pair.
-                ctx.beginPath();
-                ctx.moveTo(-L * 0.02, W * 0.38);
-                ctx.quadraticCurveTo(L * 0.02, W * 0.82, -L * 0.18, W * 0.92);
-                ctx.quadraticCurveTo(-L * 0.14, W * 0.52, -L * 0.02, W * 0.38);
-                ctx.fill();
+                // Pelvic pair (long filaments on veil / lyre ornamental fish).
+                if (tailStyle === "veil" || tailStyle === "lyre") {
+                    ctx.beginPath();
+                    ctx.moveTo(L * 0.02, W * 0.35);
+                    ctx.quadraticCurveTo(L * 0.05, W * 1.15, -L * 0.35, W * (1.45 + wig * 0.1));
+                    ctx.quadraticCurveTo(-L * 0.12, W * 0.7, L * 0.02, W * 0.35);
+                    ctx.fill();
+                } else {
+                    ctx.beginPath();
+                    ctx.moveTo(-L * 0.02, W * 0.38);
+                    ctx.quadraticCurveTo(L * 0.02, W * 0.82, -L * 0.18, W * 0.92);
+                    ctx.quadraticCurveTo(-L * 0.14, W * 0.52, -L * 0.02, W * 0.38);
+                    ctx.fill();
+                }
             }
             ctx.globalAlpha /= 0.58;
         });
@@ -12876,8 +13392,11 @@ function mixFishTypes(ta, tb) {
     if (ta.noDorsal || tb.noDorsal) type.noDorsal = Math.random() < 0.45;
     if (ta.hump || tb.hump) type.hump = Math.random() < 0.5;
     if (ta.lantern || tb.lantern) type.lantern = Math.random() < 0.4;
+    if (ta.tail || tb.tail) type.tail = pickParentField(ta.tail || null, tb.tail || null);
+    if (ta.labriform || tb.labriform) type.labriform = Math.random() < 0.4;
     // Drop null odd so habits stay clean.
     if (!type.odd) delete type.odd;
+    if (!type.tail) delete type.tail;
     if (!type.pattern) type.patternColor = null;
     return type;
 }
@@ -13276,11 +13795,120 @@ function spawnBreedOffspring(a, b) {
     return baby;
 }
 
+// Blushed befriended frog + blushed fish → frog-fish hybrid fry.
+// Frog + frog does not breed (no existing path; hybrids need a fish parent).
+function spawnFrogFishHybrid(frog, fish) {
+    if (!canBreedFrog(frog) || !canBreedFish(fish)) return null;
+    const living = fishes.filter((f) => !f.dead).length;
+    if (living >= CONFIG.maxBreedPop) return null;
+    const livingHybrids = fishes.filter((f) => !f.dead && f.frogHybrid).length;
+    if (livingHybrids >= (CONFIG.maxFrogHybrids || 8)) return null;
+
+    const frogBody = frogToneBodyHex(frog.tone);
+    const frogBelly = frogToneBellyHex(frog.tone);
+    const fishType = fish.type || FISH_TYPES[0];
+    const mixT = 0.38 + Math.random() * 0.28;
+    const body = mixHexColors(frogBody, fishType.body, mixT);
+    const belly = mixHexColors(frogBelly, fishType.belly, mixT);
+    const sizeLo = Math.max(9, Math.min(frog.size, fish.size) * 0.28);
+    const sizeHi = Math.max(14, Math.min(frog.size, fish.size) * 0.48);
+    const type = {
+        name: "frogfish",
+        frogHybrid: true,
+        shape: fishType.shape || "oval",
+        body,
+        belly,
+        pattern: fishType.pattern || "spots",
+        patternColor: mixHexColors(frogBody, fishType.patternColor || fishType.body, 0.5),
+        size: [sizeLo, sizeHi],
+        speed: [
+            Math.max(16, ((fishType.speed && fishType.speed[0]) || 22) * 0.85),
+            Math.max(26, ((fishType.speed && fishType.speed[1]) || 34) * 0.95),
+        ],
+        wave: fishType.wave || "triangle",
+        register: ((fishType.register || 1) + 1.05) * 0.5,
+        bite: 4,
+        dur: 0.36,
+        turn: 3.2,
+        wiggle: 1.22,
+        scale: fishType.scale || PENTATONIC,
+        petWave: "sine",
+        petFreq: 340,
+        petDur: 0.38,
+        bitePartial: 0.28,
+        biteBright: 1.15,
+        tail: fishType.tail || "crescent",
+        slim: 0.78,
+    };
+    const baby = new Fish(type);
+    baby.frogHybrid = {
+        frogTone: frog.tone == null ? 0.5 : frog.tone,
+        fishName: fishType.name || "fish",
+        shape: type.shape,
+    };
+    baby.isHero = !!(frog.isHero || fish.isHero || fish.redeemed);
+    baby.isPredator = false;
+    baby.isPink = false;
+    baby.isRainbow = false;
+    baby.isMonster = false;
+    baby.redeemed = !!baby.isHero;
+    baby.heroBlood = baby.isHero ? 0.75 : 0;
+    baby.size = Math.max(sizeLo, Math.min(sizeHi, (frog.size + fish.size) * 0.22));
+    baby.baseSpeed = 24 + Math.random() * 10;
+    baby.x = (frog.x + fish.x) * 0.5 + (Math.random() - 0.5) * 12;
+    baby.y = (frog.y + fish.y) * 0.5 + (Math.random() - 0.5) * 12;
+    baby.dir = Math.atan2(fish.y - frog.y, fish.x - frog.x) + (Math.random() - 0.5) * 0.6;
+    baby.lineageHue = typeof mixLineageHue === "function"
+        ? mixLineageHue({ lineageHue: 110, isPink: true }, fish)
+        : 140;
+    baby.lineageGen = 1;
+    baby.lineageShape = type.shape;
+    fishes.push(baby);
+
+    const cd = CONFIG.breedCooldown;
+    frog.breedCooldown = cd;
+    fish.breedCooldown = cd;
+    frog.isPink = false;
+    fish.isPink = false;
+
+    const pan = Math.max(-1, Math.min(1, (baby.x / viewW) * 2 - 1));
+    Audio.fishNote({
+        freq: 400,
+        wave: "triangle",
+        pan,
+        dur: 0.4,
+        level: 0.11,
+        partialAmt: 0.32,
+        bright: 1.3,
+    });
+    water.disturb(baby.x, baby.y, baby.size * 1.0, 140);
+    spawnSplash(baby.x, baby.y, baby.size * 0.45, 0.4);
+    return baby;
+}
+
 function updateBreeding(dt) {
     updateApexBreeding(dt || 0);
+    if (fishes.filter((f) => !f.dead).length >= CONFIG.maxBreedPop) return;
+
+    // Frog + pink fish pairs (mutual seek also happens in update loops).
+    const pinkFrogs = [];
+    for (const g of frogGroups) {
+        if (canBreedFrog(g.frog)) pinkFrogs.push(g.frog);
+    }
+    if (pinkFrogs.length) {
+        const pinkFish = fishes.filter(canBreedFish);
+        for (const frog of pinkFrogs) {
+            for (const fish of pinkFish) {
+                if (Math.hypot(frog.x - fish.x, frog.y - fish.y) <= pinkBreedRange(frog, fish)) {
+                    spawnFrogFishHybrid(frog, fish);
+                    return;
+                }
+            }
+        }
+    }
+
     const pinks = fishes.filter(canBreedFish);
     if (pinks.length < 2) return;
-    if (fishes.filter((f) => !f.dead).length >= CONFIG.maxBreedPop) return;
     for (let i = 0; i < pinks.length; i++) {
         for (let j = i + 1; j < pinks.length; j++) {
             const a = pinks[i];
@@ -13330,7 +13958,7 @@ function findEdiblePacifistHelper(hunter, rangeMult) {
     let best = null;
     let bd = range;
     for (const p of pacifistVisitors || []) {
-        if (!p || p.dead || p.leaving) continue;
+        if (!p || p.dead || p.leaving || p.golden) continue;
         if ((p.size || 0) >= (hunter.size || 0) * 0.98) continue;
         const d = Math.hypot(p.x - hunter.x, p.y - hunter.y);
         if (d < bd) {
@@ -19386,7 +20014,7 @@ class Shark {
         fish.prey = null;
         this.target = null;
         this.leaving = false;
-        this.glowSwallow = { fish, t: 0, phase: "hold" };
+        this.glowSwallow = stampFinaleWall({ fish, t: 0, phase: "hold", clock: 0 });
         const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
         Audio.sharkStrike(pan);
         water.disturb(this.x, this.y, this.size * 0.7, 500);
@@ -19409,7 +20037,7 @@ class Shark {
         fish.y += (this.y - fish.y) * Math.min(1, (0.35 + gulp * 2.4) * dt * 4);
 
         // Softlock guard: never hold a platinum fish forever.
-        if ((gs.clock || 0) > 8) {
+        if (finaleOvertime(gs) || (gs.clock || 0) > 8) {
             const cx = viewW * 0.5;
             const cy = viewH * 0.5;
             fish.insideShark = false;
@@ -20278,7 +20906,7 @@ function pacifistAt(x, y) {
     let best = null;
     let bestD = Infinity;
     for (const p of pacifistVisitors) {
-        if (!p || p.dead) continue;
+        if (!p || p.dead || p.golden) continue;
         const hitR = (p.kind === "garden" || p.kind === "lumen") ? p.size * 0.75 : p.size * 0.55;
         const d = Math.hypot(x - p.x, y - p.y);
         if (d < hitR && d < bestD) { bestD = d; best = p; }
@@ -20297,6 +20925,10 @@ class PacifistVisitor {
         this.tamed = false;
         this.isHero = false; // after tame: soft hero ally (never hunts fish)
         this.isPacifist = true;
+        this.golden = false;
+        this.sinkTimer = 0;
+        this.sinkDepth = 0;
+        this.lifting = false;
         this.petCount = 0;
         this.petProgress = 0;
         this.petTimer = 0;
@@ -20438,7 +21070,25 @@ class PacifistVisitor {
         }
     }
 
+    turnToGold() {
+        if (this.dead || this.golden) return;
+        this.golden = true;
+        this.leaving = false;
+        this.foodTarget = null;
+        this.rainbowMood = 0;
+        this.isPink = false;
+        this.sinkTimer = 0;
+        this.sinkDepth = 0;
+        this.lifting = false;
+        const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+        if (Audio.goldChime) Audio.goldChime(pan);
+        water.disturb(this.x, this.y, this.size * 1.15, 280);
+        spawnSplash(this.x, this.y, this.size * 0.45, 0.5);
+        if (typeof noteRegistryEncounter === "function") noteRegistryEncounter("form:gold");
+    }
+
     dropGift(strong) {
+        if (this.golden || this.dead || this.leaving) return;
         if (foods.filter((f) => f && !f.eaten).length >= CONFIG.maxFoods) return;
         const n = strong ? 2 + Math.floor(Math.random() * 2) : 1;
         for (let i = 0; i < n; i++) {
@@ -20458,7 +21108,9 @@ class PacifistVisitor {
                 // Avoid rainbow gift spam that helpers immediately re-eat.
                 flags = roll < 0.45 ? { pink: true } : roll < 0.8 ? { grower: true } : {};
             } else if (this.kind === "axolotl") {
-                flags = roll < 0.6 ? { pink: true } : { hero: true };
+                flags = roll < 0.6
+                    ? { pink: true, fromAxolotlGift: true }
+                    : { hero: true, fromAxolotlGift: true };
             } else if (this.kind === "ribbon") {
                 flags = roll < 0.35 ? { rainbow: true } : { grower: true };
             } else if (this.kind === "shard" || this.kind === "prism") {
@@ -20478,7 +21130,7 @@ class PacifistVisitor {
 
     // Rainbow food wakes a short role-specific mood instead of a predator finale.
     triggerRainbowMood() {
-        if (this.dead || this.leaving) return;
+        if (this.dead || this.leaving || this.golden) return;
         // Already glowing: refresh the mood only. Do not burst more food (avoids gift loops).
         if (this.rainbowMood > 0) {
             this.rainbowMood = Math.max(this.rainbowMood, 6);
@@ -20563,8 +21215,8 @@ class PacifistVisitor {
                 }
             }
         } else if (this.kind === "axolotl") {
-            drop({ pink: true }, 2);
-            drop({ hero: true }, 1);
+            drop({ pink: true, fromAxolotlGift: true }, 2);
+            drop({ hero: true, fromAxolotlGift: true }, 1);
             for (const f of fishes) {
                 if (f.dead || f.golden || f.isPredator || f.isMonster || f.isRainbow) continue;
                 if (Math.hypot(f.x - this.x, f.y - this.y) > this.size * 2.4) continue;
@@ -20613,6 +21265,16 @@ class PacifistVisitor {
 
     update(dt) {
         if (this.dead) return;
+        // Golden helpers freeze and settle like gold pond fish.
+        if (this.golden) {
+            if (this.lifting) return;
+            this.sinkTimer += dt;
+            this.sinkDepth = Math.min(1, this.sinkTimer / CONFIG.goldSinkTime);
+            if (this.sinkDepth < 1 && Math.random() < 0.08) {
+                water.disturb(this.x, this.y, this.size * (1 - this.sinkDepth * 0.5), 40);
+            }
+            return;
+        }
         this.age += dt;
         this.phase += dt * 1.4;
         this.tailPhase += dt * (3.2 + (this.tamed ? 0.8 : 0));
@@ -20692,15 +21354,19 @@ class PacifistVisitor {
                 this.dead = true;
                 return;
             }
-        } else if (!this.foodTarget || this.foodTarget.eaten) {
+        } else if (!this.foodTarget || this.foodTarget.eaten
+            || (this.kind === "axolotl" && this.foodTarget.fromAxolotlGift)) {
             // Prefer rainbow only when not already glowing (avoids gift → eat → burst loops).
             let best = null;
             let bd = CONFIG.perception * 1.4;
             for (const food of foods) {
                 if (food.eaten) continue;
+                // Axolotl never chases the gifts it dropped; user-thrown food stays fair game.
+                if (this.kind === "axolotl" && food.fromAxolotlGift) continue;
                 const d = Math.hypot(food.x - this.x, food.y - this.y);
                 let prefer = 1;
-                if (food.rainbow && this.rainbowMood <= 0) prefer = 0.55;
+                if (food.golden) prefer = 0.5;
+                else if (food.rainbow && this.rainbowMood <= 0) prefer = 0.55;
                 else if (food.rainbow && this.rainbowMood > 0) prefer = 2.6;
                 if (d * prefer < bd) { bd = d * prefer; best = food; }
             }
@@ -20716,29 +21382,38 @@ class PacifistVisitor {
             this.foodTarget = null;
         } else if (!this.leaving && this.foodTarget && !this.foodTarget.eaten) {
             const f = this.foodTarget;
-            desired = Math.atan2(f.y - this.y, f.x - this.x);
-            spd = this.speed * (f.rainbow ? 1.35 : 1.15) * moodBoost;
-            if (Math.hypot(f.x - this.x, f.y - this.y) < this.size * 0.4 + f.radius() + 6) {
-                const wasPink = !!f.pink;
-                const wasRainbow = !!f.rainbow;
-                f.eaten = true;
+            if (this.kind === "axolotl" && f.fromAxolotlGift) {
                 this.foodTarget = null;
-                this.size = Math.min(this.size + (wasRainbow ? 2.2 : 1.2), this.meta.size[1] * 1.2);
-                if (wasRainbow) {
-                    this.triggerRainbowMood();
-                } else if (wasPink && this.tamed) {
-                    apexTurnPink(this);
-                } else {
-                    const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
-                    Audio.fishNote({
-                        freq: 260 * (0.9 + Math.random() * 0.2),
-                        wave: "triangle",
-                        pan,
-                        dur: 0.28,
-                        level: 0.05,
-                        partialAmt: 0.2,
-                        bright: 1.05,
-                    });
+            } else {
+                desired = Math.atan2(f.y - this.y, f.x - this.x);
+                spd = this.speed * (f.golden ? 1.3 : f.rainbow ? 1.35 : 1.15) * moodBoost;
+                if (Math.hypot(f.x - this.x, f.y - this.y) < this.size * 0.4 + f.radius() + 6) {
+                    const wasPink = !!f.pink;
+                    const wasRainbow = !!f.rainbow;
+                    const wasGolden = !!f.golden;
+                    f.eaten = true;
+                    this.foodTarget = null;
+                    if (wasGolden) {
+                        this.turnToGold();
+                    } else {
+                        this.size = Math.min(this.size + (wasRainbow ? 2.2 : 1.2), this.meta.size[1] * 1.2);
+                        if (wasRainbow) {
+                            this.triggerRainbowMood();
+                        } else if (wasPink && this.tamed) {
+                            apexTurnPink(this);
+                        } else {
+                            const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+                            Audio.fishNote({
+                                freq: 260 * (0.9 + Math.random() * 0.2),
+                                wave: "triangle",
+                                pan,
+                                dur: 0.28,
+                                level: 0.05,
+                                partialAmt: 0.2,
+                                bright: 1.05,
+                            });
+                        }
+                    }
                 }
             }
         } else if (!this.leaving) {
@@ -21017,15 +21692,21 @@ class PacifistVisitor {
 
     draw(ctx) {
         if (this.dead) return;
-        const a = this.leaving ? 0.55 : 0.94;
-        if (this.kind === "axolotl") { drawPacifistAxolotlModel(ctx, this, a); return; }
-        if (this.kind === "garden" || this.kind === "lumen") { drawPacifistOctopusHelper(ctx, this, a); return; }
-        if (this.kind === "beluga") { drawPacifistBelugaHelper(ctx, this, a); return; }
-        if (this.kind === "singer") { drawPacifistWhaleHelper(ctx, this, a); return; }
-        if (this.kind === "lotus" || this.kind === "prism") { drawPacifistTurtleHelper(ctx, this, a); return; }
-        if (this.kind === "nurse" || this.kind === "shard") { drawPacifistNurseHelper(ctx, this, a); return; }
-        if (this.kind === "ribbon") { drawPacifistSailHelper(ctx, this, a); return; }
-        drawPacifistNurseHelper(ctx, this, a);
+        const sink = this.golden ? (this.sinkDepth || 0) : 0;
+        const a = this.golden
+            ? (0.85 - sink * 0.23)
+            : (this.leaving ? 0.55 : 0.94);
+        const ySave = this.y;
+        if (this.golden) this.y = ySave + sink * 6;
+        if (this.kind === "axolotl") drawPacifistAxolotlModel(ctx, this, a);
+        else if (this.kind === "garden" || this.kind === "lumen") drawPacifistOctopusHelper(ctx, this, a);
+        else if (this.kind === "beluga") drawPacifistBelugaHelper(ctx, this, a);
+        else if (this.kind === "singer") drawPacifistWhaleHelper(ctx, this, a);
+        else if (this.kind === "lotus" || this.kind === "prism") drawPacifistTurtleHelper(ctx, this, a);
+        else if (this.kind === "nurse" || this.kind === "shard") drawPacifistNurseHelper(ctx, this, a);
+        else if (this.kind === "ribbon") drawPacifistSailHelper(ctx, this, a);
+        else drawPacifistNurseHelper(ctx, this, a);
+        if (this.golden) this.y = ySave;
     }
 }
 
@@ -22884,6 +23565,9 @@ let netMode = false;
 let netSweeping = false;
 const NET_RADIUS = 44;
 
+// Fish food creation: left-click drops pellets when on; toggle with the food button.
+let foodCreationEnabled = true;
+
 // Pellets scooped by the net are saved here for later redeploy.
 // Normal food also accrues a bank (can exceed visible slot cap) for market trades.
 const FOOD_STASH_KEY = "ripple-food-stash";
@@ -23179,6 +23863,7 @@ function goldenFishAt(x, y) {
     let best = null, bd = 42;
     let isReptile = false;
     let isNightPredator = false;
+    let isPacifist = false;
     for (const f of fishes) {
         if (!f.golden || f.dead || f.lifting) continue;
         // Only settled gold can be lifted out of the pond.
@@ -23186,7 +23871,7 @@ function goldenFishAt(x, y) {
         const d = Math.hypot(x - f.x, y - f.y);
         const reach = Math.max(26, f.size * 0.75);
         if (d < reach && d < bd) {
-            bd = d; best = f; isReptile = false; isNightPredator = false;
+            bd = d; best = f; isReptile = false; isNightPredator = false; isPacifist = false;
         }
     }
     for (const r of reptiles) {
@@ -23195,7 +23880,7 @@ function goldenFishAt(x, y) {
         const d = Math.hypot(x - r.x, y - r.y);
         const reach = Math.max(30, r.size * 0.55);
         if (d < reach && d < bd) {
-            bd = d; best = r; isReptile = true; isNightPredator = false;
+            bd = d; best = r; isReptile = true; isNightPredator = false; isPacifist = false;
         }
     }
     for (const np of [swordfish, octopus, crystalMantle]) {
@@ -23204,12 +23889,22 @@ function goldenFishAt(x, y) {
         const d = Math.hypot(x - np.x, y - np.y);
         const reach = Math.max(32, np.size * 0.55);
         if (d < reach && d < bd) {
-            bd = d; best = np; isReptile = false; isNightPredator = true;
+            bd = d; best = np; isReptile = false; isNightPredator = true; isPacifist = false;
+        }
+    }
+    for (const p of pacifistVisitors || []) {
+        if (!p || !p.golden || p.dead || p.lifting) continue;
+        if ((p.sinkDepth || 0) < 0.85) continue;
+        const d = Math.hypot(x - p.x, y - p.y);
+        const reach = Math.max(30, p.size * 0.6);
+        if (d < reach && d < bd) {
+            bd = d; best = p; isReptile = false; isNightPredator = false; isPacifist = true;
         }
     }
     if (!best) return null;
     best._goldLiftIsReptile = isReptile;
     best._goldLiftIsNightPredator = isNightPredator;
+    best._goldLiftIsPacifist = isPacifist;
     return best;
 }
 
@@ -23279,6 +23974,9 @@ function collectGoldFish(fish) {
     const isReptile = !!(liftState && liftState.isReptile) || !!fish._goldLiftIsReptile;
     const isNightPredator = !!(liftState && liftState.isNightPredator)
         || !!fish._goldLiftIsNightPredator;
+    const isPacifist = !!(liftState && liftState.isPacifist)
+        || !!fish._goldLiftIsPacifist
+        || !!fish.isPacifist;
     liftState = null;
     if (isNightPredator) {
         goldCollected += GOLD_NIGHT_PREDATOR_AWARD;
@@ -23287,6 +23985,10 @@ function collectGoldFish(fish) {
         if (fish === crystalMantle) crystalMantle = null;
     } else if (isReptile) {
         goldCollected += GOLD_CROCODILE_AWARD;
+    } else if (isPacifist) {
+        goldCollected += Math.round(
+            goldAwardForSize(fish.size || GOLD_AWARD_SIZE_MIN) * GOLD_HELPER_MULT
+        );
     } else {
         goldCollected += goldAwardForSize(fish.size || GOLD_AWARD_SIZE_MIN);
     }
@@ -23398,6 +24100,7 @@ function onPointerDown(ev) {
                 holding: true,
                 isReptile: !!gold._goldLiftIsReptile,
                 isNightPredator: !!gold._goldLiftIsNightPredator,
+                isPacifist: !!gold._goldLiftIsPacifist || !!gold.isPacifist,
             };
             water.disturb(gold.x, gold.y, gold.size * 0.5, 70);
             updateGoldCountUI();
@@ -23440,7 +24143,11 @@ function onPointerDown(ev) {
         petPondLifeAt(ev.clientX, ev.clientY);
         return;
     }
-    pointerDownAt = { x: ev.clientX, y: ev.clientY, t: performance.now() };
+    if (mode !== "pond" || foodCreationEnabled) {
+        pointerDownAt = { x: ev.clientX, y: ev.clientY, t: performance.now() };
+    } else {
+        pointerDownAt = null;
+    }
     pointerNow = { x: ev.clientX, y: ev.clientY };
 }
 function onPointerMove(ev) {
@@ -23458,7 +24165,7 @@ function onPointerMove(ev) {
         return;
     }
     // Long left-drag while charging food carves a temporary current lane.
-    if (mode === "pond" && pointerDownAt && (ev.buttons & 1)
+    if (mode === "pond" && foodCreationEnabled && pointerDownAt && (ev.buttons & 1)
         && !catcherDrag && typeof addCurrentLanePoint === "function") {
         const last = chargeLaneTrail.length
             ? chargeLaneTrail[chargeLaneTrail.length - 1]
@@ -23540,6 +24247,10 @@ function onPointerUp(ev) {
     const v = chargeFromHold(held, ev);
 
     if (mode === "pond") {
+        if (!foodCreationEnabled) {
+            pointerDownAt = null;
+            return;
+        }
         // Drag = sling the food across the water from where you started.
         let sx = x, sy = y;
         const dx = x - pointerDownAt.x;
@@ -23757,6 +24468,7 @@ canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 // Preview of the growing ball while the button is held.
 function drawCharge(ctx) {
     if (!pointerDownAt || !pointerNow) return;
+    if (mode === "pond" && !foodCreationEnabled) return;
     const held = (performance.now() - pointerDownAt.t) / 1000;
     const v = chargeFromHold(held, null);
     const rad = 7 + v * 24;
@@ -24056,6 +24768,32 @@ function dropStylePreviewFreq(style) {
 }
 
 const netBtn = document.getElementById("net-btn");
+
+function updateFoodButtonUI() {
+    const btn = document.getElementById("food-btn");
+    if (!btn) return;
+    btn.classList.toggle("on", foodCreationEnabled);
+    btn.setAttribute("aria-pressed", foodCreationEnabled ? "true" : "false");
+    btn.title = foodCreationEnabled
+        ? "Fish food on: click the pond to drop"
+        : "Fish food off: click to turn on";
+}
+
+const foodBtn = document.getElementById("food-btn");
+if (foodBtn) {
+    foodBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        foodCreationEnabled = !foodCreationEnabled;
+        if (!foodCreationEnabled) {
+            pointerDownAt = null;
+            chargeLaneTrail.length = 0;
+        }
+        updateFoodButtonUI();
+        markFirstInteraction();
+    });
+    updateFoodButtonUI();
+}
+
 netBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     netMode = !netMode;
@@ -24182,6 +24920,8 @@ function serializeFishType(type) {
         noDorsal: !!type.noDorsal,
         hump: !!type.hump,
         lantern: !!type.lantern,
+        tail: type.tail || null,
+        labriform: !!type.labriform,
     };
 }
 
@@ -24224,6 +24964,8 @@ function reviveFishType(data) {
     if (data.noDorsal) type.noDorsal = true;
     if (data.hump) type.hump = true;
     if (data.lantern) type.lantern = true;
+    if (data.tail) type.tail = data.tail;
+    if (data.labriform) type.labriform = true;
     return type;
 }
 
@@ -24756,6 +25498,7 @@ function serializeFish(f) {
         hasTentacles: !!f.hasTentacles,
         redeemed: !!f.redeemed,
         apexHybrid: f.apexHybrid || null,
+        frogHybrid: f.frogHybrid || null,
         sinkDepth: f.sinkDepth || 0,
         sinkTimer: f.sinkTimer || 0,
         hatSeed: f.hatSeed || 0,
@@ -24787,6 +25530,7 @@ function restoreFishFromSave(data) {
     f.hasTentacles = !!data.hasTentacles;
     f.redeemed = !!data.redeemed;
     f.apexHybrid = data.apexHybrid || null;
+    f.frogHybrid = data.frogHybrid || null;
     f.sinkDepth = Math.max(0, Math.min(1, Number(data.sinkDepth) || 0));
     f.sinkTimer = Math.max(0, Number(data.sinkTimer) || 0);
     f.hatSeed = Number(data.hatSeed) || Math.random();
@@ -26605,6 +27349,7 @@ function devRefreshChrome() {
         netBtn.classList.toggle("on", netMode);
         netBtn.setAttribute("aria-pressed", netMode ? "true" : "false");
     }
+    updateFoodButtonUI();
     refreshDevMenuToggles();
 }
 
@@ -26618,6 +27363,7 @@ function refreshDevMenuToggles() {
         else if (key === "crystal") on = crystalMode;
         else if (key === "hats") on = hatsOn;
         else if (key === "net") on = netMode;
+        else if (key === "food") on = foodCreationEnabled;
         else if (key === "catcher") on = catcherMode;
         else if (key === "market") on = marketOpen;
         else if (key === "pond") on = mode === "pond";
@@ -26878,6 +27624,10 @@ function buildDevMenu() {
         netSweeping = false;
         if (netMode) setCatcherMode(false);
     }, { toggle: "net" });
+    btn(modes, "Food", () => {
+        foodCreationEnabled = !foodCreationEnabled;
+        updateFoodButtonUI();
+    }, { toggle: "food" });
     btn(modes, "Catcher", () => {
         catcherOwned = true;
         setCatcherMode(!catcherMode);
@@ -30772,6 +31522,9 @@ function frame(now) {
 
 function watchdogFinaleSoftlocks() {
     // Real timer: background tabs cap dt, so RAF alone can stretch finales forever.
+    if (shark && shark.glowSwallow && finaleOvertime(shark.glowSwallow)) {
+        shark.updateGlowSwallow(0.05);
+    }
     if (rainbowNinjaEnding && finaleOvertime(rainbowNinjaEnding)) {
         updateRainbowNinjaEnding(0.05);
     }

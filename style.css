@@ -395,6 +395,7 @@ body:not(.pond) #window-controls {
 #picker-btn,
 #tunes-btn,
 #rhythm-btn,
+#food-btn,
 #net-btn {
     width: 34px;
     min-height: 34px;
@@ -424,6 +425,7 @@ body:not(.pond) #window-controls {
 #picker-btn:hover,
 #tunes-btn:hover,
 #rhythm-btn:hover,
+#food-btn:hover,
 #net-btn:hover,
 .scenery-btn:focus-visible,
 #ambient-btn:focus-visible,
@@ -437,6 +439,7 @@ body:not(.pond) #window-controls {
 #picker-btn:focus-visible,
 #tunes-btn:focus-visible,
 #rhythm-btn:focus-visible,
+#food-btn:focus-visible,
 #net-btn:focus-visible {
     outline: none;
     border-color: rgba(200, 224, 210, 0.55);
@@ -450,6 +453,7 @@ body:not(.pond) #window-controls {
 #progress-btn.on,
 #catcher-btn.on,
 #picker-btn.on,
+#food-btn.on,
 #net-btn.on {
     border-color: rgba(160, 200, 170, 0.55);
     color: rgba(200, 230, 210, 0.9);
@@ -741,6 +745,27 @@ body:not(.pond) #window-controls {
 
 .ico-frog::before { left: 1px; }
 .ico-frog::after { right: 1px; }
+
+.ico-food {
+    width: 10px;
+    height: 10px;
+    margin-top: 2px;
+    border: 1.5px solid currentColor;
+    border-radius: 50%;
+    box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.ico-food::after {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    width: 3px;
+    height: 3px;
+    background: currentColor;
+    border-radius: 50%;
+    opacity: 0.5;
+}
 
 .ico-net {
     width: 12px;
