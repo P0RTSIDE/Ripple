@@ -4775,13 +4775,21 @@ function makeObstacleDetail(i, n, scale) {
 function rebuildObstacles() {
     const next = [];
     const pad = Math.min(viewW, viewH) * 0.12;
-    // Shore and lake clutter: weathered wood, stone, and a few human remnants.
-    const kinds = [
-        "boulder", "log", "log", "stump", "plank", "driftwood",
+    // One of each debris kind so the elements registry can complete, then a few extras.
+    const unique = [
+        "boulder", "log", "stump", "plank", "driftwood",
         "mossrock", "pot", "reedraft", "crate", "barrel",
     ];
-    for (let i = 0; i < 13; i++) {
-        const kind = kinds[Math.floor(seeded(i + 700) * kinds.length)];
+    const kinds = unique.slice();
+    for (let i = kinds.length - 1; i > 0; i--) {
+        const j = Math.floor(seeded(i + 690) * (i + 1));
+        const tmp = kinds[i];
+        kinds[i] = kinds[j];
+        kinds[j] = tmp;
+    }
+    kinds.push("log", "log", "stump");
+    for (let i = 0; i < kinds.length; i++) {
+        const kind = kinds[i];
         const x = pad + seeded(i + 710) * (viewW - pad * 2);
         const y = pad + seeded(i + 720) * (viewH - pad * 2);
         const base = {
@@ -9069,6 +9077,7 @@ const pondPlants = [];
 const GREEN_POND_SPECIALS = [
     "lantern", "buoy", "bottle", "shell", "mushroom",
     "bamboo", "shipwheel", "teapot", "coral",
+    "lotus", "weed",
 ];
 // Dev menu + rare wooden fish share this list.
 const PLANT_KINDS = GREEN_POND_SPECIALS.concat(["woodenfish"]);
@@ -25290,6 +25299,7 @@ const REGISTRY_TABS = [
     { id: "apex", label: "Apex" },
     { id: "helpers", label: "Helpers" },
     { id: "rare", label: "Rare" },
+    { id: "elements", label: "Elements" },
 ];
 
 const REGISTRY_GROUP_BLURB = {
@@ -25300,6 +25310,7 @@ const REGISTRY_GROUP_BLURB = {
     apex: "Large hunters and guests that can empty or reshape the pond. Pet carefully, or let them leave on their own.",
     helpers: "Pacifist counterparts and rare biome guardians. Helpers gift and soothe. Guardians hunt aggressive fish, then leave unless you pet them enough to stay. Later biomes take more pets.",
     rare: "Special forms a fish can enter. Gold rests on the bed, rainbow hunts hard, monster rises from eating reptiles, and platinum cannot be eaten.",
+    elements: "Pond scenery, lake debris, and ornaments grown from green food. Entries stay dark until that piece appears in the water.",
 };
 
 const REGISTRY_ODD_TIP = {
@@ -25348,6 +25359,38 @@ const REGISTRY_GUARDIAN_TIP = {
     vigil: "Moon vigil. Rare night guardian. Harder to befriend than day helpers, stays only if tamed.",
     aegis: "Prism aegis. Rare Crystal Depths guardian. Needs the most pets, then stays on watch if tamed.",
 };
+
+const REGISTRY_ELEMENT_META = [
+    { id: "elem:stones", source: "scenery", kind: "stones", label: "Shore stones", color: "#8a8880", tip: "Smooth rocks along the bank. They sit still and catch a little wake." },
+    { id: "elem:sticks", source: "scenery", kind: "sticks", label: "Fallen sticks", color: "#8a6a40", tip: "Twigs that drifted in. Some still hold a leaf or two." },
+    { id: "elem:reeds", source: "scenery", kind: "reeds", label: "Bank reeds", color: "#4a7a48", tip: "Tall green stems along the shore. They sway when the water moves." },
+    { id: "elem:cattails", source: "scenery", kind: "cattails", label: "Cattails", color: "#6a5a38", tip: "Bank plants with brown seed heads. They lean with the reeds." },
+    { id: "elem:lilies", source: "scenery", kind: "lilies", label: "Lily pads", color: "#5a8a48", tip: "Round floating pads with a small notch. They bob on wakes and can be nudged." },
+    { id: "elem:duckweed", source: "scenery", kind: "duckweed", label: "Duckweed", color: "#5a8a50", tip: "Tiny surface greens in loose clusters. They share a Looks toggle with floating leaves." },
+    { id: "elem:leaves", source: "scenery", kind: "leaves", label: "Floating leaves", color: "#7a6a38", tip: "Loose leaves on the surface. They drift with duckweed when surface greens are on." },
+    { id: "elem:boulder", source: "obstacle", kind: "boulder", label: "Boulder", color: "#6a6860", tip: "A heavy lake stone. Fish swim around it. Right click drag to haul it through the water." },
+    { id: "elem:mossrock", source: "obstacle", kind: "mossrock", label: "Mossy rock", color: "#5a6a50", tip: "A lake stone with moss patches. Same drag as other debris." },
+    { id: "elem:log", source: "obstacle", kind: "log", label: "Log", color: "#6a4a28", tip: "A thick fallen log. Long debris yaws slowly while you drag it." },
+    { id: "elem:driftwood", source: "obstacle", kind: "driftwood", label: "Driftwood", color: "#7a5a38", tip: "A forked, weathered branch. Lighter than a full log." },
+    { id: "elem:plank", source: "obstacle", kind: "plank", label: "Plank", color: "#8a6a42", tip: "A worn board from somewhere upstream. Thin, long, and easy to spin." },
+    { id: "elem:stump", source: "obstacle", kind: "stump", label: "Stump", color: "#5a4030", tip: "A cut trunk with a ringed face. Sits low in the water." },
+    { id: "elem:crate", source: "obstacle", kind: "crate", label: "Crate", color: "#8a6a48", tip: "A warped wooden crate. Human leftover, now lake clutter." },
+    { id: "elem:barrel", source: "obstacle", kind: "barrel", label: "Barrel", color: "#7a5a34", tip: "A bulged wooden barrel with hoops. Heavy to drag." },
+    { id: "elem:pot", source: "obstacle", kind: "pot", label: "Clay pot", color: "#8a6048", tip: "A chipped pot on the bed. Smaller debris with a hollow rim." },
+    { id: "elem:reedraft", source: "obstacle", kind: "reedraft", label: "Reed raft", color: "#6a8a48", tip: "Bundled reed stems tied into a floating raft. The cut butts sit at the water line." },
+    { id: "elem:lantern", source: "plant", kind: "lantern", label: "Paper lantern", color: "#e0a858", tip: "A warm paper lantern grown from green food. It stays until the pond restocks." },
+    { id: "elem:buoy", source: "plant", kind: "buoy", label: "Marker buoy", color: "#c4583a", tip: "A round marker buoy. Green food left it as a lasting ornament." },
+    { id: "elem:bottle", source: "plant", kind: "bottle", label: "Glass bottle", color: "#78b4aa", tip: "A clear bottle on the bed. One of the uncommon green-food ornaments." },
+    { id: "elem:shell", source: "plant", kind: "shell", label: "Shell", color: "#e0b898", tip: "A fan shell settled on the bed after green food." },
+    { id: "elem:mushroom", source: "plant", kind: "mushroom", label: "Mushroom", color: "#d86858", tip: "A small cluster of capped mushrooms. Grows from green food." },
+    { id: "elem:bamboo", source: "plant", kind: "bamboo", label: "Bamboo", color: "#4a8a50", tip: "Jointed bamboo stalks. They sway more than the bank reeds." },
+    { id: "elem:shipwheel", source: "plant", kind: "shipwheel", label: "Ship wheel", color: "#a07040", tip: "A wooden ship wheel ornament. Green food left it on the bed." },
+    { id: "elem:teapot", source: "plant", kind: "teapot", label: "Teapot", color: "#c8b498", tip: "A small teapot ornament. Another uncommon green-food piece." },
+    { id: "elem:coral", source: "plant", kind: "coral", label: "Coral", color: "#d87898", tip: "Branching coral on the bed. A fantasy ornament from green food." },
+    { id: "elem:woodenfish", source: "plant", kind: "woodenfish", label: "Wooden fish", color: "#b88850", tip: "A carved wooden fish. A rare green-food roll, and it stays until restock." },
+    { id: "elem:lotus", source: "plant", kind: "lotus", label: "Lotus", color: "#e0b4a0", tip: "A flowering pad with a pale bloom. Grown from green food, not the usual lily pads." },
+    { id: "elem:weed", source: "plant", kind: "weed", label: "Weed tuft", color: "#3a8250", tip: "A tuft of underwater weed. Soft fronds that sway on the bed." },
+];
 
 function registryPrettyName(name) {
     return String(name || "")
@@ -25457,6 +25500,17 @@ function getRegistryCatalog() {
             previewForm: r.id.replace(/^form:/, ""),
         });
     }
+    for (const el of REGISTRY_ELEMENT_META) {
+        list.push({
+            id: el.id,
+            group: "elements",
+            label: el.label,
+            color: el.color,
+            tip: el.tip,
+            previewElem: el.kind,
+            elemSource: el.source,
+        });
+    }
     _registryCatalog = list;
     return list;
 }
@@ -25508,6 +25562,40 @@ function scanLivingForRegistry() {
     for (const g of biomeGuardians) {
         if (g && !g.dead) noteRegistryEncounter("guard:" + (g.kind || "warden"));
     }
+    noteDrawnPondElements();
+}
+
+function noteDrawnPondElements() {
+    if (registryPreviewQuiet) return;
+    if (scenery.stones && sceneryItems.stones && sceneryItems.stones.length) {
+        noteRegistryEncounter("elem:stones");
+    }
+    if (scenery.sticks && sceneryItems.sticks && sceneryItems.sticks.length) {
+        noteRegistryEncounter("elem:sticks");
+    }
+    if (scenery.reeds && sceneryItems.reeds && sceneryItems.reeds.length) {
+        noteRegistryEncounter("elem:reeds");
+    }
+    if (scenery.cattails && sceneryItems.cattails && sceneryItems.cattails.length) {
+        noteRegistryEncounter("elem:cattails");
+    }
+    if (scenery.lilies && sceneryItems.lilies && sceneryItems.lilies.length) {
+        noteRegistryEncounter("elem:lilies");
+    }
+    if (scenery.duckweed && sceneryItems.duckweed && sceneryItems.duckweed.length) {
+        noteRegistryEncounter("elem:duckweed");
+    }
+    if (scenery.duckweed && sceneryItems.leaves && sceneryItems.leaves.length) {
+        noteRegistryEncounter("elem:leaves");
+    }
+    if (scenery.debris) {
+        for (const o of obstacles) {
+            if (o && o.kind) noteRegistryEncounter("elem:" + o.kind);
+        }
+    }
+    for (const p of pondPlants) {
+        if (p && p.kind) noteRegistryEncounter("elem:" + p.kind);
+    }
 }
 
 function registryCounts() {
@@ -25525,7 +25613,7 @@ function updateRegistryButtonUI() {
     btn.classList.toggle("on", registryOpen);
     btn.setAttribute("aria-pressed", registryOpen ? "true" : "false");
     btn.setAttribute("aria-expanded", registryOpen ? "true" : "false");
-    btn.title = registryOpen ? "Close fish registry" : "Fish registry";
+    btn.title = registryOpen ? "Close registry" : "Registry";
 }
 
 function setRegistryOpen(open) {
@@ -25577,6 +25665,187 @@ function registryFixLimbTips(ent) {
         leg.tipX = ent.x + Math.cos(ang) * len * 0.85;
         leg.tipY = ent.y + Math.sin(ang) * len * 0.7;
     }
+}
+
+function makeRegistryObstaclePreview(kind) {
+    const i = 4;
+    const base = {
+        kind, x: 0, y: 0, rot: -0.35,
+        tone: 0.48, moss: 0.4, vx: 0, vy: 0, spin: 0,
+        profile: makeObstacleDetail(i, 10, 1),
+        knobs: makeObstacleDetail(i, 5, 2),
+    };
+    if (kind === "boulder" || kind === "mossrock") {
+        return { ...base, r: 22, facets: 8 };
+    }
+    if (kind === "log") return { ...base, len: 54, thick: 14, broken: true };
+    if (kind === "driftwood") return { ...base, len: 50, thick: 11, fork: 0.5 };
+    if (kind === "plank") return { ...base, len: 52, thick: 8 };
+    if (kind === "crate") return { ...base, r: 18, rot: -0.2 };
+    if (kind === "barrel") return { ...base, r: 20 };
+    if (kind === "pot") return { ...base, r: 16 };
+    if (kind === "reedraft") return { ...base, r: 18, stems: 6, rot: 0 };
+    return { ...base, kind: "stump", r: 18 };
+}
+
+function makeRegistryPlantPreview(kind) {
+    const size = kind === "bamboo" ? 34 : kind === "woodenfish" ? 40 : kind === "weed" ? 36 : 38;
+    return {
+        soft: "plant",
+        kind,
+        x: 0,
+        y: 0,
+        size,
+        r: typeof greenOrnamentRadius === "function" ? greenOrnamentRadius(kind, size) : size * 0.45,
+        rot: -0.28,
+        sway: 0.35,
+        bob: 0.4,
+        green: 0.62,
+        age: 2,
+        vx: 0,
+        vy: 0,
+        spin: 0,
+        tone: 0.42,
+        bobLift: 0,
+        tipBob: 0,
+        refrX: 0,
+        refrY: 0,
+        settleT: 0,
+    };
+}
+
+function withTempProp(obj, key, value, fn) {
+    const prev = obj[key];
+    obj[key] = value;
+    try { return fn(); }
+    finally { obj[key] = prev; }
+}
+
+function paintSceneryElementPreview(ctx, kind) {
+    if (kind === "stones") {
+        ctx.scale(1.2, 1.2);
+        withTempProp(scenery, "stones", true, () => {
+            const prev = sceneryItems.stones;
+            sceneryItems.stones = [{
+                x: 0, y: 0, rx: 15, ry: 10, rot: -0.3, tone: 0.52, facets: 7,
+                profile: makeObstacleDetail(2, 9, 5),
+            }];
+            try { drawShoreStones(ctx, 0); }
+            finally { sceneryItems.stones = prev; }
+        });
+        return;
+    }
+    if (kind === "sticks") {
+        ctx.scale(1.05, 1.05);
+        withTempProp(scenery, "sticks", true, () => {
+            const prev = sceneryItems.sticks;
+            sceneryItems.sticks = [{
+                x: 0, y: 0, len: 30, rot: -0.45, thick: 2.1, wet: true, tipBob: 0,
+            }];
+            try { drawSticks(ctx, 0); }
+            finally { sceneryItems.sticks = prev; }
+        });
+        return;
+    }
+    if (kind === "reeds") {
+        ctx.scale(0.95, 0.95);
+        withTempProp(scenery, "reeds", true, () => {
+            const prev = sceneryItems.reeds;
+            sceneryItems.reeds = [{ x: 0, y: 0, ang: 0, h: 34, sway: 0.4, green: 0.7 }];
+            try { drawReeds(ctx, 0.4, 0); }
+            finally { sceneryItems.reeds = prev; }
+        });
+        return;
+    }
+    if (kind === "cattails") {
+        ctx.scale(0.9, 0.9);
+        withTempProp(scenery, "cattails", true, () => {
+            const prev = sceneryItems.cattails;
+            sceneryItems.cattails = [{ x: 0, y: 0, ang: 0, h: 36, sway: 0.35, green: 0.62 }];
+            try { drawCattails(ctx, 0.4, 0); }
+            finally { sceneryItems.cattails = prev; }
+        });
+        return;
+    }
+    if (kind === "lilies") {
+        ctx.scale(1.15, 1.15);
+        withTempProp(scenery, "lilies", true, () => {
+            const prev = sceneryItems.lilies;
+            sceneryItems.lilies = [{
+                soft: "lily", x: 0, y: 0, r: 16, rot: -0.2, bob: 0.3, vx: 0, vy: 0, spin: 0, tipBob: 0,
+            }];
+            try { drawLilies(ctx, 0.4, 0); }
+            finally { sceneryItems.lilies = prev; }
+        });
+        return;
+    }
+    if (kind === "duckweed") {
+        ctx.scale(1.05, 1.05);
+        withTempProp(scenery, "duckweed", true, () => {
+            const prev = sceneryItems.duckweed;
+            sceneryItems.duckweed = [{ x: 0, y: 0, r: 16, rot: 0.2, bob: 0.4, density: 7 }];
+            try { drawDuckweed(ctx, 0.4, 0); }
+            finally { sceneryItems.duckweed = prev; }
+        });
+        return;
+    }
+    if (kind === "leaves") {
+        ctx.scale(1.35, 1.35);
+        withTempProp(scenery, "duckweed", true, () => {
+            const prev = sceneryItems.leaves;
+            sceneryItems.leaves = [{ x: 0, y: 0, len: 11, rot: -0.4, bob: 0.3, tone: 0.5 }];
+            try { drawLeaves(ctx, 0.4, 0); }
+            finally { sceneryItems.leaves = prev; }
+        });
+    }
+}
+
+function paintElementRegistryPreview(ctx, entry, seen, cssW, cssH) {
+    const kind = entry.previewElem;
+    const source = entry.elemSource;
+    const tall = kind === "reeds" || kind === "cattails" || kind === "reedraft"
+        || kind === "bamboo" || kind === "lantern" || kind === "weed"
+        || kind === "reed" || kind === "cattail" || kind === "mushroom"
+        || kind === "coral" || kind === "lotus";
+    const oy = tall ? cssH * 0.84 : cssH * 0.56;
+    ctx.save();
+    if (!seen) {
+        ctx.filter = "brightness(0)";
+        ctx.globalAlpha = 0.55;
+    }
+    ctx.translate(cssW * 0.5, oy);
+    try {
+        if (source === "obstacle") {
+            const o = makeRegistryObstaclePreview(kind);
+            const native = isLongObstacle(o) ? o.len * 0.62 : Math.max(28, obstacleRadius(o) * 2.15);
+            const scale = (Math.min(cssW, cssH) * 0.82) / native;
+            ctx.scale(scale, scale);
+            withTempProp(scenery, "debris", true, () => {
+                const prev = obstacles;
+                obstacles = [o];
+                try { drawObstacles(ctx, 0); }
+                finally { obstacles = prev; }
+            });
+        } else if (source === "plant") {
+            const p = makeRegistryPlantPreview(kind);
+            const native = Math.max(26, p.size * (tall ? 1.05 : 0.85));
+            const scale = (Math.min(cssW, cssH) * 0.78) / native;
+            ctx.scale(scale, scale);
+            const prev = pondPlants.slice();
+            pondPlants.length = 0;
+            pondPlants.push(p);
+            try { drawPondPlants(ctx, 0.4, 0); }
+            finally {
+                pondPlants.length = 0;
+                for (const row of prev) pondPlants.push(row);
+            }
+        } else {
+            paintSceneryElementPreview(ctx, kind);
+        }
+    } catch (err) {
+        // Preview should never break the registry panel.
+    }
+    ctx.restore();
 }
 
 function createRegistryPreviewEntity(entry) {
@@ -25673,6 +25942,13 @@ function paintRegistryPreview(canvas, entry, seen) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cssW, cssH);
 
+    if (entry.previewElem) {
+        withRegistryPreviewQuiet(() => {
+            paintElementRegistryPreview(ctx, entry, seen, cssW, cssH);
+        });
+        return;
+    }
+
     const preview = createRegistryPreviewEntity(entry);
     if (!preview || !preview.ent || typeof preview.ent.draw !== "function") return;
     const ent = preview.ent;
@@ -25704,6 +25980,15 @@ function renderRegistryUI() {
     const counts = registryCounts();
     const countEl = document.getElementById("registry-count");
     if (countEl) countEl.textContent = counts.seen + " / " + counts.total;
+
+    const titleEl = document.getElementById("registry-title");
+    if (titleEl) {
+        titleEl.textContent = registryTab === "elements" ? "Pond elements" : "Fish registry";
+    }
+    const panel = document.getElementById("registry-panel");
+    if (panel) {
+        panel.setAttribute("aria-label", registryTab === "elements" ? "Pond elements" : "Fish registry");
+    }
 
     const blurbEl = document.getElementById("registry-blurb");
     if (blurbEl) {
@@ -25746,7 +26031,9 @@ function renderRegistryUI() {
             + (registrySelectedId === entry.id ? " selected" : "");
         card.setAttribute("role", "listitem");
         card.style.setProperty("--reg-color", entry.color || "#7aa89a");
-        card.title = seen ? entry.label : "Not yet met";
+    card.title = seen
+        ? entry.label
+        : (entry.group === "elements" ? "Not yet seen" : "Not yet met");
         const preview = document.createElement("canvas");
         preview.className = "registry-preview";
         preview.setAttribute("aria-hidden", "true");
@@ -25771,6 +26058,8 @@ function renderRegistryUI() {
     if (detail) {
         if (selected) {
             detail.textContent = selected.label + ". " + (selected.tip || "");
+        } else if (registryTab === "elements") {
+            detail.textContent = "Pond pieces stay dark until they appear in the water. Select a revealed entry for notes.";
         } else {
             detail.textContent = "Meet a new fish in the pond to reveal its silhouette. Select a revealed entry for notes.";
         }
@@ -26077,7 +26366,7 @@ function startNewPond() {
     setMarketOpen(false);
     setProgressOpen(false);
     setRegistryOpen(false);
-    // Keep fish registry discoveries across fresh ponds.
+    // Keep fish and element registry discoveries across fresh ponds.
     scanLivingForRegistry();
     updateHatsButtonUI();
     updateGoldCountUI();
@@ -31799,6 +32088,7 @@ function frame(now) {
         drawDuckweed(ctx, sceneryTime, dt);
         drawLeaves(ctx, sceneryTime, dt);
         drawLilies(ctx, sceneryTime, dt);
+        if (typeof noteDrawnPondElements === "function") noteDrawnPondElements();
 
         // Food floats on top, then rocks in flight above that.
         for (const f of foods) f.update(dt);
