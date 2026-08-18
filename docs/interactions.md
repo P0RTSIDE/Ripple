@@ -16,6 +16,10 @@ Rarer visitors with odd swim habits (discus, arowana, glass fish, and similar). 
 ### Night fish
 Appear when moon pond is on. Moon pond sits locked in Looks until you make a platinum fish. Sun pond is the default every visit. Moon-toned species replace the day school mix. Night also swaps day crocs for swordfish or octopus rolls, and the last-fish shark for an orca.
 
+## Registry
+
+The registry button opens a catalog of pond life and pond pieces. Entries stay dark until you meet that fish or see that piece in the water. Tabs cover common, exotic, night, crystal, apex, helpers, and rare forms. The Elements tab lists scenery, lake debris, and green-food ornaments, including the bundled reed raft. Discoveries save with progress.
+
 ## Special fish forms
 
 ### Hero

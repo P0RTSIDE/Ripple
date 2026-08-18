@@ -1097,7 +1097,7 @@ body.pond #progress-panel.open:focus-within {
     display: none;
     flex-direction: column;
     gap: 8px;
-    width: min(420px, calc(100vw - 80px));
+    width: min(440px, calc(100vw - 80px));
     max-height: min(520px, calc(100vh - 48px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)));
     padding: 10px 10px 9px;
     background: rgba(12, 22, 20, 0.52);

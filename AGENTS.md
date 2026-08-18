@@ -25,6 +25,7 @@ Ripple is a single-page pond sim. Almost all gameplay lives in `main.js` with sh
 | Frog / bullfrog | `beginFrogFinale`, `beginBullfrogFinale`, `bullfrog`, `bullfrogFinale` |
 | Finale lockout | `pondFinaleActive`, `finaleMaxSeconds`, `finaleOvertime`, `watchdogFinaleSoftlocks` |
 | Ending audit | `runFinaleAudit`, `probeFinaleState` |
+| Registry | `registrySeen`, `noteRegistryEncounter`, `getRegistryCatalog`, `REGISTRY_ELEMENT_META`, `noteDrawnPondElements` |
 | Danger menu | type `devcodefartgoblin`, `buildDevMenu`, `devClearFinales` |
 
 ## Hard product rules
