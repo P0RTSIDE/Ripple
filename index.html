@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Ripple</title>
-    <link rel="stylesheet" href="style.css?v=20260831ad" />
+    <link rel="stylesheet" href="style.css?v=20260831ae" />
 </head>
 <body>
     <!-- The whole experience is a single full-viewport canvas surface. -->
@@ -34,7 +34,7 @@
     <!-- Pond tools; looks menu holds aesthetic toggles. -->
     <div id="pond-controls" aria-label="Pond options">
         <div id="looks-wrap">
-            <button type="button" id="looks-btn" class="scenery-btn" title="Pond looks" aria-pressed="false" aria-expanded="false" aria-controls="looks-panel">
+            <button type="button" id="looks-btn" class="scenery-btn" title="Pond looks" aria-label="Pond looks" aria-pressed="false" aria-expanded="false" aria-controls="looks-panel">
                 <span class="ico ico-looks"></span>
             </button>
             <div id="looks-panel" aria-label="Pond looks" aria-hidden="true">
@@ -82,20 +82,23 @@
                 </button>
             </div>
         </div>
-        <button type="button" id="net-btn" class="scenery-btn" title="Net: scoop food with right click" aria-pressed="false">
+        <button type="button" id="food-btn" class="scenery-btn on" title="Fish food on: click the pond to drop" aria-label="Fish food on" aria-pressed="true">
+            <span class="ico ico-food"></span>
+        </button>
+        <button type="button" id="net-btn" class="scenery-btn" title="Net: scoop food with right click" aria-label="Net tool" aria-pressed="false">
             <span class="ico ico-net"></span>
         </button>
-        <button type="button" id="market-btn" class="locked" title="Market: 7 gold fish" aria-disabled="true" aria-pressed="false">
+        <button type="button" id="market-btn" class="locked" title="Market: 7 gold fish" aria-label="Market" aria-disabled="true" aria-pressed="false" aria-expanded="false" aria-controls="market-panel">
             <span class="ico ico-market"></span>
             <span id="market-cost">7</span>
         </button>
-        <button type="button" id="registry-btn" class="scenery-btn" title="Fish registry" aria-pressed="false" aria-expanded="false" aria-controls="registry-panel">
+        <button type="button" id="registry-btn" class="scenery-btn" title="Registry" aria-label="Registry" aria-pressed="false" aria-expanded="false" aria-controls="registry-panel">
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M4 5h16v2H4V5zm0 6h10v2H4v-2zm0 6h16v2H4v-2zm13-7.5l4 2.5-4 2.5v-5z"/></svg>
         </button>
-        <button type="button" id="progress-btn" class="scenery-btn" title="Save progress" aria-pressed="false">
+        <button type="button" id="progress-btn" class="scenery-btn" title="Save progress" aria-label="Save progress" aria-pressed="false" aria-expanded="false" aria-controls="progress-panel">
             <span class="ico ico-save"></span>
         </button>
-        <button type="button" id="catcher-btn" class="scenery-btn" title="Rainbow catcher" aria-pressed="false">
+        <button type="button" id="catcher-btn" class="scenery-btn" title="Rainbow catcher" aria-label="Rainbow catcher" aria-pressed="false">
             <span class="ico ico-catcher"></span>
         </button>
         <button type="button" id="picker-btn" class="scenery-btn" title="Fish picker" aria-pressed="false" hidden>
@@ -127,20 +130,44 @@
     <div id="rhythm-panel" aria-label="Rhythm studio" aria-hidden="true">
         <div class="market-meta">
             <span>Rhythm studio</span>
-            <span id="rhythm-step-label">1 / 16</span>
+            <span id="rhythm-step-label">1 / 32</span>
         </div>
         <div class="rhythm-transport">
             <button type="button" id="rhythm-play" class="market-row rhythm-mini">Play</button>
             <button type="button" id="rhythm-stop" class="market-row rhythm-mini">Stop</button>
             <button type="button" id="rhythm-record" class="market-row rhythm-mini" aria-pressed="false">Record</button>
             <button type="button" id="rhythm-clear" class="market-row rhythm-mini">Clear</button>
+            <button type="button" id="rhythm-metro" class="market-row rhythm-mini" aria-pressed="false" title="Click track">Click</button>
+        </div>
+        <div class="rhythm-transport" id="rhythm-length-row" aria-label="Loop length">
+            <button type="button" class="market-row rhythm-mini rhythm-len" data-steps="16" aria-pressed="false">16</button>
+            <button type="button" class="market-row rhythm-mini rhythm-len on" data-steps="32" aria-pressed="true">32</button>
+            <button type="button" class="market-row rhythm-mini rhythm-len" data-steps="64" aria-pressed="false">64</button>
+            <button type="button" id="rhythm-shift-left" class="market-row rhythm-mini" title="Shift earlier">Earlier</button>
+            <button type="button" id="rhythm-shift-right" class="market-row rhythm-mini" title="Shift later">Later</button>
+        </div>
+        <div class="rhythm-transport">
+            <button type="button" id="rhythm-copy" class="market-row rhythm-mini">Copy</button>
+            <button type="button" id="rhythm-paste" class="market-row rhythm-mini">Paste</button>
+            <button type="button" id="rhythm-new" class="market-row rhythm-mini">New</button>
+            <button type="button" id="rhythm-dup" class="market-row rhythm-mini">Duplicate</button>
         </div>
         <label class="rhythm-bpm-wrap" title="Tempo">
             <span>Tempo</span>
-            <input type="range" id="rhythm-bpm" min="60" max="140" value="96" step="1" aria-label="Tempo" />
+            <input type="range" id="rhythm-bpm" min="60" max="160" value="96" step="1" aria-label="Tempo" />
             <span id="rhythm-bpm-val">96</span>
         </label>
-        <div id="rhythm-grid" class="rhythm-grid" aria-label="Step grid"></div>
+        <label class="rhythm-bpm-wrap" title="Swing">
+            <span>Swing</span>
+            <input type="range" id="rhythm-swing" min="0" max="100" value="0" step="1" aria-label="Swing" />
+            <span id="rhythm-swing-val">0</span>
+        </label>
+        <label class="rhythm-bpm-wrap" title="Studio loudness">
+            <span>Level</span>
+            <input type="range" id="rhythm-gain" min="20" max="100" value="100" step="1" aria-label="Studio loudness" />
+            <span id="rhythm-gain-val">100</span>
+        </label>
+        <div id="rhythm-grid" class="rhythm-grid" data-steps="32" aria-label="Step grid"></div>
         <div class="rhythm-save-row">
             <input type="text" id="rhythm-name" maxlength="28" placeholder="Tune name" aria-label="Tune name" />
             <button type="button" id="rhythm-save" class="market-row rhythm-mini">Save</button>
@@ -158,29 +185,80 @@
         <p id="tunes-empty" class="rhythm-empty">No saved tunes yet. Make one on the glass surface.</p>
     </div>
 
-    <!-- Quiet market: few buy rows, same faint corner feel as other pond chrome. -->
+    <!-- Quiet market popup: compact icon tiles for pond tools and crafts. -->
     <div id="market-panel" aria-label="Market" aria-hidden="true">
         <div class="market-meta">
             <span><span id="market-gold">0</span> gold</span>
             <span><span id="market-food">0</span> food</span>
         </div>
-        <button type="button" id="market-buy-magnet" class="market-row" disabled>Magnet · 3 gold</button>
-        <button type="button" id="market-buy-catcher" class="market-row" disabled>Rainbow catcher · 4 gold</button>
-        <button type="button" id="market-buy-catcher-up" class="market-row" disabled hidden>Wider catcher · 3 rainbow food</button>
-        <button type="button" id="market-buy-picker" class="market-row" disabled>Fish picker · 3 rainbow food</button>
-        <button type="button" id="market-buy-double-petter" class="market-row" disabled hidden>Double petter · 5 rainbow food</button>
-        <button type="button" id="market-buy-rainbow" class="market-row" disabled>Rainbow food · 10 gold</button>
-        <button type="button" id="market-buy-goldfood" class="market-row" disabled>Gold food · 20 fish food</button>
-        <button type="button" id="market-buy-recipe-mirror" class="market-row" disabled>Mirror craft · gold + breed food</button>
-        <button type="button" id="market-buy-recipe-storm" class="market-row" disabled>Storm craft · rainbow + grower</button>
-        <button type="button" id="market-buy-recipe-night" class="market-row" disabled>Moon pond · 5 rainbow food</button>
-        <button type="button" id="market-buy-platinum" class="market-row" disabled hidden>Platinum food · 5 rainbow food</button>
+        <div class="market-grid" role="list">
+            <button type="button" id="market-buy-magnet" class="market-tile" disabled title="Lift settled gold fish much faster">
+                <span class="market-ico market-ico-magnet" aria-hidden="true"></span>
+                <span class="market-tile-label">Magnet</span>
+                <span class="market-tile-cost">3 gold</span>
+            </button>
+            <button type="button" id="market-buy-catcher" class="market-tile owned" disabled title="Starter tool: use the catcher button, then drag a small circle">
+                <span class="market-ico market-ico-catcher" aria-hidden="true"></span>
+                <span class="market-tile-label">Catcher</span>
+                <span class="market-tile-cost">Owned</span>
+            </button>
+            <button type="button" id="market-buy-catcher-up" class="market-tile" disabled hidden title="Widen the catcher radius">
+                <span class="market-ico market-ico-catcher-up" aria-hidden="true"></span>
+                <span class="market-tile-label">Wider</span>
+                <span class="market-tile-cost">3 rainbow</span>
+            </button>
+            <button type="button" id="market-buy-picker" class="market-tile" disabled title="Lift small fish or drag larger ones with right click">
+                <span class="market-ico market-ico-picker" aria-hidden="true"></span>
+                <span class="market-tile-label">Picker</span>
+                <span class="market-tile-cost">3 rainbow</span>
+            </button>
+            <button type="button" id="market-buy-stronger-currents" class="market-tile" disabled title="Make carved pond currents pull harder">
+                <span class="market-ico market-ico-current" aria-hidden="true"></span>
+                <span class="market-tile-label">Currents</span>
+                <span class="market-tile-cost">5 rainbow</span>
+            </button>
+            <button type="button" id="market-buy-double-petter" class="market-tile" disabled hidden title="One click pets a fish twice">
+                <span class="market-ico market-ico-pet" aria-hidden="true"></span>
+                <span class="market-tile-label">Double pet</span>
+                <span class="market-tile-cost">5 rainbow</span>
+            </button>
+            <button type="button" id="market-buy-rainbow" class="market-tile" disabled title="Adds one rainbow food to your stash">
+                <span class="market-ico market-ico-rainbow" aria-hidden="true"></span>
+                <span class="market-tile-label">Rainbow</span>
+                <span class="market-tile-cost">10 gold</span>
+            </button>
+            <button type="button" id="market-buy-goldfood" class="market-tile" disabled title="Trade fish food for gold food">
+                <span class="market-ico market-ico-pellet" aria-hidden="true"></span>
+                <span class="market-tile-label">Gold food</span>
+                <span class="market-tile-cost">20 food</span>
+            </button>
+            <button type="button" id="market-buy-recipe-mirror" class="market-tile" disabled title="Spend gold food and breed food to summon a mirror twin">
+                <span class="market-ico market-ico-mirror" aria-hidden="true"></span>
+                <span class="market-tile-label">Mirror</span>
+                <span class="market-tile-cost">Gold + breed</span>
+            </button>
+            <button type="button" id="market-buy-recipe-storm" class="market-tile" disabled title="Spend rainbow and grower food to start a weather mood">
+                <span class="market-ico market-ico-storm" aria-hidden="true"></span>
+                <span class="market-tile-label">Storm</span>
+                <span class="market-tile-cost">Rainbow + grow</span>
+            </button>
+            <button type="button" id="market-buy-recipe-night" class="market-tile" disabled title="Unlock moonlight in Looks">
+                <span class="market-ico market-ico-moon" aria-hidden="true"></span>
+                <span class="market-tile-label">Moon pond</span>
+                <span class="market-tile-cost">5 rainbow</span>
+            </button>
+            <button type="button" id="market-buy-platinum" class="market-tile" disabled hidden title="Creates an invulnerable glowing fish">
+                <span class="market-ico market-ico-platinum" aria-hidden="true"></span>
+                <span class="market-tile-label">Platinum</span>
+                <span class="market-tile-cost">5 rainbow</span>
+            </button>
+        </div>
     </div>
 
     <!-- Free local progress: stays in this browser, or download a file. No account. -->
-    <div id="registry-panel" aria-label="Fish registry" aria-hidden="true">
+    <div id="registry-panel" aria-label="Registry" aria-hidden="true">
         <div class="registry-head">
-            <span>Fish registry</span>
+            <span id="registry-title">Fish registry</span>
             <span id="registry-count">0 / 0</span>
         </div>
         <p id="registry-blurb" class="registry-blurb">Entries stay dark until you meet them in the pond.</p>
@@ -301,10 +379,10 @@
     </div>
 
     <!-- On-load hint that fades out after the first interaction and never returns. -->
-    <div id="hint">click anywhere</div>
+    <div id="hint" role="status" aria-live="polite">click anywhere</div>
 
     <!-- Defer keeps first paint light; guide stays a small separate file. -->
-    <script src="main.js?v=20260813ac" defer></script>
-    <script src="guide.js?v=20260831ad" defer></script>
+    <script src="main.js?v=20260817af" defer></script>
+    <script src="guide.js?v=20260831ae" defer></script>
 </body>
 </html>

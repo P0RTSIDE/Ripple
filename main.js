@@ -105,6 +105,7 @@ const CONFIG = {
     breedCooldown: 6.5,     // seconds before a pink pair can breed again
     apexBreedCooldown: 9,   // longer rest for apex / pacifist hybrid pairs
     maxApexHybrids: 8,      // living apex-hybrid fry cap
+    maxFrogHybrids: 8,      // living frog-fish hybrid fry cap
     maxBreedPop: 24,        // soft cap on living fish from breeding (above fishCount)
     foodStashMax: 14,       // pellets saved from the net (normal + specials)
     frogInterval: 42,       // seconds between frog spawn chance rolls
@@ -114,6 +115,10 @@ const CONFIG = {
     frogSootheTime: 5,      // continuous stroke time that also befriends a frog
     frogFinaleTadpoles: 12, // tadpoles released when a giant hero frog bursts
     tadpoleMetamorphSize: 11, // hungry tadpole size that becomes a frog
+    // Rare bullfrog: eats frogs and tadpoles; oversized frogs can eat it back.
+    bullfrogInterval: 95,   // seconds between bullfrog spawn rolls
+    bullfrogChance: 0.035,  // very small chance a bullfrog arrives
+    bullfrogMealsForFinale: 4, // frog/tadpole meals before the feast ending can start
     mirrorFishChance: 0.035, // rare delayed twin that copies another fish
     weatherInterval: 55,    // seconds between weather mood rolls
     weatherChance: 0.42,    // chance a weather mood begins
@@ -198,8 +203,24 @@ function tickGfxQuality(dt) {
     }
 }
 
-// Optional one-shot: next food drop is forced rainbow (keywords / developer tools).
+// Optional one-shot: next food drop is forced rainbow (keywords / pet streak / developer tools).
 let guaranteeRainbow = false;
+// Discrete right-click pets with no food throws; enough of them force the next drop rainbow.
+const PETS_FOR_GUARANTEE_RAINBOW = 20;
+let petsWithoutFoodThrow = 0;
+
+function notePetForRainbowStreak(quiet) {
+    if (quiet) return;
+    petsWithoutFoodThrow += 1;
+    if (petsWithoutFoodThrow >= PETS_FOR_GUARANTEE_RAINBOW) {
+        petsWithoutFoodThrow = 0;
+        guaranteeRainbow = true;
+    }
+}
+
+function resetPetRainbowStreak() {
+    petsWithoutFoodThrow = 0;
+}
 
 // Type a variant name (anywhere) to force that kind on the next food drop.
 // When adding a new food variant: append its keyword here and handle it in applyFoodVariant.
@@ -507,11 +528,20 @@ const PLATINUM_RAINBOW_FOOD_COST = 5;
 const NIGHT_UNLOCK_RAINBOW_COST = 5; // market: unlock moon pond with stashed rainbow food
 const DOUBLE_PETTER_RAINBOW_COST = 5; // stashed rainbow food for double-pet upgrade
 const PICKER_RAINBOW_FOOD_COST = 3; // stashed rainbow food for fish picker tool
+const STRONGER_CURRENTS_RAINBOW_COST = 5; // stashed rainbow food for stronger currents
+const STRONGER_CURRENTS_MULT = 1.85; // flow force when stronger currents owned
+const STRONGER_CURRENTS_RANGE = 95; // influence radius (default 70)
 const BLOBFISH_PETS_FOR_RAINBOW = 50;
-// Fish smaller than predatorSize can be lifted out; at/above it they only drag.
-const PICKER_LIFT_SIZE = CONFIG.predatorSize;
+// Stronger picker: lift well past predator size; exotic and mid apex can leave the water.
+const PICKER_LIFT_SIZE = 96; // commons / grown fish lift below this (was predatorSize 40)
+const PICKER_EXOTIC_LIFT_SIZE = 120; // exotic visitors lift farther before becoming drag-only
+const PICKER_APEX_LIFT_SIZE = 120; // crocs, octopus, mantle, serpent, day shark; bigger bodies drag
+const PICKER_LIFT_PULL = 10; // air follow strength
+const PICKER_DRAG_PULL = 6.8; // water drag follow (was ~3.2)
+const PICKER_LIFT_RISE = 7.2; // how fast liftZ climbs (was ~5.5)
 const GOLD_CROCODILE_AWARD = 40; // fixed gold for lifting a golden alligator/crocodile
 const GOLD_NIGHT_PREDATOR_AWARD = 55; // fixed gold for lifting a golden swordfish / octopus
+const GOLD_HELPER_MULT = 4; // gold pacifist helpers pay 4x size-based pond-fish gold
 const CATCHER_NIGHT_RAINBOW_REWARD = 3; // rainbow fish spawned when catching a rainbow night predator
 const GOLD_HOLD_TIME = 2.8; // default hold to pick up settled gold
 const MAGNET_HOLD_MULT = 0.32; // magnet: lift gold much faster
@@ -537,6 +567,7 @@ let marketOpen = false;
 let magnetOwned = false;
 let doublePetterOwned = false; // one click pets twice
 let pickerOwned = false; // fish picker upper: lift small fish / drag large ones
+let strongerCurrentsOwned = false; // carved pond currents pull harder and farther
 let pickerMode = false;
 let pickerHold = null; // active right-drag pickup { ent, kind, mode, ... }
 let catcherLevel = 0; // 0..CATCHER_LEVEL_MAX wider catcher upgrades
@@ -567,52 +598,53 @@ const MINOR_PENT = [1, 6 / 5, 4 / 3, 3 / 2, 9 / 5];
 // bitePartial and biteBright shape each species' chew timbre.
 const FISH_TYPES = [
     // Traditional koi varieties: fuller bodies, barbels, slower graceful glide.
-    { name: "kohaku",   shape: "koi", koi: true, body: "#f7f2ea", belly: "#ffffff", pattern: "hi",      patternColor: "#c23a2e", size: [22, 32], speed: [20, 32], wave: "sine",     register: 1.0,  bite: 6, dur: 0.42, turn: 2.4, wiggle: 1.05, scale: PENTATONIC, petWave: "sine",     petFreq: 300, petDur: 0.42, bitePartial: 0.22, biteBright: 1.0, whiskers: true },
-    { name: "sanke",    shape: "koi", koi: true, body: "#f5f0e6", belly: "#fffaf2", pattern: "sanke",   patternColor: "#c23a2e", size: [21, 30], speed: [20, 34], wave: "sine",     register: 1.05, bite: 6, dur: 0.4,  turn: 2.5, wiggle: 1.08, scale: PENTATONIC, petWave: "triangle", petFreq: 320, petDur: 0.4,  bitePartial: 0.25, biteBright: 1.05, whiskers: true },
-    { name: "showa",    shape: "koi", koi: true, body: "#2a2a2c", belly: "#f0e6dc", pattern: "showa",   patternColor: "#c23a2e", size: [22, 31], speed: [19, 31], wave: "sine",     register: 0.95, bite: 6, dur: 0.42, turn: 2.3, wiggle: 1.0,  scale: PENTATONIC, petWave: "sine",     petFreq: 290, petDur: 0.44, bitePartial: 0.2,  biteBright: 0.95, whiskers: true },
-    { name: "asagi",    shape: "koi", koi: true, body: "#6a8fa8", belly: "#f2d5c0", pattern: "asagi",   patternColor: "#d8e6f0", size: [20, 29], speed: [22, 34], wave: "triangle", register: 1.1,  bite: 5, dur: 0.38, turn: 2.6, wiggle: 1.12, scale: PENTATONIC, petWave: "triangle", petFreq: 340, petDur: 0.38, bitePartial: 0.28, biteBright: 1.1, whiskers: true },
-    { name: "ogon",     shape: "koi", koi: true, body: "#e0b24a", belly: "#fff0c4", pattern: "scales",  patternColor: "#f0d080", size: [20, 28], speed: [21, 33], wave: "sine",     register: 1.15, bite: 5, dur: 0.4,  turn: 2.5, wiggle: 1.1,  scale: PENTATONIC, petWave: "sine",     petFreq: 350, petDur: 0.4,  bitePartial: 0.3,  biteBright: 1.2, whiskers: true },
-    { name: "koi",      shape: "koi", koi: true, body: "#e8853a", belly: "#fff1dc", pattern: "blotches", patternColor: "#f5f0e6", size: [20, 30], speed: [22, 36], wave: "sine",     register: 1.0,  bite: 6, dur: 0.4,  turn: 2.6, wiggle: 1.12, scale: PENTATONIC, petWave: "sine",     petFreq: 300, petDur: 0.42, bitePartial: 0.22, biteBright: 1.0, whiskers: true },
-    { name: "shiro",    shape: "koi", koi: true, body: "#f4f0e8", belly: "#ffffff", pattern: "blotches", patternColor: "#c23b3b", size: [19, 28], speed: [22, 35], wave: "sine",     register: 1.1,  bite: 5, dur: 0.38, turn: 2.7, wiggle: 1.1,  scale: PENTATONIC, petWave: "triangle", petFreq: 340, petDur: 0.38, bitePartial: 0.28, biteBright: 1.15, whiskers: true },
-    { name: "carp",     shape: "oval",    body: "#5f7d8f", belly: "#c3dbe8", pattern: "scales",   patternColor: "#7a9aaa", size: [23, 31], speed: [18, 30], wave: "triangle", register: 0.5,  bite: 9, dur: 0.6,  turn: 2.0, wiggle: 0.8,  scale: PENTATONIC, petWave: "triangle", petFreq: 180, petDur: 0.55, bitePartial: 0.12, biteBright: 0.7 },
-    { name: "goldfish", shape: "round",   body: "#e07a2f", belly: "#ffd7a8", pattern: null,       patternColor: null,      size: [14, 20], speed: [22, 34], wave: "sine",     register: 1.15, bite: 4, dur: 0.35, turn: 3.2, wiggle: 1.2,  scale: PENTATONIC, petWave: "sine",     petFreq: 380, petDur: 0.32, bitePartial: 0.32, biteBright: 1.25 },
-    { name: "minnow",   shape: "slim",    body: "#d6e6f2", belly: "#ffffff", pattern: null,       patternColor: null,      size: [10, 14], speed: [42, 62], wave: "sine",     register: 2.0,  bite: 3, dur: 0.22, turn: 5.0, wiggle: 1.4,  dart: true, scale: PENTATONIC, petWave: "sine",     petFreq: 520, petDur: 0.22, bitePartial: 0.4,  biteBright: 1.4 },
-    { name: "tetra",    shape: "diamond", body: "#48b0c4", belly: "#d8f4ff", pattern: "stripe",   patternColor: "#1a3a55", size: [9, 13],  speed: [46, 66], wave: "square",   register: 1.5,  bite: 3, dur: 0.18, turn: 6.0, wiggle: 1.6,  dart: true, scale: PENTATONIC, petWave: "square",   petFreq: 460, petDur: 0.2,  bitePartial: 0.45, biteBright: 1.5 },
+    { name: "kohaku",   shape: "koi", koi: true, body: "#f7f2ea", belly: "#ffffff", pattern: "hi",      patternColor: "#c23a2e", size: [22, 32], speed: [20, 32], wave: "sine",     register: 1.0,  bite: 6, dur: 0.42, turn: 2.4, wiggle: 1.05, scale: PENTATONIC, petWave: "sine",     petFreq: 300, petDur: 0.42, bitePartial: 0.22, biteBright: 1.0, whiskers: true, tail: "crescent" },
+    { name: "sanke",    shape: "koi", koi: true, body: "#f5f0e6", belly: "#fffaf2", pattern: "sanke",   patternColor: "#c23a2e", size: [21, 30], speed: [20, 34], wave: "sine",     register: 1.05, bite: 6, dur: 0.4,  turn: 2.5, wiggle: 1.08, scale: PENTATONIC, petWave: "triangle", petFreq: 320, petDur: 0.4,  bitePartial: 0.25, biteBright: 1.05, whiskers: true, tail: "crescent" },
+    { name: "showa",    shape: "koi", koi: true, body: "#2a2a2c", belly: "#f0e6dc", pattern: "showa",   patternColor: "#c23a2e", size: [22, 31], speed: [19, 31], wave: "sine",     register: 0.95, bite: 6, dur: 0.42, turn: 2.3, wiggle: 1.0,  scale: PENTATONIC, petWave: "sine",     petFreq: 290, petDur: 0.44, bitePartial: 0.2,  biteBright: 0.95, whiskers: true, tail: "crescent" },
+    { name: "asagi",    shape: "koi", koi: true, body: "#6a8fa8", belly: "#f2d5c0", pattern: "asagi",   patternColor: "#d8e6f0", size: [20, 29], speed: [22, 34], wave: "triangle", register: 1.1,  bite: 5, dur: 0.38, turn: 2.6, wiggle: 1.12, scale: PENTATONIC, petWave: "triangle", petFreq: 340, petDur: 0.38, bitePartial: 0.28, biteBright: 1.1, whiskers: true, tail: "crescent" },
+    { name: "ogon",     shape: "koi", koi: true, body: "#e0b24a", belly: "#fff0c4", pattern: "scales",  patternColor: "#f0d080", size: [20, 28], speed: [21, 33], wave: "sine",     register: 1.15, bite: 5, dur: 0.4,  turn: 2.5, wiggle: 1.1,  scale: PENTATONIC, petWave: "sine",     petFreq: 350, petDur: 0.4,  bitePartial: 0.3,  biteBright: 1.2, whiskers: true, tail: "crescent" },
+    { name: "koi",      shape: "koi", koi: true, body: "#e8853a", belly: "#fff1dc", pattern: "blotches", patternColor: "#f5f0e6", size: [20, 30], speed: [22, 36], wave: "sine",     register: 1.0,  bite: 6, dur: 0.4,  turn: 2.6, wiggle: 1.12, scale: PENTATONIC, petWave: "sine",     petFreq: 300, petDur: 0.42, bitePartial: 0.22, biteBright: 1.0, whiskers: true, tail: "crescent" },
+    { name: "shiro",    shape: "koi", koi: true, body: "#f4f0e8", belly: "#ffffff", pattern: "blotches", patternColor: "#c23b3b", size: [19, 28], speed: [22, 35], wave: "sine",     register: 1.1,  bite: 5, dur: 0.38, turn: 2.7, wiggle: 1.1,  scale: PENTATONIC, petWave: "triangle", petFreq: 340, petDur: 0.38, bitePartial: 0.28, biteBright: 1.15, whiskers: true, tail: "crescent" },
+    { name: "carp",     shape: "oval",    body: "#5f7d8f", belly: "#c3dbe8", pattern: "scales",   patternColor: "#7a9aaa", size: [23, 31], speed: [18, 30], wave: "triangle", register: 0.5,  bite: 9, dur: 0.6,  turn: 2.0, wiggle: 0.8,  scale: PENTATONIC, petWave: "triangle", petFreq: 180, petDur: 0.55, bitePartial: 0.12, biteBright: 0.7, tail: "crescent", slim: 0.62 },
+    { name: "goldfish", shape: "round",   body: "#e07a2f", belly: "#ffd7a8", pattern: null,       patternColor: null,      size: [14, 20], speed: [22, 34], wave: "sine",     register: 1.15, bite: 4, dur: 0.35, turn: 3.2, wiggle: 1.05, scale: PENTATONIC, petWave: "sine",     petFreq: 380, petDur: 0.32, bitePartial: 0.32, biteBright: 1.25, tail: "twin", slim: 0.92 },
+    { name: "minnow",   shape: "slim",    body: "#d6e6f2", belly: "#ffffff", pattern: null,       patternColor: null,      size: [10, 14], speed: [42, 62], wave: "sine",     register: 2.0,  bite: 3, dur: 0.22, turn: 5.0, wiggle: 1.4,  dart: true, scale: PENTATONIC, petWave: "sine",     petFreq: 520, petDur: 0.22, bitePartial: 0.4,  biteBright: 1.4, tail: "fork" },
+    { name: "tetra",    shape: "diamond", body: "#48b0c4", belly: "#d8f4ff", pattern: "stripe",   patternColor: "#1a3a55", size: [9, 13],  speed: [46, 66], wave: "square",   register: 1.5,  bite: 3, dur: 0.18, turn: 6.0, wiggle: 1.6,  dart: true, scale: PENTATONIC, petWave: "square",   petFreq: 460, petDur: 0.2,  bitePartial: 0.45, biteBright: 1.5, tail: "fork", slim: 0.95 },
     { name: "eel",      shape: "eel",     body: "#4a5d3a", belly: "#9fb27a", pattern: "bands",    patternColor: "#2d3a22", size: [26, 36], speed: [16, 26], wave: "sawtooth", register: 0.75, bite: 7, dur: 0.8,  turn: 2.4, wiggle: 2.4,  scale: MINOR_PENT, petWave: "sawtooth", petFreq: 210, petDur: 0.65, bitePartial: 0.08, biteBright: 0.55 },
-    { name: "angel",    shape: "angel",   body: "#c9a24b", belly: "#fff0c2", pattern: "spots",    patternColor: "#7a5520", size: [16, 21], speed: [22, 34], wave: "triangle", register: 1.25, bite: 5, dur: 0.5,  turn: 2.6, wiggle: 0.9,  scale: PENTATONIC, petWave: "triangle", petFreq: 360, petDur: 0.48, bitePartial: 0.3,  biteBright: 1.1 },
-    { name: "betta",    shape: "longfin", body: "#b03a6e", belly: "#f0b8d0", pattern: null,       patternColor: null,      size: [13, 18], speed: [20, 32], wave: "triangle", register: 1.35, bite: 4, dur: 0.45, turn: 3.4, wiggle: 1.8,  scale: PENTATONIC, petWave: "sine",     petFreq: 410, petDur: 0.5,  bitePartial: 0.35, biteBright: 1.2 },
-    { name: "catfish",  shape: "flathead", body: "#6b5a4a", belly: "#cbb8a0", pattern: null,      patternColor: null,      size: [20, 28], speed: [16, 26], wave: "sawtooth", register: 0.65, bite: 8, dur: 0.55, turn: 2.1, wiggle: 0.7,  whiskers: true, scale: MINOR_PENT, petWave: "triangle", petFreq: 160, petDur: 0.6,  bitePartial: 0.1,  biteBright: 0.6 },
-    { name: "sunfish",  shape: "round",   body: "#d4a23a", belly: "#fff2c4", pattern: "spots",    patternColor: "#6a4a18", size: [15, 22], speed: [24, 36], wave: "sine",     register: 1.05, bite: 5, dur: 0.4,  turn: 3.0, wiggle: 1.0,  scale: PENTATONIC, petWave: "triangle", petFreq: 330, petDur: 0.36, bitePartial: 0.25, biteBright: 1.05 },
-    { name: "pike",     shape: "arrow",   body: "#5a7a55", belly: "#d6e0c8", pattern: "bands",    patternColor: "#3a4e35", size: [24, 34], speed: [28, 44], wave: "triangle", register: 0.7,  bite: 8, dur: 0.5,  turn: 2.5, wiggle: 1.1,  scale: MINOR_PENT, petWave: "sawtooth", petFreq: 240, petDur: 0.4,  bitePartial: 0.15, biteBright: 0.8 },
+    { name: "angel",    shape: "angel",   body: "#c9a24b", belly: "#fff0c2", pattern: "spots",    patternColor: "#7a5520", size: [16, 21], speed: [22, 34], wave: "triangle", register: 1.25, bite: 5, dur: 0.5,  turn: 2.6, wiggle: 0.9,  scale: PENTATONIC, petWave: "triangle", petFreq: 360, petDur: 0.48, bitePartial: 0.3,  biteBright: 1.1, tail: "lyre" },
+    { name: "betta",    shape: "longfin", body: "#b03a6e", belly: "#f0b8d0", pattern: null,       patternColor: null,      size: [13, 18], speed: [20, 32], wave: "triangle", register: 1.35, bite: 4, dur: 0.45, turn: 3.4, wiggle: 1.55, scale: PENTATONIC, petWave: "sine",     petFreq: 410, petDur: 0.5,  bitePartial: 0.35, biteBright: 1.2, tail: "veil", slim: 0.58 },
+    { name: "catfish",  shape: "flathead", body: "#6b5a4a", belly: "#cbb8a0", pattern: null,      patternColor: null,      size: [20, 28], speed: [16, 26], wave: "sawtooth", register: 0.65, bite: 8, dur: 0.55, turn: 2.1, wiggle: 0.7,  whiskers: true, scale: MINOR_PENT, petWave: "triangle", petFreq: 160, petDur: 0.6,  bitePartial: 0.1,  biteBright: 0.6, tail: "truncate", slim: 0.7 },
+    { name: "sunfish",  shape: "deep",    body: "#d4a23a", belly: "#fff2c4", pattern: "spots",    patternColor: "#6a4a18", size: [15, 22], speed: [24, 36], wave: "sine",     register: 1.05, bite: 5, dur: 0.4,  turn: 3.0, wiggle: 0.95, scale: PENTATONIC, petWave: "triangle", petFreq: 330, petDur: 0.36, bitePartial: 0.25, biteBright: 1.05, tail: "truncate", slim: 1.02 },
+    { name: "pike",     shape: "arrow",   body: "#5a7a55", belly: "#d6e0c8", pattern: "bands",    patternColor: "#3a4e35", size: [24, 34], speed: [28, 44], wave: "triangle", register: 0.7,  bite: 8, dur: 0.5,  turn: 2.5, wiggle: 1.1,  scale: MINOR_PENT, petWave: "sawtooth", petFreq: 240, petDur: 0.4,  bitePartial: 0.15, biteBright: 0.8, tail: "lunate" },
     // More pond commons.
-    { name: "bekko",    shape: "koi", koi: true, body: "#f6f1e8", belly: "#ffffff", pattern: "spots", patternColor: "#2a2a2c", size: [20, 29], speed: [21, 33], wave: "sine", register: 1.02, bite: 5, dur: 0.4, turn: 2.55, wiggle: 1.06, scale: PENTATONIC, petWave: "sine", petFreq: 310, petDur: 0.4, bitePartial: 0.24, biteBright: 1.05, whiskers: true },
-    { name: "utanuri",  shape: "koi", koi: true, body: "#3a3a3c", belly: "#e8ddd0", pattern: "blotches", patternColor: "#f0e8dc", size: [21, 30], speed: [19, 30], wave: "sine", register: 0.92, bite: 6, dur: 0.43, turn: 2.35, wiggle: 1.0, scale: PENTATONIC, petWave: "triangle", petFreq: 280, petDur: 0.44, bitePartial: 0.2, biteBright: 0.95, whiskers: true },
-    { name: "oranda",   shape: "round", body: "#e86830", belly: "#ffe0b8", pattern: null, patternColor: null, size: [15, 21], speed: [20, 30], wave: "sine", register: 1.2, bite: 4, dur: 0.36, turn: 3.0, wiggle: 1.15, scale: PENTATONIC, petWave: "sine", petFreq: 370, petDur: 0.34, bitePartial: 0.3, biteBright: 1.2 },
-    { name: "ranchu",   shape: "round", body: "#d95a28", belly: "#ffd4a0", pattern: "spots", patternColor: "#fff0dc", size: [14, 19], speed: [18, 28], wave: "triangle", register: 1.18, bite: 4, dur: 0.38, turn: 2.9, wiggle: 1.05, scale: PENTATONIC, petWave: "triangle", petFreq: 360, petDur: 0.36, bitePartial: 0.28, biteBright: 1.15 },
-    { name: "comet",    shape: "longfin", body: "#f0a040", belly: "#fff2d0", pattern: null, patternColor: null, size: [14, 20], speed: [26, 40], wave: "sine", register: 1.25, bite: 4, dur: 0.32, turn: 3.6, wiggle: 1.45, scale: PENTATONIC, petWave: "sine", petFreq: 400, petDur: 0.3, bitePartial: 0.34, biteBright: 1.25 },
-    { name: "shubunkin", shape: "longfin", body: "#4a8ab0", belly: "#d8ecf8", pattern: "blotches", patternColor: "#e07040", size: [13, 19], speed: [24, 38], wave: "triangle", register: 1.22, bite: 4, dur: 0.34, turn: 3.5, wiggle: 1.5, scale: PENTATONIC, petWave: "triangle", petFreq: 390, petDur: 0.32, bitePartial: 0.33, biteBright: 1.22 },
-    { name: "guppy",    shape: "longfin", body: "#38a888", belly: "#c8f0e0", pattern: "spots", patternColor: "#f0c050", size: [9, 13], speed: [34, 52], wave: "square", register: 1.7, bite: 3, dur: 0.22, turn: 5.2, wiggle: 1.7, dart: true, scale: PENTATONIC, petWave: "square", petFreq: 500, petDur: 0.22, bitePartial: 0.42, biteBright: 1.4 },
-    { name: "platy",    shape: "oval", body: "#e85868", belly: "#ffd0d8", pattern: null, patternColor: null, size: [11, 15], speed: [28, 42], wave: "sine", register: 1.4, bite: 3, dur: 0.28, turn: 4.2, wiggle: 1.25, scale: PENTATONIC, petWave: "sine", petFreq: 430, petDur: 0.28, bitePartial: 0.35, biteBright: 1.25 },
-    { name: "molly",    shape: "oval", body: "#2a2a32", belly: "#c8c8d4", pattern: "scales", patternColor: "#4a4a55", size: [12, 16], speed: [26, 40], wave: "triangle", register: 1.3, bite: 4, dur: 0.3, turn: 3.8, wiggle: 1.15, scale: PENTATONIC, petWave: "triangle", petFreq: 400, petDur: 0.3, bitePartial: 0.3, biteBright: 1.15 },
+    { name: "bekko",    shape: "koi", koi: true, body: "#f6f1e8", belly: "#ffffff", pattern: "spots", patternColor: "#2a2a2c", size: [20, 29], speed: [21, 33], wave: "sine", register: 1.02, bite: 5, dur: 0.4, turn: 2.55, wiggle: 1.06, scale: PENTATONIC, petWave: "sine", petFreq: 310, petDur: 0.4, bitePartial: 0.24, biteBright: 1.05, whiskers: true, tail: "crescent" },
+    { name: "utanuri",  shape: "koi", koi: true, body: "#3a3a3c", belly: "#e8ddd0", pattern: "blotches", patternColor: "#f0e8dc", size: [21, 30], speed: [19, 30], wave: "sine", register: 0.92, bite: 6, dur: 0.43, turn: 2.35, wiggle: 1.0, scale: PENTATONIC, petWave: "triangle", petFreq: 280, petDur: 0.44, bitePartial: 0.2, biteBright: 0.95, whiskers: true, tail: "crescent" },
+    // Oranda: egg body plus raspberry wen and twin caudal. Ranchu: arched egg, wen, no dorsal, twin caudal.
+    { name: "oranda",   shape: "egg", body: "#e86830", belly: "#ffe0b8", pattern: null, patternColor: null, size: [15, 21], speed: [20, 30], wave: "sine", register: 1.2, bite: 4, dur: 0.36, turn: 3.0, wiggle: 0.95, scale: PENTATONIC, petWave: "sine", petFreq: 370, petDur: 0.34, bitePartial: 0.3, biteBright: 1.2, wen: true, tail: "twin", slim: 0.98 },
+    { name: "ranchu",   shape: "egg", body: "#d95a28", belly: "#ffd4a0", pattern: "spots", patternColor: "#fff0dc", size: [14, 19], speed: [18, 28], wave: "triangle", register: 1.18, bite: 4, dur: 0.38, turn: 2.9, wiggle: 0.85, scale: PENTATONIC, petWave: "triangle", petFreq: 360, petDur: 0.36, bitePartial: 0.28, biteBright: 1.15, wen: true, noDorsal: true, tail: "twin", slim: 1.08 },
+    { name: "comet",    shape: "slim", body: "#f0a040", belly: "#fff2d0", pattern: null, patternColor: null, size: [14, 20], speed: [26, 40], wave: "sine", register: 1.25, bite: 4, dur: 0.32, turn: 3.6, wiggle: 1.45, scale: PENTATONIC, petWave: "sine", petFreq: 400, petDur: 0.3, bitePartial: 0.34, biteBright: 1.25, tail: "comet", slim: 0.52 },
+    { name: "shubunkin", shape: "slim", body: "#4a8ab0", belly: "#d8ecf8", pattern: "blotches", patternColor: "#e07040", size: [13, 19], speed: [24, 38], wave: "triangle", register: 1.22, bite: 4, dur: 0.34, turn: 3.5, wiggle: 1.5, scale: PENTATONIC, petWave: "triangle", petFreq: 390, petDur: 0.32, bitePartial: 0.33, biteBright: 1.22, tail: "comet", slim: 0.52 },
+    { name: "guppy",    shape: "slim", body: "#38a888", belly: "#c8f0e0", pattern: "spots", patternColor: "#f0c050", size: [9, 13], speed: [34, 52], wave: "square", register: 1.7, bite: 3, dur: 0.22, turn: 5.2, wiggle: 1.55, dart: true, scale: PENTATONIC, petWave: "square", petFreq: 500, petDur: 0.22, bitePartial: 0.42, biteBright: 1.4, tail: "lyre", slim: 0.5 },
+    { name: "platy",    shape: "oval", body: "#e85868", belly: "#ffd0d8", pattern: null, patternColor: null, size: [11, 15], speed: [28, 42], wave: "sine", register: 1.4, bite: 3, dur: 0.28, turn: 4.2, wiggle: 1.25, scale: PENTATONIC, petWave: "sine", petFreq: 430, petDur: 0.28, bitePartial: 0.35, biteBright: 1.25, tail: "truncate", slim: 0.68 },
+    { name: "molly",    shape: "oval", body: "#2a2a32", belly: "#c8c8d4", pattern: "scales", patternColor: "#4a4a55", size: [12, 16], speed: [26, 40], wave: "triangle", register: 1.3, bite: 4, dur: 0.3, turn: 3.8, wiggle: 1.15, scale: PENTATONIC, petWave: "triangle", petFreq: 400, petDur: 0.3, bitePartial: 0.3, biteBright: 1.15, tail: "lyre", slim: 0.64 },
     { name: "danio",    shape: "slim", body: "#f0e8a0", belly: "#fffef0", pattern: "stripe", patternColor: "#2a3a4a", size: [10, 14], speed: [44, 64], wave: "sine", register: 1.85, bite: 3, dur: 0.2, turn: 5.6, wiggle: 1.55, dart: true, slim: 0.52, scale: PENTATONIC, petWave: "sine", petFreq: 540, petDur: 0.2, bitePartial: 0.42, biteBright: 1.4 },
     { name: "rasbora",  shape: "slim", body: "#c45a48", belly: "#f8d8c8", pattern: "stripe", patternColor: "#6a2818", size: [9, 13], speed: [40, 58], wave: "triangle", register: 1.75, bite: 3, dur: 0.22, turn: 5.4, wiggle: 1.5, dart: true, slim: 0.5, scale: PENTATONIC, petWave: "triangle", petFreq: 510, petDur: 0.22, bitePartial: 0.4, biteBright: 1.35 },
     { name: "barbus",   shape: "oval", body: "#c88848", belly: "#f0dcb0", pattern: "bands", patternColor: "#6a4020", size: [14, 20], speed: [24, 38], wave: "sine", register: 1.1, bite: 5, dur: 0.36, turn: 3.2, wiggle: 1.1, scale: PENTATONIC, petWave: "sine", petFreq: 340, petDur: 0.34, bitePartial: 0.26, biteBright: 1.05 },
     { name: "loach",    shape: "eel", body: "#8a6a48", belly: "#e0d0b0", pattern: "bands", patternColor: "#4a3820", size: [16, 24], speed: [18, 30], wave: "sawtooth", register: 0.85, bite: 5, dur: 0.5, turn: 2.8, wiggle: 1.8, whiskers: true, scale: MINOR_PENT, petWave: "sawtooth", petFreq: 220, petDur: 0.5, bitePartial: 0.12, biteBright: 0.7 },
-    { name: "perch",    shape: "oval", body: "#c8a050", belly: "#f0e4b8", pattern: "bands", patternColor: "#5a4820", size: [16, 23], speed: [24, 38], wave: "triangle", register: 1.0, bite: 5, dur: 0.38, turn: 3.0, wiggle: 1.05, scale: PENTATONIC, petWave: "triangle", petFreq: 320, petDur: 0.36, bitePartial: 0.24, biteBright: 1.0 },
-    { name: "bass",     shape: "oval", body: "#4a6a48", belly: "#d0dcc0", pattern: "scales", patternColor: "#6a8a60", size: [18, 26], speed: [22, 36], wave: "sine", register: 0.8, bite: 6, dur: 0.45, turn: 2.6, wiggle: 0.95, scale: MINOR_PENT, petWave: "sine", petFreq: 250, petDur: 0.42, bitePartial: 0.18, biteBright: 0.85 },
-    { name: "trout",    shape: "slim", body: "#6a8a78", belly: "#f0d8c0", pattern: "spots", patternColor: "#c45a40", size: [18, 26], speed: [30, 46], wave: "triangle", register: 0.95, bite: 6, dur: 0.4, turn: 3.0, wiggle: 1.15, slim: 0.56, scale: PENTATONIC, petWave: "triangle", petFreq: 300, petDur: 0.38, bitePartial: 0.22, biteBright: 1.0 },
-    { name: "salmon",   shape: "slim", body: "#d87868", belly: "#ffe8dc", pattern: "scales", patternColor: "#e8a090", size: [20, 28], speed: [28, 44], wave: "sine", register: 0.88, bite: 6, dur: 0.42, turn: 2.7, wiggle: 1.08, slim: 0.54, scale: PENTATONIC, petWave: "sine", petFreq: 280, petDur: 0.4, bitePartial: 0.2, biteBright: 0.95 },
+    { name: "perch",    shape: "oval", body: "#c8a050", belly: "#f0e4b8", pattern: "bands", patternColor: "#5a4820", size: [16, 23], speed: [24, 38], wave: "triangle", register: 1.0, bite: 5, dur: 0.38, turn: 3.0, wiggle: 1.05, scale: PENTATONIC, petWave: "triangle", petFreq: 320, petDur: 0.36, bitePartial: 0.24, biteBright: 1.0, tail: "emarginate", slim: 0.7 },
+    { name: "bass",     shape: "deep", body: "#4a6a48", belly: "#d0dcc0", pattern: "scales", patternColor: "#6a8a60", size: [18, 26], speed: [22, 36], wave: "sine", register: 0.8, bite: 6, dur: 0.45, turn: 2.6, wiggle: 0.95, scale: MINOR_PENT, petWave: "sine", petFreq: 250, petDur: 0.42, bitePartial: 0.18, biteBright: 0.85, tail: "emarginate", slim: 0.88 },
+    { name: "trout",    shape: "slim", body: "#6a8a78", belly: "#f0d8c0", pattern: "spots", patternColor: "#c45a40", size: [18, 26], speed: [30, 46], wave: "triangle", register: 0.95, bite: 6, dur: 0.4, turn: 3.0, wiggle: 1.15, slim: 0.56, scale: PENTATONIC, petWave: "triangle", petFreq: 300, petDur: 0.38, bitePartial: 0.22, biteBright: 1.0, tail: "fork" },
+    { name: "salmon",   shape: "slim", body: "#d87868", belly: "#ffe8dc", pattern: "scales", patternColor: "#e8a090", size: [20, 28], speed: [28, 44], wave: "sine", register: 0.88, bite: 6, dur: 0.42, turn: 2.7, wiggle: 1.08, slim: 0.54, scale: PENTATONIC, petWave: "sine", petFreq: 280, petDur: 0.4, bitePartial: 0.2, biteBright: 0.95, tail: "fork" },
     { name: "chub",     shape: "oval", body: "#8aa0a8", belly: "#e0ecef", pattern: null, patternColor: null, size: [15, 22], speed: [20, 32], wave: "sine", register: 0.9, bite: 5, dur: 0.4, turn: 2.8, wiggle: 0.95, scale: PENTATONIC, petWave: "sine", petFreq: 290, petDur: 0.38, bitePartial: 0.2, biteBright: 0.9 },
     { name: "dace",     shape: "slim", body: "#b8c8a8", belly: "#f0f4e8", pattern: "stripe", patternColor: "#5a6a48", size: [12, 17], speed: [32, 48], wave: "triangle", register: 1.35, bite: 4, dur: 0.28, turn: 4.4, wiggle: 1.3, dart: true, slim: 0.52, scale: PENTATONIC, petWave: "triangle", petFreq: 420, petDur: 0.26, bitePartial: 0.34, biteBright: 1.25 },
     { name: "rudd",     shape: "oval", body: "#d07050", belly: "#ffe0c8", pattern: "scales", patternColor: "#e09070", size: [14, 20], speed: [22, 34], wave: "sine", register: 1.08, bite: 5, dur: 0.36, turn: 3.1, wiggle: 1.05, scale: PENTATONIC, petWave: "sine", petFreq: 335, petDur: 0.34, bitePartial: 0.26, biteBright: 1.08 },
     { name: "roach",    shape: "oval", body: "#c0a878", belly: "#f4ead0", pattern: null, patternColor: null, size: [13, 19], speed: [22, 34], wave: "triangle", register: 1.12, bite: 4, dur: 0.34, turn: 3.2, wiggle: 1.08, scale: PENTATONIC, petWave: "triangle", petFreq: 345, petDur: 0.32, bitePartial: 0.27, biteBright: 1.1 },
-    { name: "bream",    shape: "discus", body: "#a8b090", belly: "#e8f0d8", pattern: "scales", patternColor: "#c0c8a8", size: [16, 23], speed: [18, 28], wave: "sine", register: 0.85, bite: 5, dur: 0.44, turn: 2.5, wiggle: 0.9, scale: PENTATONIC, petWave: "sine", petFreq: 270, petDur: 0.42, bitePartial: 0.18, biteBright: 0.88 },
+    { name: "bream",    shape: "discus", body: "#a8b090", belly: "#e8f0d8", pattern: "scales", patternColor: "#c0c8a8", size: [16, 23], speed: [18, 28], wave: "sine", register: 0.85, bite: 5, dur: 0.44, turn: 2.5, wiggle: 0.9, scale: PENTATONIC, petWave: "sine", petFreq: 270, petDur: 0.42, bitePartial: 0.18, biteBright: 0.88, tail: "fork", slim: 1.18 },
     { name: "ide",      shape: "oval", body: "#d8b070", belly: "#fff0d8", pattern: "blotches", patternColor: "#f0e0c0", size: [17, 24], speed: [20, 32], wave: "sine", register: 0.95, bite: 5, dur: 0.4, turn: 2.7, wiggle: 0.98, scale: PENTATONIC, petWave: "sine", petFreq: 300, petDur: 0.38, bitePartial: 0.22, biteBright: 0.98 },
-    { name: "gar",      shape: "arrow", body: "#6a8058", belly: "#d0dcc0", pattern: "scales", patternColor: "#4a6040", size: [26, 36], speed: [20, 34], wave: "sawtooth", register: 0.6, bite: 7, dur: 0.55, turn: 2.0, wiggle: 0.85, scale: MINOR_PENT, petWave: "sawtooth", petFreq: 190, petDur: 0.55, bitePartial: 0.1, biteBright: 0.65 },
-    { name: "bowfin",   shape: "oval", body: "#4a5540", belly: "#b8c0a0", pattern: "spots", patternColor: "#2a3220", size: [22, 30], speed: [18, 30], wave: "triangle", register: 0.62, bite: 7, dur: 0.52, turn: 2.2, wiggle: 0.9, scale: MINOR_PENT, petWave: "triangle", petFreq: 200, petDur: 0.5, bitePartial: 0.12, biteBright: 0.7 },
-    { name: "bluegill", shape: "round", body: "#4a8a68", belly: "#e8d070", pattern: "bands", patternColor: "#2a5a40", size: [13, 18], speed: [24, 36], wave: "sine", register: 1.15, bite: 4, dur: 0.34, turn: 3.3, wiggle: 1.1, scale: PENTATONIC, petWave: "sine", petFreq: 360, petDur: 0.32, bitePartial: 0.28, biteBright: 1.12 },
-    { name: "pumpkin",  shape: "round", body: "#d88838", belly: "#ffe8b8", pattern: "bands", patternColor: "#8a5020", size: [12, 17], speed: [22, 34], wave: "triangle", register: 1.12, bite: 4, dur: 0.34, turn: 3.2, wiggle: 1.08, scale: PENTATONIC, petWave: "triangle", petFreq: 350, petDur: 0.32, bitePartial: 0.27, biteBright: 1.1 },
-    { name: "crappie",  shape: "oval", body: "#c8c8b0", belly: "#f0f0e0", pattern: "spots", patternColor: "#5a5a48", size: [14, 20], speed: [24, 36], wave: "sine", register: 1.08, bite: 4, dur: 0.35, turn: 3.1, wiggle: 1.05, scale: PENTATONIC, petWave: "sine", petFreq: 340, petDur: 0.33, bitePartial: 0.26, biteBright: 1.08 },
+    { name: "gar",      shape: "arrow", body: "#6a8058", belly: "#d0dcc0", pattern: "scales", patternColor: "#4a6040", size: [26, 36], speed: [20, 34], wave: "sawtooth", register: 0.6, bite: 7, dur: 0.55, turn: 2.0, wiggle: 0.85, scale: MINOR_PENT, petWave: "sawtooth", petFreq: 190, petDur: 0.55, bitePartial: 0.1, biteBright: 0.65, tail: "lunate" },
+    { name: "bowfin",   shape: "oval", body: "#4a5540", belly: "#b8c0a0", pattern: "spots", patternColor: "#2a3220", size: [22, 30], speed: [18, 30], wave: "triangle", register: 0.62, bite: 7, dur: 0.52, turn: 2.2, wiggle: 0.9, scale: MINOR_PENT, petWave: "triangle", petFreq: 200, petDur: 0.5, bitePartial: 0.12, biteBright: 0.7, tail: "emarginate" },
+    { name: "bluegill", shape: "deep", body: "#4a8a68", belly: "#e8d070", pattern: "bands", patternColor: "#2a5a40", size: [13, 18], speed: [24, 36], wave: "sine", register: 1.15, bite: 4, dur: 0.34, turn: 3.3, wiggle: 1.0, scale: PENTATONIC, petWave: "sine", petFreq: 360, petDur: 0.32, bitePartial: 0.28, biteBright: 1.12, tail: "truncate", slim: 1.05 },
+    { name: "pumpkin",  shape: "deep", body: "#d88838", belly: "#ffe8b8", pattern: "bands", patternColor: "#8a5020", size: [12, 17], speed: [22, 34], wave: "triangle", register: 1.12, bite: 4, dur: 0.34, turn: 3.2, wiggle: 0.98, scale: PENTATONIC, petWave: "triangle", petFreq: 350, petDur: 0.32, bitePartial: 0.27, biteBright: 1.1, tail: "truncate", slim: 1.0 },
+    { name: "crappie",  shape: "deep", body: "#c8c8b0", belly: "#f0f0e0", pattern: "spots", patternColor: "#5a5a48", size: [14, 20], speed: [24, 36], wave: "sine", register: 1.08, bite: 4, dur: 0.35, turn: 3.1, wiggle: 1.0, scale: PENTATONIC, petWave: "sine", petFreq: 340, petDur: 0.33, bitePartial: 0.26, biteBright: 1.08, tail: "truncate", slim: 0.92 },
     { name: "walleye",  shape: "slim", body: "#c0b060", belly: "#f0e8c0", pattern: "bands", patternColor: "#6a6030", size: [20, 28], speed: [26, 40], wave: "triangle", register: 0.78, bite: 6, dur: 0.42, turn: 2.6, wiggle: 1.05, slim: 0.55, scale: MINOR_PENT, petWave: "triangle", petFreq: 240, petDur: 0.4, bitePartial: 0.16, biteBright: 0.82 },
     { name: "sauger",   shape: "slim", body: "#a89858", belly: "#e8dcb0", pattern: "spots", patternColor: "#5a5028", size: [18, 26], speed: [26, 40], wave: "sine", register: 0.82, bite: 6, dur: 0.4, turn: 2.7, wiggle: 1.08, slim: 0.54, scale: MINOR_PENT, petWave: "sine", petFreq: 250, petDur: 0.38, bitePartial: 0.17, biteBright: 0.85 },
     { name: "smelt",    shape: "slim", body: "#d0e0e8", belly: "#ffffff", pattern: null, patternColor: null, size: [10, 15], speed: [38, 56], wave: "sine", register: 1.8, bite: 3, dur: 0.22, turn: 5.0, wiggle: 1.45, dart: true, slim: 0.48, scale: PENTATONIC, petWave: "sine", petFreq: 530, petDur: 0.2, bitePartial: 0.42, biteBright: 1.4 },
@@ -623,19 +655,19 @@ const FISH_TYPES = [
 
 // Medium-rare exotic visitors: odd swim habits, rarer than commons, commoner than crocs.
 const EXOTIC_TYPES = [
-    { name: "discus",   exotic: true, odd: "spiral", shape: "discus",  body: "#c45a8c", belly: "#f0c8dc", pattern: "bands",  patternColor: "#7a2850", size: [16, 22], speed: [16, 26], wave: "triangle", register: 1.4,  bite: 4, dur: 0.42, turn: 4.2, wiggle: 1.3, scale: PENTATONIC, petWave: "sine",     petFreq: 430, petDur: 0.45, bitePartial: 0.3,  biteBright: 1.2 },
-    { name: "dragonet", exotic: true, odd: "zigzag", shape: "slim",    body: "#2f8f7a", belly: "#b8f0dc", pattern: "spots",  patternColor: "#f0d060", size: [12, 17], speed: [30, 48], wave: "square",   register: 1.6,  bite: 3, dur: 0.28, turn: 5.5, wiggle: 1.7, slim: 0.52, scale: PENTATONIC, petWave: "square",   petFreq: 480, petDur: 0.28, bitePartial: 0.4,  biteBright: 1.35 },
-    { name: "glass",    exotic: true, odd: "jitter", shape: "slim",    body: "#a8d4e8", belly: "#e8f6ff", pattern: null,     patternColor: null,      size: [10, 15], speed: [38, 58], wave: "sine",     register: 1.9,  bite: 3, dur: 0.2,  turn: 6.5, wiggle: 1.9, slim: 0.48, scale: PENTATONIC, petWave: "sine",     petFreq: 560, petDur: 0.22, bitePartial: 0.5,  biteBright: 1.55, ghost: 0.55 },
-    { name: "mandarin", exotic: true, odd: "drift",  shape: "round",   body: "#3a6ec4", belly: "#f0a040", pattern: "blotches", patternColor: "#e8d050", size: [13, 18], speed: [14, 24], wave: "triangle", register: 1.3,  bite: 4, dur: 0.48, turn: 3.8, wiggle: 1.4, scale: MINOR_PENT, petWave: "triangle", petFreq: 390, petDur: 0.5,  bitePartial: 0.28, biteBright: 1.15 },
-    { name: "arowana",  exotic: true, odd: "glide",  shape: "arrow",   body: "#c9a24b", belly: "#fff0c8", pattern: "scales", patternColor: "#8a6a28", size: [28, 40], speed: [22, 36], wave: "sawtooth", register: 0.55, bite: 8, dur: 0.65, turn: 1.8, wiggle: 0.85, scale: MINOR_PENT, petWave: "triangle", petFreq: 200, petDur: 0.6,  bitePartial: 0.12, biteBright: 0.75 },
-    { name: "peacock",  exotic: true, odd: "spiral", shape: "oval", body: "#2a6a9a", belly: "#e8b060", pattern: "spots", patternColor: "#f0d050", size: [15, 21], speed: [18, 28], wave: "triangle", register: 1.25, bite: 4, dur: 0.4, turn: 3.6, wiggle: 1.2, scale: PENTATONIC, petWave: "triangle", petFreq: 410, petDur: 0.42, bitePartial: 0.3, biteBright: 1.18 },
-    { name: "flowerhorn", exotic: true, odd: "drift", shape: "round", body: "#d05040", belly: "#f8c8a0", pattern: "blotches", patternColor: "#f0e080", size: [17, 24], speed: [16, 26], wave: "sine", register: 1.05, bite: 5, dur: 0.45, turn: 3.0, wiggle: 1.1, scale: MINOR_PENT, petWave: "sine", petFreq: 340, petDur: 0.45, bitePartial: 0.24, biteBright: 1.05 },
-    { name: "oscar",    exotic: true, odd: "glide", shape: "oval", body: "#3a2a20", belly: "#e07040", pattern: "blotches", patternColor: "#f0a060", size: [20, 28], speed: [18, 30], wave: "sawtooth", register: 0.7, bite: 6, dur: 0.5, turn: 2.4, wiggle: 0.95, scale: MINOR_PENT, petWave: "triangle", petFreq: 230, petDur: 0.5, bitePartial: 0.14, biteBright: 0.78 },
+    { name: "discus",   exotic: true, odd: "spiral", shape: "discus",  body: "#c45a8c", belly: "#f0c8dc", pattern: "bands",  patternColor: "#7a2850", size: [16, 22], speed: [16, 26], wave: "triangle", register: 1.4,  bite: 4, dur: 0.42, turn: 4.2, wiggle: 1.3, scale: PENTATONIC, petWave: "sine",     petFreq: 430, petDur: 0.45, bitePartial: 0.3,  biteBright: 1.2, tail: "lyre" },
+    { name: "dragonet", exotic: true, odd: "zigzag", shape: "slim",    body: "#2f8f7a", belly: "#b8f0dc", pattern: "spots",  patternColor: "#f0d060", size: [12, 17], speed: [30, 48], wave: "square",   register: 1.6,  bite: 3, dur: 0.28, turn: 5.5, wiggle: 1.35, slim: 0.55, scale: PENTATONIC, petWave: "square",   petFreq: 480, petDur: 0.28, bitePartial: 0.4,  biteBright: 1.35, tail: "truncate", labriform: true },
+    { name: "glass",    exotic: true, odd: "jitter", shape: "slim",    body: "#a8d4e8", belly: "#e8f6ff", pattern: null,     patternColor: null,      size: [10, 15], speed: [38, 58], wave: "sine",     register: 1.9,  bite: 3, dur: 0.2,  turn: 6.5, wiggle: 1.9, slim: 0.48, scale: PENTATONIC, petWave: "sine",     petFreq: 560, petDur: 0.22, bitePartial: 0.5,  biteBright: 1.55, ghost: 0.55, tail: "fork" },
+    { name: "mandarin", exotic: true, odd: "drift",  shape: "round",   body: "#3a6ec4", belly: "#f0a040", pattern: "blotches", patternColor: "#e8d050", size: [13, 18], speed: [14, 24], wave: "triangle", register: 1.3,  bite: 4, dur: 0.48, turn: 3.8, wiggle: 1.1, scale: MINOR_PENT, petWave: "triangle", petFreq: 390, petDur: 0.5,  bitePartial: 0.28, biteBright: 1.15, slim: 0.85, tail: "truncate", labriform: true },
+    { name: "arowana",  exotic: true, odd: "glide",  shape: "arrow",   body: "#c9a24b", belly: "#fff0c8", pattern: "scales", patternColor: "#8a6a28", size: [28, 40], speed: [22, 36], wave: "sawtooth", register: 0.55, bite: 8, dur: 0.65, turn: 1.8, wiggle: 0.85, scale: MINOR_PENT, petWave: "triangle", petFreq: 200, petDur: 0.6,  bitePartial: 0.12, biteBright: 0.75, tail: "lunate" },
+    { name: "peacock",  exotic: true, odd: "spiral", shape: "deep", body: "#2a6a9a", belly: "#e8b060", pattern: "spots", patternColor: "#f0d050", size: [15, 21], speed: [18, 28], wave: "triangle", register: 1.25, bite: 4, dur: 0.4, turn: 3.6, wiggle: 1.1, scale: PENTATONIC, petWave: "triangle", petFreq: 410, petDur: 0.42, bitePartial: 0.3, biteBright: 1.18, slim: 0.95, tail: "truncate" },
+    { name: "flowerhorn", exotic: true, odd: "drift", shape: "deep", body: "#d05040", belly: "#f8c8a0", pattern: "blotches", patternColor: "#f0e080", size: [17, 24], speed: [16, 26], wave: "sine", register: 1.05, bite: 5, dur: 0.45, turn: 3.0, wiggle: 1.0, scale: MINOR_PENT, petWave: "sine", petFreq: 340, petDur: 0.45, bitePartial: 0.24, biteBright: 1.05, hump: true, slim: 1.0, tail: "truncate" },
+    { name: "oscar",    exotic: true, odd: "glide", shape: "deep", body: "#3a2a20", belly: "#e07040", pattern: "blotches", patternColor: "#f0a060", size: [20, 28], speed: [18, 30], wave: "sawtooth", register: 0.7, bite: 6, dur: 0.5, turn: 2.4, wiggle: 0.95, scale: MINOR_PENT, petWave: "triangle", petFreq: 230, petDur: 0.5, bitePartial: 0.14, biteBright: 0.78, slim: 0.9, tail: "emarginate" },
     { name: "clownknife", exotic: true, odd: "zigzag", shape: "eel", body: "#2a2a30", belly: "#c8c8d0", pattern: "bands", patternColor: "#f0f0f4", size: [24, 34], speed: [22, 36], wave: "sawtooth", register: 0.68, bite: 6, dur: 0.55, turn: 2.8, wiggle: 1.6, scale: MINOR_PENT, petWave: "sawtooth", petFreq: 210, petDur: 0.52, bitePartial: 0.12, biteBright: 0.72 },
     { name: "datnoid",  exotic: true, odd: "glide", shape: "arrow", body: "#e8d8a0", belly: "#fff8e0", pattern: "bands", patternColor: "#2a2a28", size: [22, 32], speed: [20, 34], wave: "triangle", register: 0.75, bite: 6, dur: 0.48, turn: 2.5, wiggle: 1.0, scale: MINOR_PENT, petWave: "triangle", petFreq: 240, petDur: 0.46, bitePartial: 0.16, biteBright: 0.85 },
     { name: "bichir",   exotic: true, odd: "drift", shape: "eel", body: "#5a4838", belly: "#c8b090", pattern: "scales", patternColor: "#3a2a20", size: [24, 34], speed: [12, 22], wave: "sawtooth", register: 0.5, bite: 7, dur: 0.7, turn: 1.6, wiggle: 1.4, scale: MINOR_PENT, petWave: "sawtooth", petFreq: 170, petDur: 0.65, bitePartial: 0.08, biteBright: 0.55 },
     { name: "stingray", exotic: true, odd: "spiral", shape: "ray", body: "#6a7080", belly: "#d0d4dc", pattern: "spots", patternColor: "#3a4050", size: [18, 26], speed: [14, 24], wave: "sine", register: 0.65, bite: 5, dur: 0.6, turn: 2.0, wiggle: 0.85, scale: MINOR_PENT, petWave: "sine", petFreq: 200, petDur: 0.6, bitePartial: 0.1, biteBright: 0.65 },
-    { name: "puffer",   exotic: true, odd: "jitter", shape: "puffer", body: "#e0c070", belly: "#fff4d0", pattern: "spots", patternColor: "#6a5020", size: [12, 17], speed: [16, 28], wave: "square", register: 1.5, bite: 3, dur: 0.3, turn: 4.5, wiggle: 1.35, scale: PENTATONIC, petWave: "square", petFreq: 450, petDur: 0.3, bitePartial: 0.36, biteBright: 1.3 },
+    { name: "puffer",   exotic: true, odd: "jitter", shape: "puffer", body: "#e0c070", belly: "#fff4d0", pattern: "spots", patternColor: "#6a5020", size: [12, 17], speed: [16, 28], wave: "square", register: 1.5, bite: 3, dur: 0.3, turn: 4.5, wiggle: 1.35, scale: PENTATONIC, petWave: "square", petFreq: 450, petDur: 0.3, bitePartial: 0.36, biteBright: 1.3, tail: "truncate" },
 ];
 
 // Night deep-sea oddity: sagging gelatinous body, rare apex-cadence visitor.
@@ -652,7 +684,7 @@ const BLOBFISH_TYPE = {
 // Night-pond visitors: cooler tones and quieter swim habits under moonlight.
 const NIGHT_FISH_TYPES = [
     { name: "moonkoi",  night: true, shape: "koi", koi: true, body: "#c8d4e8", belly: "#eef4ff", pattern: "hi", patternColor: "#6a7a9a", size: [20, 30], speed: [16, 26], wave: "sine", register: 0.9, bite: 5, dur: 0.45, turn: 2.2, wiggle: 0.95, scale: MINOR_PENT, petWave: "sine", petFreq: 260, petDur: 0.48, bitePartial: 0.2, biteBright: 0.9, whiskers: true },
-    { name: "lantern",  night: true, shape: "slim", body: "#3a4a6a", belly: "#d8e8ff", pattern: "spots", patternColor: "#f0e090", size: [12, 18], speed: [28, 44], wave: "triangle", register: 1.45, bite: 3, dur: 0.28, turn: 4.8, wiggle: 1.5, slim: 0.5, scale: PENTATONIC, petWave: "triangle", petFreq: 440, petDur: 0.3, bitePartial: 0.4, biteBright: 1.35 },
+    { name: "lantern",  night: true, shape: "slim", body: "#3a4a6a", belly: "#d8e8ff", pattern: "spots", patternColor: "#f0e090", size: [12, 18], speed: [28, 44], wave: "triangle", register: 1.45, bite: 3, dur: 0.28, turn: 4.8, wiggle: 1.5, slim: 0.5, scale: PENTATONIC, petWave: "triangle", petFreq: 440, petDur: 0.3, bitePartial: 0.4, biteBright: 1.35, lantern: true },
     { name: "silverfin", night: true, shape: "oval", body: "#9aadb8", belly: "#e8f0f4", pattern: "scales", patternColor: "#c8d8e0", size: [18, 26], speed: [18, 30], wave: "sine", register: 1.05, bite: 5, dur: 0.4, turn: 2.5, wiggle: 1.0, scale: PENTATONIC, petWave: "sine", petFreq: 310, petDur: 0.4, bitePartial: 0.25, biteBright: 1.1 },
     { name: "duskminnow", night: true, shape: "slim", body: "#5a6a88", belly: "#d0dcf0", pattern: null, patternColor: null, size: [9, 13], speed: [40, 60], wave: "sine", register: 1.85, bite: 3, dur: 0.2, turn: 5.5, wiggle: 1.55, dart: true, scale: PENTATONIC, petWave: "sine", petFreq: 500, petDur: 0.22, bitePartial: 0.42, biteBright: 1.4 },
     { name: "nightangel", night: true, shape: "angel", body: "#6a5a90", belly: "#e8d8ff", pattern: "spots", patternColor: "#c8b070", size: [15, 21], speed: [18, 28], wave: "triangle", register: 1.2, bite: 4, dur: 0.48, turn: 2.8, wiggle: 0.95, scale: MINOR_PENT, petWave: "triangle", petFreq: 350, petDur: 0.46, bitePartial: 0.28, biteBright: 1.05 },
@@ -661,7 +693,7 @@ const NIGHT_FISH_TYPES = [
     { name: "frostgill", night: true, shape: "oval", body: "#b8d0e8", belly: "#f4faff", pattern: "scales", patternColor: "#d8e8f8", size: [16, 23], speed: [16, 28], wave: "sine", register: 1.15, bite: 4, dur: 0.4, turn: 2.6, wiggle: 0.98, scale: PENTATONIC, petWave: "sine", petFreq: 330, petDur: 0.4, bitePartial: 0.26, biteBright: 1.12 },
     { name: "umbrael", night: true, shape: "eel", body: "#2a3848", belly: "#8090a8", pattern: "bands", patternColor: "#101820", size: [24, 34], speed: [14, 24], wave: "sawtooth", register: 0.7, bite: 6, dur: 0.7, turn: 2.2, wiggle: 2.1, scale: MINOR_PENT, petWave: "sawtooth", petFreq: 200, petDur: 0.6, bitePartial: 0.1, biteBright: 0.6 },
     { name: "starflare", night: true, shape: "angel", body: "#405878", belly: "#e0f0ff", pattern: "spots", patternColor: "#f0e8a0", size: [13, 18], speed: [30, 48], wave: "triangle", register: 1.55, bite: 3, dur: 0.26, turn: 5.0, wiggle: 1.4, dart: true, scale: PENTATONIC, petWave: "triangle", petFreq: 470, petDur: 0.28, bitePartial: 0.4, biteBright: 1.35 },
-    { name: "nocturne", night: true, shape: "longfin", body: "#4a3868", belly: "#c8b0e8", pattern: null, patternColor: null, size: [12, 17], speed: [18, 28], wave: "triangle", register: 1.3, bite: 4, dur: 0.45, turn: 3.2, wiggle: 1.6, scale: MINOR_PENT, petWave: "sine", petFreq: 380, petDur: 0.48, bitePartial: 0.32, biteBright: 1.15 },
+    { name: "nocturne", night: true, shape: "longfin", body: "#4a3868", belly: "#c8b0e8", pattern: null, patternColor: null, size: [12, 17], speed: [18, 28], wave: "triangle", register: 1.3, bite: 4, dur: 0.45, turn: 3.2, wiggle: 1.45, scale: MINOR_PENT, petWave: "sine", petFreq: 380, petDur: 0.48, bitePartial: 0.32, biteBright: 1.15, tail: "veil", slim: 0.56 },
     { name: "tideglass", night: true, shape: "slim", body: "#6890b0", belly: "#d8ecff", pattern: null, patternColor: null, size: [11, 16], speed: [34, 52], wave: "sine", register: 1.7, bite: 3, dur: 0.22, turn: 5.8, wiggle: 1.7, slim: 0.48, scale: PENTATONIC, petWave: "sine", petFreq: 520, petDur: 0.22, bitePartial: 0.45, biteBright: 1.4, ghost: 0.6 },
     { name: "voidperch", night: true, shape: "oval", body: "#303848", belly: "#98a0b8", pattern: "bands", patternColor: "#181c28", size: [15, 22], speed: [20, 32], wave: "triangle", register: 0.95, bite: 5, dur: 0.4, turn: 2.8, wiggle: 1.0, scale: MINOR_PENT, petWave: "triangle", petFreq: 290, petDur: 0.38, bitePartial: 0.22, biteBright: 0.95 },
 ];
@@ -671,10 +703,10 @@ const CRYSTAL_FISH_TYPES = [
     { name: "gemkoi", crystal: true, shape: "koi", koi: true, body: "#c8a0e8", belly: "#f0e8ff", pattern: "hi", patternColor: "#70d0e8", size: [20, 30], speed: [17, 28], wave: "sine", register: 1.05, bite: 5, dur: 0.42, turn: 2.3, wiggle: 1.0, scale: PENTATONIC, petWave: "sine", petFreq: 340, petDur: 0.42, bitePartial: 0.26, biteBright: 1.2, whiskers: true },
     { name: "amethyst", crystal: true, shape: "oval", body: "#7a48b0", belly: "#e0c8f8", pattern: "scales", patternColor: "#b080e0", size: [16, 24], speed: [18, 30], wave: "triangle", register: 1.2, bite: 4, dur: 0.38, turn: 2.8, wiggle: 1.1, scale: PENTATONIC, petWave: "triangle", petFreq: 380, petDur: 0.38, bitePartial: 0.3, biteBright: 1.25 },
     { name: "opalminnow", crystal: true, shape: "slim", body: "#e8f0ff", belly: "#ffffff", pattern: "stripe", patternColor: "#90c0e8", size: [9, 13], speed: [42, 62], wave: "sine", register: 2.0, bite: 3, dur: 0.2, turn: 5.6, wiggle: 1.55, dart: true, slim: 0.48, scale: PENTATONIC, petWave: "sine", petFreq: 560, petDur: 0.2, bitePartial: 0.45, biteBright: 1.5, ghost: 0.65 },
-    { name: "prismatic", crystal: true, shape: "longfin", body: "#48c0c8", belly: "#e0fff8", pattern: "blotches", patternColor: "#e080d0", size: [13, 18], speed: [20, 32], wave: "triangle", register: 1.4, bite: 4, dur: 0.4, turn: 3.4, wiggle: 1.55, scale: PENTATONIC, petWave: "sine", petFreq: 420, petDur: 0.42, bitePartial: 0.34, biteBright: 1.3 },
+    { name: "prismatic", crystal: true, shape: "longfin", body: "#48c0c8", belly: "#e0fff8", pattern: "blotches", patternColor: "#e080d0", size: [13, 18], speed: [20, 32], wave: "triangle", register: 1.4, bite: 4, dur: 0.4, turn: 3.4, wiggle: 1.4, scale: PENTATONIC, petWave: "sine", petFreq: 420, petDur: 0.42, bitePartial: 0.34, biteBright: 1.3, tail: "veil", slim: 0.55 },
     { name: "quartzangel", crystal: true, shape: "angel", body: "#d0e0f0", belly: "#ffffff", pattern: "spots", patternColor: "#a070d0", size: [15, 21], speed: [18, 28], wave: "triangle", register: 1.25, bite: 4, dur: 0.48, turn: 2.7, wiggle: 0.95, scale: PENTATONIC, petWave: "triangle", petFreq: 360, petDur: 0.46, bitePartial: 0.28, biteBright: 1.15 },
     { name: "jadeel", crystal: true, shape: "eel", body: "#2a8058", belly: "#a0e0c0", pattern: "bands", patternColor: "#104030", size: [24, 34], speed: [14, 24], wave: "sawtooth", register: 0.72, bite: 6, dur: 0.7, turn: 2.2, wiggle: 2.2, scale: MINOR_PENT, petWave: "sawtooth", petFreq: 210, petDur: 0.6, bitePartial: 0.1, biteBright: 0.65 },
-    { name: "rubygill", crystal: true, shape: "round", body: "#c04058", belly: "#ffd0d8", pattern: "bands", patternColor: "#801828", size: [13, 18], speed: [24, 36], wave: "sine", register: 1.18, bite: 4, dur: 0.34, turn: 3.3, wiggle: 1.1, scale: PENTATONIC, petWave: "sine", petFreq: 370, petDur: 0.32, bitePartial: 0.28, biteBright: 1.2 },
+    { name: "rubygill", crystal: true, shape: "deep", body: "#c04058", belly: "#ffd0d8", pattern: "bands", patternColor: "#801828", size: [13, 18], speed: [24, 36], wave: "sine", register: 1.18, bite: 4, dur: 0.34, turn: 3.3, wiggle: 1.05, scale: PENTATONIC, petWave: "sine", petFreq: 370, petDur: 0.32, bitePartial: 0.28, biteBright: 1.2, tail: "truncate", slim: 1.02 },
     { name: "sapphire", crystal: true, shape: "slim", body: "#2858b0", belly: "#c8dcff", pattern: "stripe", patternColor: "#f0e080", size: [14, 20], speed: [28, 44], wave: "triangle", register: 1.35, bite: 4, dur: 0.32, turn: 4.2, wiggle: 1.35, slim: 0.52, scale: PENTATONIC, petWave: "triangle", petFreq: 440, petDur: 0.3, bitePartial: 0.35, biteBright: 1.3 },
     { name: "topazkoi", crystal: true, shape: "koi", koi: true, body: "#e8b040", belly: "#fff4d0", pattern: "blotches", patternColor: "#f0e8a0", size: [19, 28], speed: [16, 26], wave: "sine", register: 1.0, bite: 5, dur: 0.44, turn: 2.2, wiggle: 0.98, scale: PENTATONIC, petWave: "sine", petFreq: 320, petDur: 0.44, bitePartial: 0.24, biteBright: 1.15, whiskers: true },
     { name: "obsidian", crystal: true, shape: "oval", body: "#1a1828", belly: "#6870a0", pattern: "scales", patternColor: "#404060", size: [17, 25], speed: [16, 28], wave: "sawtooth", register: 0.8, bite: 5, dur: 0.45, turn: 2.4, wiggle: 0.95, scale: MINOR_PENT, petWave: "triangle", petFreq: 240, petDur: 0.45, bitePartial: 0.16, biteBright: 0.85 },
@@ -685,7 +717,7 @@ const CRYSTAL_EXOTIC_TYPES = [
     { name: "geode", crystal: true, exotic: true, odd: "spiral", shape: "round", body: "#4a3868", belly: "#e8c070", pattern: "spots", patternColor: "#90e0f0", size: [14, 20], speed: [12, 22], wave: "triangle", register: 1.1, bite: 4, dur: 0.5, turn: 3.2, wiggle: 1.2, scale: MINOR_PENT, petWave: "triangle", petFreq: 300, petDur: 0.5, bitePartial: 0.22, biteBright: 1.1 },
     { name: "prismglass", crystal: true, exotic: true, odd: "jitter", shape: "slim", body: "#c8e8ff", belly: "#ffffff", pattern: null, patternColor: null, size: [11, 16], speed: [36, 56], wave: "sine", register: 1.85, bite: 3, dur: 0.22, turn: 6.2, wiggle: 1.85, slim: 0.46, scale: PENTATONIC, petWave: "sine", petFreq: 540, petDur: 0.22, bitePartial: 0.48, biteBright: 1.55, ghost: 0.5 },
     { name: "facetray", crystal: true, exotic: true, odd: "glide", shape: "ray", body: "#70a0d0", belly: "#e8f4ff", pattern: "blotches", patternColor: "#d080e0", size: [18, 26], speed: [14, 24], wave: "sine", register: 0.7, bite: 5, dur: 0.58, turn: 2.0, wiggle: 0.85, scale: MINOR_PENT, petWave: "sine", petFreq: 220, petDur: 0.55, bitePartial: 0.12, biteBright: 0.75 },
-    { name: "aurorafin", crystal: true, exotic: true, odd: "drift", shape: "longfin", body: "#5080c8", belly: "#f0c0e8", pattern: "blotches", patternColor: "#70e0c0", size: [14, 20], speed: [16, 28], wave: "triangle", register: 1.35, bite: 4, dur: 0.45, turn: 3.5, wiggle: 1.5, scale: PENTATONIC, petWave: "triangle", petFreq: 400, petDur: 0.45, bitePartial: 0.32, biteBright: 1.25 },
+    { name: "aurorafin", crystal: true, exotic: true, odd: "drift", shape: "longfin", body: "#5080c8", belly: "#f0c0e8", pattern: "blotches", patternColor: "#70e0c0", size: [14, 20], speed: [16, 28], wave: "triangle", register: 1.35, bite: 4, dur: 0.45, turn: 3.5, wiggle: 1.4, scale: PENTATONIC, petWave: "triangle", petFreq: 400, petDur: 0.45, bitePartial: 0.32, biteBright: 1.25, tail: "veil", slim: 0.56 },
     { name: "shardpike", crystal: true, exotic: true, odd: "zigzag", shape: "arrow", body: "#a0c8e8", belly: "#f0f8ff", pattern: "bands", patternColor: "#6070a0", size: [22, 32], speed: [26, 42], wave: "sawtooth", register: 0.75, bite: 6, dur: 0.48, turn: 2.6, wiggle: 1.15, scale: MINOR_PENT, petWave: "sawtooth", petFreq: 250, petDur: 0.42, bitePartial: 0.16, biteBright: 0.9 },
 ];
 
@@ -1747,6 +1779,42 @@ const Audio = (() => {
             return;
         }
 
+        if (kind === "clap") {
+            const burst = (delay, level) => {
+                const noiseSrc = actx.createBufferSource();
+                noiseSrc.buffer = noiseBuf;
+                const nf = actx.createBiquadFilter();
+                nf.type = "bandpass";
+                nf.frequency.value = 1400;
+                nf.Q.value = 1.1;
+                const ng = actx.createGain();
+                const t = t0 + delay;
+                ng.gain.setValueAtTime(0.0001, t);
+                ng.gain.exponentialRampToValueAtTime(level, t + 0.003);
+                ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+                noiseSrc.connect(nf); nf.connect(ng); ng.connect(out);
+                noiseSrc.start(t); noiseSrc.stop(t + 0.12);
+            };
+            burst(0, 0.26);
+            burst(0.018, 0.2);
+            burst(0.038, 0.14);
+            return;
+        }
+
+        if (kind === "click") {
+            const osc = actx.createOscillator();
+            osc.type = "sine";
+            osc.frequency.value = 1250;
+            const g = actx.createGain();
+            g.gain.setValueAtTime(0.0001, t0);
+            g.gain.exponentialRampToValueAtTime(0.12 * mul, t0 + 0.002);
+            g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.04);
+            osc.connect(g); g.connect(out);
+            osc.start(t0); osc.stop(t0 + 0.05);
+            osc.onended = () => { try { osc.disconnect(); g.disconnect(); out.disconnect(); panner.disconnect(); wet.disconnect(); } catch (e) {} };
+            return;
+        }
+
         // hat
         const noiseSrc = actx.createBufferSource();
         noiseSrc.buffer = noiseBuf;
@@ -2085,10 +2153,11 @@ class WaterSim {
         for (let y = 0; y < rows; y++) {
             // Soft yellow-gold water under golden hour.
             const ty = y / rows;
-            const depth = ty * ty;
-            const baseR = (showBed ? 20 : 11) + ty * 7 + depth * 5 + sunClear * 16;
-            const baseG = (showBed ? 34 : 24) + ty * 12 + depth * 7 + sunClear * 14;
-            const baseB = (showBed ? 28 : 18) + ty * 8 + depth * 6 + sunClear * 5;
+                const depth = ty * ty;
+                const surfaceGlint = sunOn ? Math.max(0, 1 - ty * 9) : 0;
+                const baseR = (showBed ? 20 : 11) + ty * 7 + depth * 5 + sunClear * 16 + surfaceGlint * 8;
+                const baseG = (showBed ? 34 : 24) + ty * 12 + depth * 7 + sunClear * 14 + surfaceGlint * 6;
+                const baseB = (showBed ? 28 : 18) + ty * 8 + depth * 6 + sunClear * 5 + surfaceGlint * 3;
             for (let x = 0; x < cols; x++) {
                 const i = y * cols + x;
                 const l = x > 0 ? field[i - 1] : field[i];
@@ -2458,6 +2527,23 @@ function updateSoftMovables(dt) {
     }
 }
 
+// Soft edge-biased point: more gravel and cobbles near shallows, silt in the bowl.
+function pondBedShallowPos(i, w, h, salt) {
+    const preferEdge = seeded(i + salt) > 0.38;
+    let x = seeded(i + salt + 1) * w;
+    let y = seeded(i + salt + 2) * h;
+    if (preferEdge) {
+        const side = Math.floor(seeded(i + salt + 3) * 4);
+        const t = seeded(i + salt + 4);
+        const band = 0.08 + seeded(i + salt + 5) * 0.2;
+        if (side === 0) { x = t * w; y = seeded(i + salt + 6) * h * band; }
+        else if (side === 1) { x = t * w; y = h * (1 - seeded(i + salt + 6) * band); }
+        else if (side === 2) { x = seeded(i + salt + 6) * w * band; y = t * h; }
+        else { x = w * (1 - seeded(i + salt + 6) * band); y = t * h; }
+    }
+    return { x, y };
+}
+
 // Pond floor texture: dirt, mud, rocks, and settled debris, seen through the water.
 function rebuildPondBed() {
     if (!viewW || !viewH) return;
@@ -2468,6 +2554,9 @@ function rebuildPondBed() {
     c.width = w;
     c.height = h;
     const b = c.getContext("2d");
+    const cx0 = w * 0.5;
+    const cy0 = h * 0.52;
+    const basinR = Math.max(w, h) * 0.62;
 
     // Base dirt: mottled warm mud, no tiled wash.
     const base = b.createLinearGradient(0, 0, w * 0.2, h);
@@ -2478,8 +2567,41 @@ function rebuildPondBed() {
     b.fillStyle = base;
     b.fillRect(0, 0, w, h);
 
+    // Soft bowl: cooler dark silt toward the deeper center, warmer shallows at the rim.
+    const bowl = b.createRadialGradient(cx0, cy0, basinR * 0.08, cx0, cy0, basinR);
+    bowl.addColorStop(0, "rgba(18, 16, 12, 0.55)");
+    bowl.addColorStop(0.35, "rgba(28, 24, 16, 0.28)");
+    bowl.addColorStop(0.7, "rgba(70, 58, 34, 0.08)");
+    bowl.addColorStop(1, "rgba(110, 96, 62, 0.18)");
+    b.fillStyle = bowl;
+    b.fillRect(0, 0, w, h);
+
+    // Gentle silt dunes / undulations (soft ridges, not stripes).
+    const duneN = gfxQuality <= 0 ? 10 : 18;
+    for (let i = 0; i < duneN; i++) {
+        const x = seeded(i + 840) * w;
+        const y = seeded(i + 850) * h;
+        const rx = 40 + seeded(i + 860) * 120;
+        const ry = 10 + seeded(i + 870) * 28;
+        const g = b.createRadialGradient(x, y - ry * 0.2, 1, x, y, rx);
+        const lift = seeded(i + 880) > 0.45;
+        if (lift) {
+            g.addColorStop(0, "rgba(118, 102, 68, 0.22)");
+            g.addColorStop(0.55, "rgba(90, 76, 48, 0.08)");
+            g.addColorStop(1, "rgba(70, 58, 36, 0)");
+        } else {
+            g.addColorStop(0, "rgba(22, 18, 12, 0.34)");
+            g.addColorStop(0.55, "rgba(28, 24, 16, 0.12)");
+            g.addColorStop(1, "rgba(20, 16, 12, 0)");
+        }
+        b.fillStyle = g;
+        b.beginPath();
+        b.ellipse(x, y, rx, ry, (seeded(i + 890) - 0.5) * 1.2, 0, Math.PI * 2);
+        b.fill();
+    }
+
     // Broad organic silt / clay stains (irregular blobs, not a lattice).
-    const stainN = gfxQuality <= 0 ? 28 : 55;
+    const stainN = gfxQuality <= 0 ? 34 : 68;
     for (let i = 0; i < stainN; i++) {
         const x = seeded(i + 900) * w;
         const y = seeded(i + 910) * h;
@@ -2487,18 +2609,22 @@ function rebuildPondBed() {
         const ry = 12 + seeded(i + 930) * 58;
         const g = b.createRadialGradient(x - rx * 0.15, y - ry * 0.1, 1, x, y, rx);
         const kind = seeded(i + 940);
-        if (kind < 0.3) {
+        if (kind < 0.28) {
             g.addColorStop(0, "rgba(24, 20, 14, 0.72)");
             g.addColorStop(1, "rgba(24, 20, 14, 0)");
-        } else if (kind < 0.55) {
+        } else if (kind < 0.52) {
             g.addColorStop(0, "rgba(98, 82, 50, 0.5)");
             g.addColorStop(1, "rgba(72, 60, 38, 0)");
-        } else if (kind < 0.8) {
+        } else if (kind < 0.72) {
             g.addColorStop(0, "rgba(58, 64, 42, 0.4)");
             g.addColorStop(1, "rgba(40, 48, 34, 0)");
-        } else {
+        } else if (kind < 0.88) {
             g.addColorStop(0, "rgba(120, 108, 78, 0.32)");
             g.addColorStop(1, "rgba(90, 80, 55, 0)");
+        } else {
+            // Cooler clay pocket.
+            g.addColorStop(0, "rgba(64, 70, 58, 0.36)");
+            g.addColorStop(1, "rgba(44, 50, 40, 0)");
         }
         b.fillStyle = g;
         b.beginPath();
@@ -2506,8 +2632,24 @@ function rebuildPondBed() {
         b.fill();
     }
 
+    // Thin algae film in damp pockets (painterly green-brown, very soft).
+    const filmN = gfxQuality <= 0 ? 8 : 16;
+    for (let i = 0; i < filmN; i++) {
+        const x = seeded(i + 1400) * w;
+        const y = seeded(i + 1410) * h;
+        const rx = 22 + seeded(i + 1420) * 55;
+        const ry = 14 + seeded(i + 1430) * 36;
+        const g = b.createRadialGradient(x, y, 1, x, y, rx);
+        g.addColorStop(0, `rgba(${42 + seeded(i + 1440) * 18}, ${62 + seeded(i + 1445) * 28}, ${36 + seeded(i + 1450) * 14}, 0.2)`);
+        g.addColorStop(1, "rgba(40, 55, 34, 0)");
+        b.fillStyle = g;
+        b.beginPath();
+        b.ellipse(x, y, rx, ry, seeded(i + 1455) * Math.PI, 0, Math.PI * 2);
+        b.fill();
+    }
+
     // Fine silt dusting (soft noise, not a grid).
-    const siltN = gfxQuality <= 0 ? 700 : gfxQuality === 1 ? 1200 : 2200;
+    const siltN = gfxQuality <= 0 ? 900 : gfxQuality === 1 ? 1600 : 2800;
     for (let i = 0; i < siltN; i++) {
         const x = seeded(i + 980) * w;
         const y = seeded(i + 990) * h;
@@ -2519,10 +2661,22 @@ function rebuildPondBed() {
         b.fillRect(x, y, sz, 1 + seeded(i + 1030) * 1.4);
     }
 
-    // Short local sand streaks in clearer pockets (never full-width stripes).
-    for (let i = 0; i < 22; i++) {
-        const x0 = seeded(i + 960) * w;
-        const y0 = seeded(i + 965) * h;
+    // Micro grain: tiny sediment flecks for soft depth under the water.
+    const grainN = gfxQuality <= 0 ? 400 : gfxQuality === 1 ? 900 : 1600;
+    for (let i = 0; i < grainN; i++) {
+        const x = seeded(i + 1460) * w;
+        const y = seeded(i + 1470) * h;
+        const warm = seeded(i + 1480);
+        const c0 = 55 + warm * 90;
+        b.fillStyle = `rgba(${c0},${c0 * 0.82},${c0 * 0.55},${0.04 + seeded(i + 1490) * 0.1})`;
+        b.fillRect(x, y, 1, 1);
+    }
+
+    // Short local sand streaks: prefer clearer shallow pockets near the rim.
+    for (let i = 0; i < 30; i++) {
+        const p = pondBedShallowPos(i, w, h, 960);
+        const x0 = p.x;
+        const y0 = p.y;
         const span = 28 + seeded(i + 968) * 70;
         const ang = (seeded(i + 972) - 0.5) * 0.9;
         b.save();
@@ -2543,11 +2697,12 @@ function rebuildPondBed() {
         b.restore();
     }
 
-    // Mixed gravel: pebbles of varied size, hue, and clustering.
-    for (let i = 0; i < 340; i++) {
+    // Mixed gravel: pebbles of varied size, hue, and clustering (heavier near shallows).
+    for (let i = 0; i < 380; i++) {
         const cluster = seeded(i + 1035) > 0.78;
-        const cx = seeded(i + 1040) * w;
-        const cy = seeded(i + 1050) * h;
+        const p = pondBedShallowPos(i, w, h, 1040);
+        const cx = p.x;
+        const cy = p.y;
         const count = cluster ? 2 + Math.floor(seeded(i + 1052) * 4) : 1;
         for (let j = 0; j < count; j++) {
             const x = cx + (cluster ? (seeded(i * 9 + j + 1054) - 0.5) * 10 : 0);
@@ -2578,9 +2733,10 @@ function rebuildPondBed() {
     }
 
     // Larger river stones: rounded cobbles, flat slabs, and a few angular chips.
-    for (let i = 0; i < 85; i++) {
-        const x = seeded(i + 1110) * w;
-        const y = seeded(i + 1120) * h;
+    for (let i = 0; i < 92; i++) {
+        const p = pondBedShallowPos(i, w, h, 1110);
+        const x = p.x;
+        const y = p.y;
         const r = 3.5 + seeded(i + 1130) * 18;
         const shape = seeded(i + 1135);
         const facets = shape < 0.4 ? 0 : 5 + Math.floor(seeded(i + 1140) * 6);
@@ -2591,6 +2747,11 @@ function rebuildPondBed() {
         b.save();
         b.translate(x, y);
         b.rotate(seeded(i + 1160) * Math.PI);
+        // Soft contact shadow under the stone so it sits in the mud.
+        b.fillStyle = "rgba(12, 10, 8, 0.28)";
+        b.beginPath();
+        b.ellipse(r * 0.08, r * 0.22, r * 0.85, r * 0.38, 0.15, 0, Math.PI * 2);
+        b.fill();
         b.beginPath();
         if (facets === 0) {
             // Smooth cobble.
@@ -2710,10 +2871,15 @@ function rebuildPondBed() {
         b.restore();
     }
 
-    // Darker sunk pockets in the silt.
-    for (let i = 0; i < 20; i++) {
-        const x = seeded(i + 1330) * w;
-        const y = seeded(i + 1340) * h;
+    // Darker sunk pockets in the silt (biased toward the deeper bowl).
+    for (let i = 0; i < 26; i++) {
+        const towardCenter = seeded(i + 1325) > 0.35;
+        const x = towardCenter
+            ? cx0 + (seeded(i + 1330) - 0.5) * w * 0.55
+            : seeded(i + 1330) * w;
+        const y = towardCenter
+            ? cy0 + (seeded(i + 1340) - 0.5) * h * 0.5
+            : seeded(i + 1340) * h;
         const g = b.createRadialGradient(x, y, 1, x, y, 7 + seeded(i + 1350) * 16);
         g.addColorStop(0, "rgba(16, 14, 10, 0.48)");
         g.addColorStop(1, "rgba(16, 14, 10, 0)");
@@ -2723,11 +2889,12 @@ function rebuildPondBed() {
         b.fill();
     }
 
-    // Light water tint: keep the dirt readable, slight warm submerged cast.
-    const murk = b.createRadialGradient(w * 0.5, h * 0.4, w * 0.08, w * 0.5, h * 0.55, w * 0.8);
-    murk.addColorStop(0, "rgba(40, 68, 62, 0.07)");
-    murk.addColorStop(0.55, "rgba(22, 44, 46, 0.13)");
-    murk.addColorStop(1, "rgba(12, 26, 28, 0.26)");
+    // Submerged cast: cool murk deeper in the bowl, lighter near the shore.
+    const murk = b.createRadialGradient(cx0, cy0, basinR * 0.06, cx0, cy0, basinR * 1.05);
+    murk.addColorStop(0, "rgba(14, 28, 30, 0.3)");
+    murk.addColorStop(0.4, "rgba(22, 44, 46, 0.16)");
+    murk.addColorStop(0.75, "rgba(40, 68, 62, 0.07)");
+    murk.addColorStop(1, "rgba(70, 78, 52, 0.04)");
     b.fillStyle = murk;
     b.fillRect(0, 0, w, h);
 
@@ -2745,15 +2912,78 @@ function drawPondBed(ctx) {
     ctx.globalAlpha = daySun ? 0.04 : 0.06;
     ctx.fillStyle = daySun ? "rgba(42, 36, 20, 1)" : "rgba(22, 48, 46, 1)";
     ctx.fillRect(0, 0, viewW, viewH);
+
+    // Soft depth falloff toward the deeper center (reads as a real pond bowl).
+    const basin = ctx.createRadialGradient(
+        viewW * 0.5, viewH * 0.52, Math.min(viewW, viewH) * 0.08,
+        viewW * 0.5, viewH * 0.52, Math.max(viewW, viewH) * 0.62
+    );
+    if (crystalMode) {
+        basin.addColorStop(0, "rgba(18, 22, 36, 0.14)");
+        basin.addColorStop(0.55, "rgba(28, 36, 48, 0.05)");
+        basin.addColorStop(1, "rgba(40, 50, 58, 0)");
+    } else if (nightMode) {
+        basin.addColorStop(0, "rgba(8, 18, 24, 0.16)");
+        basin.addColorStop(0.55, "rgba(12, 28, 32, 0.06)");
+        basin.addColorStop(1, "rgba(20, 36, 34, 0)");
+    } else {
+        basin.addColorStop(0, "rgba(22, 18, 12, 0.14)");
+        basin.addColorStop(0.55, "rgba(40, 32, 18, 0.05)");
+        basin.addColorStop(1, "rgba(70, 58, 32, 0)");
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = basin;
+    ctx.fillRect(0, 0, viewW, viewH);
+
+    // Warm shallow rim so the edges feel closer to the surface.
+    const rim = ctx.createRadialGradient(
+        viewW * 0.5, viewH * 0.5, Math.min(viewW, viewH) * 0.28,
+        viewW * 0.5, viewH * 0.5, Math.max(viewW, viewH) * 0.72
+    );
+    rim.addColorStop(0, "rgba(0,0,0,0)");
+    rim.addColorStop(0.65, "rgba(0,0,0,0)");
+    if (daySun) {
+        rim.addColorStop(1, "rgba(120, 102, 58, 0.07)");
+    } else if (nightMode) {
+        rim.addColorStop(1, "rgba(36, 52, 48, 0.06)");
+    } else {
+        rim.addColorStop(1, "rgba(70, 78, 90, 0.05)");
+    }
+    ctx.fillStyle = rim;
+    ctx.fillRect(0, 0, viewW, viewH);
+
     if (daySun) {
         // Soft depth falloff toward the lower frame (no bright haze).
         const depth = ctx.createLinearGradient(0, 0, 0, viewH);
         depth.addColorStop(0, "rgba(255, 220, 120, 0)");
         depth.addColorStop(0.55, "rgba(70, 52, 22, 0.03)");
         depth.addColorStop(1, "rgba(28, 20, 10, 0.1)");
-        ctx.globalAlpha = 1;
         ctx.fillStyle = depth;
         ctx.fillRect(0, 0, viewW, viewH);
+    }
+
+    // Gentle silt shimmer: slow living dust, no teleports.
+    if (gfxQuality >= 1 && typeof sunPhase === "number") {
+        const t = sunPhase * 0.18;
+        const n = gfxQuality >= 2 ? 7 : 4;
+        ctx.globalCompositeOperation = "soft-light";
+        for (let i = 0; i < n; i++) {
+            const x = ((i * 173.3 + Math.sin(t * 0.7 + i * 1.4) * 48
+                + Math.cos(t * 0.45 + i) * 28) % viewW + viewW) % viewW;
+            const y = ((i * 101.7 + Math.cos(t * 0.55 + i * 1.1) * 36
+                + Math.sin(t * 0.33 + i * 0.8) * 22) % viewH + viewH) % viewH;
+            const breath = 0.55 + 0.45 * Math.abs(Math.sin(t * 0.6 + i * 0.9));
+            const rr = 28 + breath * 42 + (i % 3) * 8;
+            const g = ctx.createRadialGradient(x, y, 0, x, y, rr);
+            g.addColorStop(0, `rgba(150, 128, 82, ${0.07 * breath})`);
+            g.addColorStop(0.45, `rgba(90, 74, 48, ${0.035 * breath})`);
+            g.addColorStop(1, "rgba(50, 40, 28, 0)");
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.ellipse(x, y, rr, rr * (0.45 + (i % 3) * 0.1), i * 0.8 + t * 0.05, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.globalCompositeOperation = "source-over";
     }
     ctx.restore();
 }
@@ -2831,7 +3061,9 @@ let _floorShadowStamp = null;
 let _floorShadowStampDim = 0;
 
 function stampFloorShadowSilhouette(sizeHint, drawFn) {
-    const dim = Math.ceil(Math.max(64, sizeHint * 5.6 + 24));
+    // Pad enough for forked tails, ray wings, and octopus arms so casts are not clipped
+    // into jagged L or stair shapes.
+    const dim = Math.ceil(Math.max(64, sizeHint * 6.8 + 48));
     if (!_floorShadowStamp || _floorShadowStampDim < dim) {
         _floorShadowStamp = document.createElement("canvas");
         _floorShadowStamp.width = dim;
@@ -2841,7 +3073,9 @@ function stampFloorShadowSilhouette(sizeHint, drawFn) {
     const stamp = _floorShadowStamp;
     const sc = stamp.getContext("2d");
     sc.setTransform(1, 0, 0, 1, 0, 0);
-    sc.clearRect(0, 0, dim, dim);
+    // Always clear the full canvas. A prior giant/finale stamp can be much larger than
+    // the active dim; clearing only dim leaves phantom silhouettes that leak on blit.
+    sc.clearRect(0, 0, stamp.width, stamp.height);
     sc.save();
     sc.globalCompositeOperation = "source-over";
     sc.globalAlpha = 1;
@@ -2851,6 +3085,12 @@ function stampFloorShadowSilhouette(sizeHint, drawFn) {
     drawFn(sc);
     sc.restore();
     return { stamp, dim };
+}
+
+function blitFloorShadowStamp(ctx, stamp, dim, alpha) {
+    // Blit only the active dim region so oversized stamp canvas margins never draw.
+    ctx.globalAlpha = Math.min(1, alpha);
+    ctx.drawImage(stamp, 0, 0, dim, dim, -dim * 0.5, -dim * 0.5, dim, dim);
 }
 
 function withFloorShadow(ctx, x, y, sizeHint, alpha, rot, drawFn) {
@@ -2864,13 +3104,20 @@ function withFloorShadow(ctx, x, y, sizeHint, alpha, rot, drawFn) {
     ctx.scale(1, p.squashY);
     if (rot != null) ctx.rotate(rot);
     if (p.bloomAlpha > 0.01) {
-        ctx.globalAlpha = Math.min(1, a * p.bloomAlpha);
-        ctx.drawImage(stamp, -dim * 0.5, -dim * 0.5);
+        blitFloorShadowStamp(ctx, stamp, dim, a * p.bloomAlpha);
     }
     // One stamp, one alpha: reads as a single cast shade.
-    ctx.globalAlpha = Math.min(1, a);
-    ctx.drawImage(stamp, -dim * 0.5, -dim * 0.5);
+    blitFloorShadowStamp(ctx, stamp, dim, a);
     ctx.restore();
+}
+
+// Living casts only: skip hidden, swallowed, or fully faded finale bodies.
+function castsFloorShadow(ent) {
+    if (!ent || ent.dead) return false;
+    if (ent.insideShark) return false;
+    if (povAttack && povAttack.fish === ent) return false;
+    if (ent._giantFlyAlpha != null && ent._giantFlyAlpha < 0.05) return false;
+    return true;
 }
 
 // Fallback oval when a shape path is not available.
@@ -2887,18 +3134,116 @@ function drawSoftShadowBlob(ctx, x, y, rx, ry, alpha) {
 }
 
 function pathLilyPad(ctx, r) {
+    // Smooth notched disc: organic rim wobble, no faceted low-poly segments.
+    const notch = -0.38;
+    const span = Math.PI * 2 - 0.22;
+    const segs = 10;
     ctx.beginPath();
-    const lobes = 12;
-    for (let i = 0; i <= lobes; i++) {
-        const t0 = 0.28 + (i / lobes) * (Math.PI * 2 - 0.56);
-        const lobe = 0.9 + 0.1 * Math.sin(i * 2.2);
-        const x = Math.cos(t0) * r * lobe;
-        const y = Math.sin(t0) * r * 0.88 * lobe;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+    ctx.moveTo(0, 0);
+    for (let i = 0; i < segs; i++) {
+        const t0 = i / segs;
+        const t1 = (i + 0.5) / segs;
+        const t2 = (i + 1) / segs;
+        const a0 = notch + 0.11 + t0 * span;
+        const a1 = notch + 0.11 + t1 * span;
+        const a2 = notch + 0.11 + t2 * span;
+        const w0 = 0.9 + 0.07 * Math.sin(i * 2.4) + 0.04 * Math.sin(i * 5.1);
+        const w1 = 0.9 + 0.07 * Math.sin((i + 0.5) * 2.4) + 0.04 * Math.sin((i + 0.5) * 5.1);
+        const w2 = 0.9 + 0.07 * Math.sin((i + 1) * 2.4) + 0.04 * Math.sin((i + 1) * 5.1);
+        if (i === 0) {
+            ctx.lineTo(Math.cos(a0) * r * w0, Math.sin(a0) * r * 0.87 * w0);
+        }
+        ctx.quadraticCurveTo(
+            Math.cos(a1) * r * w1, Math.sin(a1) * r * 0.87 * w1,
+            Math.cos(a2) * r * w2, Math.sin(a2) * r * 0.87 * w2
+        );
     }
-    ctx.lineTo(0, 0);
     ctx.closePath();
+}
+
+function strokeLilyPadVeins(ctx, r, alpha) {
+    const a = alpha == null ? 0.38 : alpha;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = crystalMode
+        ? `rgba(220, 200, 255, ${a * 0.55})`
+        : nightMode
+            ? `rgba(160, 200, 230, ${a * 0.45})`
+            : `rgba(28, 58, 32, ${a})`;
+    ctx.lineWidth = Math.max(0.65, r * 0.045);
+    const veins = 6 + Math.floor(r * 0.08);
+    for (let i = 0; i < veins; i++) {
+        const ang = -0.25 + (i / veins) * (Math.PI * 2 - 0.5);
+        const reach = 0.78 + (i % 3) * 0.06;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.quadraticCurveTo(
+            Math.cos(ang) * r * reach * 0.42,
+            Math.sin(ang) * r * reach * 0.36,
+            Math.cos(ang) * r * reach,
+            Math.sin(ang) * r * reach * 0.84
+        );
+        ctx.stroke();
+    }
+    ctx.strokeStyle = crystalMode
+        ? `rgba(240, 230, 255, ${a * 0.35})`
+        : nightMode
+            ? `rgba(200, 230, 255, ${a * 0.28})`
+            : `rgba(52, 92, 48, ${a * 0.55})`;
+    ctx.lineWidth = Math.max(0.45, r * 0.028);
+    for (let i = 0; i < veins; i++) {
+        const ang = -0.1 + (i / veins) * (Math.PI * 2 - 0.2);
+        const fork = ang + (i % 2 === 0 ? 0.22 : -0.18);
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(ang) * r * 0.34, Math.sin(ang) * r * 0.3);
+        ctx.quadraticCurveTo(
+            Math.cos(fork) * r * 0.52, Math.sin(fork) * r * 0.46,
+            Math.cos(fork) * r * 0.68, Math.sin(fork) * r * 0.58
+        );
+        ctx.stroke();
+    }
+}
+
+// Bundled floating reed raft: stems tied at the base, readable from above.
+function reedRaftStemLayout(o) {
+    const r = o.r;
+    const stems = o.stems || 6;
+    const profile = o.profile || makeObstacleDetail(2, stems, 3);
+    const out = [];
+    for (let i = 0; i < stems; i++) {
+        const t = stems > 1 ? (i / (stems - 1) - 0.5) : 0;
+        const lean = (profile[i % profile.length] - 1) * 0.32 + t * 0.12;
+        const x0 = t * r * 1.28;
+        const h = r * (0.92 + (profile[i % profile.length] - 0.85) * 0.18);
+        out.push({ x0, lean, h, tone: profile[i % profile.length] });
+    }
+    return out;
+}
+
+function pathReedRaftStem(ctx, stem, r, halfW) {
+    const hw = halfW == null ? 1.7 : halfW;
+    const tipX = stem.x0 + stem.lean * 12;
+    const tipY = -stem.h;
+    ctx.beginPath();
+    ctx.moveTo(stem.x0 - hw, r * 0.2);
+    ctx.quadraticCurveTo(stem.x0 + stem.lean * 5, r * 0.02, tipX, tipY);
+    ctx.quadraticCurveTo(tipX + hw, tipY + r * 0.02, stem.x0 + hw, r * 0.2);
+    ctx.closePath();
+}
+
+function fillReedRaftShadowPaths(ctx, o) {
+    const r = o.r;
+    const stems = reedRaftStemLayout(o);
+    ctx.beginPath();
+    ctx.ellipse(0, r * 0.24, r * 0.86, r * 0.28, 0, 0, Math.PI * 2);
+    ctx.fill();
+    for (const stem of stems) {
+        pathReedRaftStem(ctx, stem, r, 1.9);
+        ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.ellipse(0, r * 0.06, r * 0.8, r * 0.16, 0, 0, Math.PI * 2);
+    ctx.fill();
 }
 
 function pathFacetRockOutline(ctx, o) {
@@ -2974,90 +3319,415 @@ function pathObstacleShadow(ctx, o) {
     } else if (o.kind === "pot") {
         pathPotSilhouette(ctx, o.r);
     } else if (o.kind === "reedraft") {
-        ctx.beginPath();
-        ctx.ellipse(0, o.r * 0.1, o.r * 0.7, o.r * 0.45, 0, 0, Math.PI * 2);
+        fillReedRaftShadowPaths(ctx, o);
     } else {
         pathStumpOutline(ctx, o);
     }
 }
 
+// Resolve caudal style from type (twin / veil / truncate / etc.) with shape fallbacks.
+function fishTailStyle(type, shape) {
+    if (type && type.tail) return type.tail;
+    if (shape === "ray") return "whip";
+    if (shape === "eel") return "ribbon";
+    if (shape === "blob") return "blob";
+    if (shape === "arrow") return "lunate";
+    if (shape === "koi") return "crescent";
+    if (shape === "longfin") return "comet";
+    if (shape === "angel" || shape === "discus" || shape === "diamond") return "lyre";
+    if (shape === "egg") return "twin";
+    if (shape === "deep" || shape === "flathead" || shape === "puffer") return "truncate";
+    if (shape === "round") return "fork";
+    return "fork";
+}
+
 function fishShadowDims(f) {
-    const shape = f.type.shape || "oval";
+    const shape = (f.type && f.type.shape) || "oval";
     const slim = fishSlimForShape(shape, f.type);
     const L = f.size;
     const W = f.size * 0.5 * slim;
-    return { L, W, shape };
+    return { L, W, shape, tail: fishTailStyle(f.type, shape) };
 }
 
-function fillFishShadowPaths(ctx, L, W, shape) {
-    // Map night spear silhouette onto the long arrow body.
-    if (shape === "long") shape = "arrow";
-    // One closed outline so the cast reads as a single shade, not stacked parts.
+// Same swim pose Fish.draw uses that frame (tail phase, thrash, shape follow-through).
+function fishLiveSwimPose(f) {
+    const shape = (f.type && f.type.shape) || "oval";
+    const tail = fishTailStyle(f.type, shape);
+    const golden = !!f.golden;
+    const wigAmt = golden ? 0 : ((f.type && f.type.wiggle) || 1);
+    const liftZ = f.pickerLiftZ || 0;
+    const thrash = !golden && liftZ > 2 ? Math.sin((f.tailPhase || 0) * 2.4) * 0.35 : 0;
+    const phase = f.tailPhase || 0;
+    let wig = Math.sin(phase) * 0.5 * wigAmt + thrash * 0.2;
+    // Fancy egg bodies: less mid-body flex, more caudal flutter (near-ostraciiform).
+    if (!golden && (shape === "egg" || shape === "round" || shape === "puffer" || shape === "deep")) {
+        wig *= 0.62;
+        wig += Math.sin(phase * 1.35) * 0.18 * wigAmt;
+    }
+    // Flowing ornamental caudals lag the peduncle beat slightly.
+    if (!golden && (tail === "veil" || tail === "lyre" || tail === "comet" || tail === "twin")) {
+        wig = Math.sin(phase - 0.35) * 0.55 * wigAmt + thrash * 0.15;
+        if (tail === "veil") wig += Math.sin(phase * 0.55) * 0.12;
+        if (tail === "twin") wig *= 0.85;
+    }
+    if (!golden && shape === "ray") {
+        wig += Math.sin(f._flap || phase) * 0.28;
+    } else if (!golden && shape === "eel") {
+        wig += Math.sin(f._ribbon || phase * 1.4) * 0.22;
+    } else if (!golden && (shape === "angel" || shape === "discus")) {
+        wig *= 0.72;
+        wig += Math.sin(phase * 0.55) * 0.12;
+    }
+    // Labriform: pectoral rowing with soft body sway (mandarin / dragonet).
+    let pecFlap = 0;
+    if (!golden && f.type && f.type.labriform) {
+        wig *= 0.45;
+        pecFlap = Math.sin(phase * 1.8) * 0.55;
+        wig += pecFlap * 0.08;
+    }
+    const bobY = (!golden && (shape === "angel" || shape === "discus"
+        || (f.type && f.type.labriform)))
+        ? Math.sin(phase * (f.type && f.type.labriform ? 1.6 : 0.7))
+            * (2.2 + f.size * 0.04) * (f.type && f.type.labriform ? 0.55 : 1)
+        : 0;
+    const discPulse = (!golden && shape === "ray")
+        ? 1 + Math.sin(f._flap || phase) * 0.04
+        : 1;
+    const ribbonYaw = (!golden && shape === "eel")
+        ? Math.sin(f._ribbon || phase) * 0.12
+        : 0;
+    const sink = golden ? (f.sinkDepth || 0) : 0;
+    return {
+        shape,
+        tail,
+        wig,
+        thrash,
+        bobY,
+        discPulse,
+        ribbonYaw,
+        pecFlap,
+        liftZ,
+        sink,
+        noDorsal: !!(f.type && f.type.noDorsal),
+        labriform: !!(f.type && f.type.labriform),
+    };
+}
+
+function fishCaudalPeduncleX(L, shape, tail) {
+    const t = tail || fishTailStyle(null, shape);
+    if (shape === "ray" || t === "whip") return -L * 0.45;
+    if (t === "veil") return -L * 0.34;
+    if (t === "comet" || t === "lyre") return -L * 0.36;
+    if (t === "twin") return -L * 0.34;
+    if (t === "crescent" || shape === "koi" || shape === "longfin") return -L * 0.38;
+    if (isTallDiscFishShape(shape)) return -L * 0.32;
+    if (shape === "eel" || t === "ribbon") return -L * 0.92;
+    if (shape === "blob" || t === "blob") return -L * 0.55;
+    if (shape === "arrow" || t === "lunate") return -L * 0.72;
+    if (t === "truncate" || t === "emarginate") return -L * 0.38;
+    return -L * 0.4;
+}
+
+// Ease the caudal around the peduncle with the live wag (draw + shadow share this).
+function withFishCaudalSwing(ctx, L, shape, wig, drawFn, tail) {
+    const ped = fishCaudalPeduncleX(L, shape, tail);
+    const soft = tail === "veil" || tail === "lyre" || tail === "twin" || tail === "comet";
+    const yaw = (wig || 0) * (shape === "ray" || shape === "eel" ? 0.12 : soft ? 0.28 : 0.22);
+    ctx.save();
+    ctx.translate(ped, 0);
+    ctx.rotate(yaw);
+    ctx.translate(-ped, 0);
+    drawFn();
+    ctx.restore();
+}
+
+// Caudal fork / whip / ribbon / twin / veil: same outline the fish draw uses.
+function pathFishCaudal(ctx, L, W, shape, wig, opts) {
+    wig = wig || 0;
+    const tail = (opts && opts.tail) || fishTailStyle(opts && opts.type, shape);
+    const isRay = shape === "ray" || tail === "whip";
+    const isEel = shape === "eel" || tail === "ribbon";
+    const isTall = isTallDiscFishShape(shape);
     ctx.beginPath();
-    if (shape === "ray") {
-        ctx.moveTo(L * 0.55, 0);
-        ctx.bezierCurveTo(L * 0.35, -W * 0.35, L * 0.05, -W * 0.95, -L * 0.15, -W * 1.15);
-        ctx.bezierCurveTo(-L * 0.42, -W * 0.85, -L * 0.55, -W * 0.25, -L * 0.48, 0);
-        ctx.quadraticCurveTo(-L * 0.95, -W * 0.08, -L * 1.3, 0);
-        ctx.quadraticCurveTo(-L * 0.95, W * 0.08, -L * 0.48, 0);
-        ctx.bezierCurveTo(-L * 0.55, W * 0.25, -L * 0.42, W * 0.85, -L * 0.15, W * 1.15);
-        ctx.bezierCurveTo(L * 0.05, W * 0.95, L * 0.35, W * 0.35, L * 0.55, 0);
-    } else if (shape === "eel") {
-        ctx.moveTo(L * 0.52, 0);
-        ctx.bezierCurveTo(L * 0.4, -W * 1.05, -L * 0.1, -W * 1.15, -L * 0.55, -W * 0.7);
-        ctx.bezierCurveTo(-L * 0.85, -W * 0.4, -L * 1.05, -W * 0.25, -L * 1.18, 0);
-        ctx.bezierCurveTo(-L * 1.05, W * 0.25, -L * 0.85, W * 0.4, -L * 0.55, W * 0.7);
-        ctx.bezierCurveTo(-L * 0.1, W * 1.05, L * 0.4, W * 0.95, L * 0.52, 0);
+    if (isRay) {
+        ctx.moveTo(-L * 0.45, 0);
+        ctx.quadraticCurveTo(-L * 0.85, -W * (0.08 + wig * 0.05), -L * 1.45, wig * W * 0.15);
+        ctx.quadraticCurveTo(-L * 0.9, W * 0.06, -L * 0.45, 0);
+    } else if (tail === "twin") {
+        // Fancy goldfish twin caudal: thick multi-lobed fan (side view of paired lobes).
+        const sway = wig * 0.4;
+        ctx.moveTo(-L * 0.34, 0);
+        ctx.bezierCurveTo(-L * 0.48, -W * (0.45 + sway * 0.5), -L * 0.62, -W * (1.05 + sway), -L * 0.92, -W * (1.25 + sway));
+        ctx.quadraticCurveTo(-L * 1.12, -W * (0.85 + sway * 0.6), -L * 1.08, -W * (0.35 + sway * 0.3));
+        ctx.quadraticCurveTo(-L * 0.95, -W * 0.55, -L * 0.78, -W * 0.15);
+        ctx.quadraticCurveTo(-L * 0.88, -W * 0.08, -L * 0.78, 0);
+        ctx.quadraticCurveTo(-L * 0.88, W * 0.08, -L * 0.78, W * 0.15);
+        ctx.quadraticCurveTo(-L * 0.95, W * 0.55, -L * 1.08, W * (0.35 + sway * 0.3));
+        ctx.quadraticCurveTo(-L * 1.12, W * (0.85 + sway * 0.6), -L * 0.92, W * (1.25 + sway));
+        ctx.bezierCurveTo(-L * 0.62, W * (1.05 + sway), -L * 0.48, W * (0.45 + sway * 0.5), -L * 0.34, 0);
+    } else if (tail === "veil") {
+        // Betta halfmoon / veil: continuous flowing sheet, soft trailing arc (not a deep fork).
+        const droop = 0.2 + wig * 0.14;
+        const flare = 1 + wig * 0.08;
+        ctx.moveTo(-L * 0.34, -W * 0.06);
+        ctx.bezierCurveTo(
+            -L * 0.55, -W * (1.15 * flare),
+            -L * 0.95, -W * (1.95 * flare),
+            -L * 1.42, -W * ((1.25 + droop) * flare)
+        );
+        ctx.quadraticCurveTo(-L * 1.58, -W * 0.15, -L * 1.6, W * (0.35 + droop));
+        ctx.bezierCurveTo(
+            -L * 1.35, W * ((1.85 + droop) * flare),
+            -L * 0.75, W * (1.35 * flare),
+            -L * 0.34, W * 0.1
+        );
+        ctx.quadraticCurveTo(-L * 0.36, 0.02, -L * 0.34, -W * 0.06);
+    } else if (tail === "lyre") {
+        // Angel / guppy lyre: elongated tips with a scooped mid notch.
+        const sway = wig * L * 0.08;
+        ctx.moveTo(-L * 0.36, 0);
+        ctx.bezierCurveTo(-L * 0.55 + sway * 0.2, -W * 0.7, -L * 0.9 + sway, -W * (1.55 + wig * 0.25), -L * 1.28 + sway, -W * (1.35 + wig * 0.2));
+        ctx.quadraticCurveTo(-L * 0.95, -W * 0.35, -L * 0.7, -W * 0.08);
+        ctx.quadraticCurveTo(-L * 0.88, 0, -L * 0.7, W * 0.08);
+        ctx.quadraticCurveTo(-L * 0.95, W * 0.35, -L * 1.28 + sway, W * (1.35 + wig * 0.2));
+        ctx.bezierCurveTo(-L * 0.9 + sway, W * (1.55 + wig * 0.25), -L * 0.55 + sway * 0.2, W * 0.7, -L * 0.36, 0);
+    } else if (tail === "comet") {
+        // Single long flowing fork (comet / shubunkin).
+        const spread = 1.35;
+        ctx.moveTo(-L * 0.36, 0);
+        ctx.bezierCurveTo(-L * 0.6, -W * (0.7 + wig * 0.2) * spread, -L * 1.05, -W * (1.45 + wig) * spread, -L * 1.48, -W * (1.05 + wig * 0.6) * spread);
+        ctx.quadraticCurveTo(-L * 1.1, -W * 0.25, -L * 0.78, -W * 0.06);
+        ctx.quadraticCurveTo(-L * 0.62, 0, -L * 0.78, W * 0.06);
+        ctx.quadraticCurveTo(-L * 1.1, W * 0.25, -L * 1.48, W * (1.05 + wig * 0.6) * spread);
+        ctx.bezierCurveTo(-L * 1.05, W * (1.45 + wig) * spread, -L * 0.6, W * (0.7 + wig * 0.2) * spread, -L * 0.36, 0);
+    } else if (tail === "crescent") {
+        // Koi / carp: strong forked crescent joined at a narrow peduncle.
+        const spread = 1.18;
+        ctx.moveTo(-L * 0.38, 0);
+        ctx.bezierCurveTo(-L * 0.55, -W * (0.75 + wig * 0.2) * spread, -L * 0.82, -W * (1.35 + wig) * spread, -L * 1.15, -W * (1.05 + wig * 0.5) * spread);
+        ctx.quadraticCurveTo(-L * 0.9, -W * 0.28, -L * 0.7, -W * 0.06);
+        ctx.quadraticCurveTo(-L * 0.58, 0, -L * 0.7, W * 0.06);
+        ctx.quadraticCurveTo(-L * 0.9, W * 0.28, -L * 1.15, W * (1.05 + wig * 0.5) * spread);
+        ctx.bezierCurveTo(-L * 0.82, W * (1.35 + wig) * spread, -L * 0.55, W * (0.75 + wig * 0.2) * spread, -L * 0.38, 0);
+    } else if (tail === "truncate") {
+        // Sunfish / cichlid paddle: soft rounded blade, slight mid notch.
+        const sway = wig * L * 0.06;
+        ctx.moveTo(-L * 0.38, 0);
+        ctx.quadraticCurveTo(-L * 0.55 + sway * 0.3, -W * 0.85, -L * 0.78 + sway, -W * 1.05);
+        ctx.quadraticCurveTo(-L * 0.92 + sway, -W * 0.35, -L * 0.88 + sway, 0);
+        ctx.quadraticCurveTo(-L * 0.92 + sway, W * 0.35, -L * 0.78 + sway, W * 1.05);
+        ctx.quadraticCurveTo(-L * 0.55 + sway * 0.3, W * 0.85, -L * 0.38, 0);
+    } else if (tail === "emarginate") {
+        // Perch / bass: shallow notch, less extreme than a full fork.
+        ctx.moveTo(-L * 0.4, 0);
+        ctx.bezierCurveTo(-L * 0.55, -W * 0.55, -L * 0.7, -W * (1.05 + wig * 0.25), -L * 0.95, -W * (0.95 + wig * 0.3));
+        ctx.quadraticCurveTo(-L * 0.78, -W * 0.2, -L * 0.65, 0);
+        ctx.quadraticCurveTo(-L * 0.78, W * 0.2, -L * 0.95, W * (0.95 + wig * 0.3));
+        ctx.bezierCurveTo(-L * 0.7, W * (1.05 + wig * 0.25), -L * 0.55, W * 0.55, -L * 0.4, 0);
     } else if (shape === "koi" || shape === "longfin") {
-        ctx.moveTo(L * 0.5, 0);
-        ctx.bezierCurveTo(L * 0.25, -W * 0.95, -L * 0.05, -W * 1.35, -L * 0.35, -W * 0.7);
-        ctx.bezierCurveTo(-L * 0.55, -W * 1.2, -L * 0.85, -W * 1.25, -L * 1.05, -W * 0.85);
-        ctx.quadraticCurveTo(-L * 0.75, 0, -L * 1.05, W * 0.85);
-        ctx.bezierCurveTo(-L * 0.85, W * 1.25, -L * 0.55, W * 1.05, -L * 0.35, W * 0.65);
-        ctx.bezierCurveTo(-L * 0.05, W * 1.15, L * 0.25, W * 0.9, L * 0.5, 0);
-    } else if (isTallDiscFishShape(shape)) {
-        const crest = shape === "angel" ? 2.1 : shape === "discus" ? 1.9 : 1.8;
-        ctx.moveTo(L * 0.45, 0);
-        ctx.bezierCurveTo(L * 0.15, -W * crest, -L * 0.2, -W * crest, -L * 0.35, -W * 0.5);
-        ctx.quadraticCurveTo(-L * 0.55, -W * 1.2, -L * 0.75, -W * 1.35);
-        ctx.quadraticCurveTo(-L * 0.55, 0, -L * 0.75, W * 1.35);
-        ctx.quadraticCurveTo(-L * 0.55, W * 1.15, -L * 0.35, W * 0.55);
-        ctx.bezierCurveTo(-L * 0.15, W * crest, L * 0.15, W * crest * 0.85, L * 0.45, 0);
-    } else if (shape === "arrow") {
-        ctx.moveTo(L * 0.72, 0);
-        ctx.bezierCurveTo(L * 0.4, -W * 0.85, -L * 0.1, -W * 1.05, -L * 0.55, -W * 0.45);
-        ctx.bezierCurveTo(-L * 0.8, -W * 0.75, -L * 1.05, -W * 0.55, -L * 1.15, 0);
-        ctx.bezierCurveTo(-L * 1.05, W * 0.55, -L * 0.8, W * 0.7, -L * 0.55, W * 0.4);
-        ctx.bezierCurveTo(-L * 0.1, W * 0.9, L * 0.4, W * 0.7, L * 0.72, 0);
+        const spread = shape === "koi" ? 1.22 : 1.28;
+        ctx.moveTo(-L * 0.38, 0);
+        ctx.bezierCurveTo(-L * 0.58, -W * (0.85 + wig * 0.25) * spread, -L * 0.88, -W * (1.55 + wig) * spread, -L * 1.22, -W * (1.25 + wig) * spread);
+        ctx.quadraticCurveTo(-L * 0.95, -W * 0.35, -L * 0.72, -W * 0.08);
+        ctx.quadraticCurveTo(-L * 0.58, 0, -L * 0.72, W * 0.08);
+        ctx.quadraticCurveTo(-L * 0.95, W * 0.35, -L * 1.22, W * (1.25 + wig) * spread);
+        ctx.bezierCurveTo(-L * 0.88, W * (1.55 + wig) * spread, -L * 0.58, W * (0.85 + wig * 0.25) * spread, -L * 0.38, 0);
+    } else if (isTall) {
+        const sway = wig * L * 0.1;
+        ctx.moveTo(-L * 0.32, 0);
+        ctx.quadraticCurveTo(-L * 0.52 + sway * 0.4, -W * 0.95, -L * 0.85 + sway, -W * 1.65);
+        ctx.quadraticCurveTo(-L * 0.62 + sway * 0.35, -W * 0.15, -L * 0.48, 0);
+        ctx.quadraticCurveTo(-L * 0.62 + sway * 0.35, W * 0.15, -L * 0.85 + sway, W * 1.65);
+        ctx.quadraticCurveTo(-L * 0.52 + sway * 0.4, W * 0.95, -L * 0.32, 0);
+    } else if (isEel) {
+        ctx.moveTo(-L * 0.92, 0);
+        ctx.quadraticCurveTo(-L * 1.08, -W * (0.7 + wig * 0.2), -L * 1.28, -W * (0.25 + wig * 0.15));
+        ctx.quadraticCurveTo(-L * 1.12, 0, -L * 1.28, W * (0.25 + wig * 0.15));
+        ctx.quadraticCurveTo(-L * 1.08, W * (0.7 + wig * 0.2), -L * 0.92, 0);
+    } else if (shape === "blob" || tail === "blob") {
+        ctx.moveTo(-L * 0.55, W * 0.05);
+        ctx.quadraticCurveTo(-L * 0.78, -W * 0.55, -L * 0.95, -W * (0.35 + wig * 0.2));
+        ctx.quadraticCurveTo(-L * 0.72, W * 0.05, -L * 0.95, W * (0.75 + wig * 0.25));
+        ctx.quadraticCurveTo(-L * 0.7, W * 0.55, -L * 0.55, W * 0.05);
+    } else if (shape === "arrow" || tail === "lunate") {
+        ctx.moveTo(-L * 0.72, 0);
+        ctx.bezierCurveTo(-L * 0.85, -W * 0.35, -L * 0.98, -W * (0.75 + wig * 0.25), -L * 1.18, -W * (0.55 + wig * 0.2));
+        ctx.quadraticCurveTo(-L * 0.95, 0, -L * 1.18, W * (0.55 + wig * 0.2));
+        ctx.bezierCurveTo(-L * 0.98, W * (0.75 + wig * 0.25), -L * 0.85, W * 0.35, -L * 0.72, 0);
     } else {
-        ctx.moveTo(L * 0.5, 0);
-        ctx.bezierCurveTo(L * 0.2, -W * 1.05, -L * 0.1, -W * 1.25, -L * 0.4, -W * 0.55);
-        ctx.quadraticCurveTo(-L * 0.65, -W * 0.95, -L * 0.9, -W * 0.75);
-        ctx.quadraticCurveTo(-L * 0.68, 0, -L * 0.9, W * 0.75);
-        ctx.quadraticCurveTo(-L * 0.65, W * 0.9, -L * 0.4, W * 0.5);
-        ctx.bezierCurveTo(-L * 0.1, W * 1.1, L * 0.2, W * 0.95, L * 0.5, 0);
+        // Standard carangiform fork.
+        ctx.moveTo(-L * 0.4, 0);
+        ctx.bezierCurveTo(-L * 0.55, -W * 0.45, -L * 0.72, -W * (0.9 + wig * 0.35), -L * 1.02, -W * (1.12 + wig * 0.45));
+        ctx.quadraticCurveTo(-L * 0.78, -W * 0.2, -L * 0.62, 0);
+        ctx.quadraticCurveTo(-L * 0.78, W * 0.2, -L * 1.02, W * (1.12 + wig * 0.45));
+        ctx.bezierCurveTo(-L * 0.72, W * (0.9 + wig * 0.35), -L * 0.55, W * 0.45, -L * 0.4, 0);
     }
     ctx.closePath();
+}
+
+function fillFishFinShadowExtras(ctx, L, W, shape, wig, opts) {
+    wig = wig || 0;
+    const noDorsal = opts && opts.noDorsal;
+    if (shape === "ray") {
+        ctx.beginPath();
+        ctx.moveTo(-L * 0.28, -W * 0.08);
+        ctx.quadraticCurveTo(-L * 0.22, -W * 0.32, -L * 0.12, -W * 0.06);
+        ctx.closePath();
+        ctx.fill();
+        // Venom spine flare near the whip base (matches Fish.draw).
+        ctx.beginPath();
+        ctx.moveTo(-L * 0.72, -W * 0.02);
+        ctx.lineTo(-L * 0.95, -W * 0.22);
+        ctx.lineTo(-L * 0.82, 0);
+        ctx.closePath();
+        ctx.fill();
+        return;
+    }
+    if (shape === "eel") {
+        ctx.beginPath();
+        ctx.moveTo(L * 0.15, -W * 0.55);
+        ctx.quadraticCurveTo(-L * 0.1, -W * (1.15 + wig * 0.15), -L * 0.75, -W * 0.45);
+        ctx.quadraticCurveTo(-L * 0.2, -W * 0.7, L * 0.15, -W * 0.55);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(L * 0.05, W * 0.45);
+        ctx.quadraticCurveTo(-L * 0.25, W * (0.95 + wig * 0.1), -L * 0.8, W * 0.35);
+        ctx.quadraticCurveTo(-L * 0.2, W * 0.7, L * 0.05, W * 0.45);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(L * 0.2, W * 0.15);
+        ctx.quadraticCurveTo(L * 0.28, W * 0.55, L * 0.08, W * 0.62);
+        ctx.quadraticCurveTo(L * 0.1, W * 0.28, L * 0.2, W * 0.15);
+        ctx.closePath();
+        ctx.fill();
+        return;
+    }
+    if (!noDorsal) {
+        const tall = shape === "longfin" ? 2.35
+            : shape === "angel" ? 2.05
+            : shape === "discus" ? 1.85
+            : shape === "diamond" ? 1.75
+            : shape === "deep" ? 1.95
+            : shape === "egg" ? 1.35
+            : shape === "arrow" ? 1.15
+            : shape === "koi" ? 1.4 : 1.55;
+        const startX = shape === "arrow" ? L * 0.05
+            : shape === "deep" ? -L * 0.02
+            : -L * 0.08;
+        const finWag = 1 + wig * 0.04;
+        ctx.beginPath();
+        ctx.moveTo(startX, -W * 0.72);
+        ctx.quadraticCurveTo(L * 0.02, -W * tall * finWag, L * 0.22, -W * (tall * 0.92) * finWag);
+        ctx.quadraticCurveTo(L * 0.32, -W * 0.55, L * 0.18, -W * 0.48);
+        ctx.quadraticCurveTo(L * 0.05, -W * 0.72, startX, -W * 0.72);
+        ctx.closePath();
+        ctx.fill();
+        if (shape === "longfin" || shape === "angel") {
+            ctx.beginPath();
+            ctx.moveTo(-L * 0.18, -W * 0.48);
+            ctx.quadraticCurveTo(L * 0.08, -W * ((shape === "angel" ? 2.45 : 2.35) * finWag), L * 0.4, -W * 0.32);
+            ctx.quadraticCurveTo(L * 0.08, -W * 0.95, -L * 0.18, -W * 0.48);
+            ctx.closePath();
+            ctx.fill();
+        }
+        if (shape !== "blob" && shape !== "longfin" && shape !== "angel" && shape !== "egg") {
+            ctx.beginPath();
+            ctx.moveTo(-L * 0.22, -W * 0.55);
+            ctx.quadraticCurveTo(-L * 0.18, -W * 0.85, -L * 0.08, -W * 0.52);
+            ctx.quadraticCurveTo(-L * 0.16, -W * 0.55, -L * 0.22, -W * 0.55);
+            ctx.closePath();
+            ctx.fill();
+        }
+    }
+    if (shape !== "blob") {
+        const isTall = isTallDiscFishShape(shape) || shape === "deep";
+        const tail = (opts && opts.tail) || fishTailStyle(opts && opts.type, shape);
+        ctx.beginPath();
+        if (tail === "veil") {
+            ctx.moveTo(-L * 0.05, W * 0.45);
+            ctx.quadraticCurveTo(-L * 0.2, W * (1.55 + wig * 0.15), -L * 0.85, W * (1.35 + wig * 0.2));
+            ctx.quadraticCurveTo(-L * 0.45, W * 0.75, -L * 0.05, W * 0.45);
+        } else if (isTall) {
+            ctx.moveTo(-L * 0.05, W * 0.7);
+            ctx.quadraticCurveTo(L * 0.08, W * 1.85, -L * 0.22, W * 1.95 + wig * W * 0.1);
+            ctx.quadraticCurveTo(-L * 0.18, W * 0.95, -L * 0.05, W * 0.7);
+        } else {
+            ctx.moveTo(-L * 0.12, W * 0.55);
+            ctx.quadraticCurveTo(-L * 0.05, W * 1.05, -L * 0.28, W * 1.15 + wig * W * 0.15);
+            ctx.quadraticCurveTo(-L * 0.22, W * 0.7, -L * 0.12, W * 0.55);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(L * 0.08, W * 0.22);
+        ctx.bezierCurveTo(L * 0.22, W * 0.55, L * 0.12, W * 0.95, -L * 0.02, W * 0.88);
+        ctx.quadraticCurveTo(-L * 0.06, W * 0.48, L * 0.08, W * 0.22);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(L * 0.06, -W * 0.15);
+        ctx.quadraticCurveTo(L * 0.16, -W * 0.55, L * 0.02, -W * 0.72);
+        ctx.quadraticCurveTo(-L * 0.02, -W * 0.35, L * 0.06, -W * 0.15);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        if (tail === "veil" || tail === "lyre") {
+            ctx.moveTo(L * 0.02, W * 0.35);
+            ctx.quadraticCurveTo(L * 0.05, W * 1.15, -L * 0.35, W * (1.45 + wig * 0.1));
+            ctx.quadraticCurveTo(-L * 0.12, W * 0.7, L * 0.02, W * 0.35);
+        } else {
+            ctx.moveTo(-L * 0.02, W * 0.38);
+            ctx.quadraticCurveTo(L * 0.02, W * 0.82, -L * 0.18, W * 0.92);
+            ctx.quadraticCurveTo(-L * 0.14, W * 0.52, -L * 0.02, W * 0.38);
+        }
+        ctx.closePath();
+        ctx.fill();
+    }
+}
+
+function fillFishShadowPaths(ctx, L, W, shape, wig, opts) {
+    // Map night spear silhouette onto the long arrow body.
+    if (shape === "long") shape = "arrow";
+    wig = wig || 0;
+    const tail = (opts && opts.tail) || fishTailStyle(opts && opts.type, shape);
+    const bodyOpts = { wig, noDorsal: !!(opts && opts.noDorsal) };
+    // Same body + caudal + fin paths as Fish.draw so the cast matches the living silhouette.
+    pathFishBody(ctx, L, W, shape, bodyOpts);
     ctx.fill();
+    withFishCaudalSwing(ctx, L, shape, wig, () => {
+        pathFishCaudal(ctx, L, W, shape, wig, { tail, type: opts && opts.type });
+        ctx.fill();
+    }, tail);
+    fillFishFinShadowExtras(ctx, L, W, shape, wig, opts);
 }
 
 function fillReptileShadowPaths(ctx, r) {
     const L = r.size;
-    const W = r.size * (r.kind === "alligator" ? 0.34 : 0.28);
-    const snout = r.kind === "alligator" ? 0.5 : 0.58;
+    const isGator = r.kind === "alligator";
+    const W = r.size * (isGator ? 0.34 : 0.28);
+    const snout = isGator ? 0.5 : 0.58;
+    // Alligator shadow keeps longer aft limb lobes (legs stream along the flanks).
+    const midW = isGator ? 1.12 : 1.0;
+    const aftW = isGator ? 1.05 : 0.9;
     ctx.beginPath();
     // Single fusiform + snout + soft limb lobes.
     ctx.moveTo(L * snout, 0);
-    if (r.kind === "alligator") {
-        ctx.bezierCurveTo(L * 0.4, -W * 0.7, L * 0.15, -W * 1.0, -L * 0.15, -W * 0.85);
+    if (isGator) {
+        ctx.bezierCurveTo(L * 0.4, -W * 0.7, L * 0.15, -W * 1.0 * midW, -L * 0.15, -W * 0.95 * midW);
     } else {
         ctx.bezierCurveTo(L * 0.35, -W * 0.35, L * 0.1, -W * 0.95, -L * 0.15, -W * 0.8);
     }
-    ctx.bezierCurveTo(-L * 0.35, -W * 0.95, -L * 0.55, -W * 0.55, -L * 0.7, -W * 0.25);
+    ctx.bezierCurveTo(-L * 0.35, -W * 0.95 * aftW, -L * 0.55, -W * 0.55, -L * 0.7, -W * 0.25);
     ctx.quadraticCurveTo(-L * 0.92, -W * 0.35, -L * 0.98, 0);
     ctx.quadraticCurveTo(-L * 0.92, W * 0.35, -L * 0.7, W * 0.25);
-    ctx.bezierCurveTo(-L * 0.55, W * 0.55, -L * 0.35, W * 0.9, -L * 0.15, W * 0.8);
-    ctx.bezierCurveTo(L * 0.1, W * 1.05, L * 0.35, W * 0.7, L * snout, 0);
+    ctx.bezierCurveTo(-L * 0.55, W * 0.55, -L * 0.35, W * 0.95 * aftW, -L * 0.15, W * 0.95 * midW);
+    if (isGator) {
+        ctx.bezierCurveTo(L * 0.15, W * 1.0 * midW, L * 0.4, W * 0.7, L * snout, 0);
+    } else {
+        ctx.bezierCurveTo(L * 0.1, W * 1.05, L * 0.35, W * 0.7, L * snout, 0);
+    }
     ctx.closePath();
     ctx.fill();
 }
@@ -3206,11 +3876,7 @@ function drawSunContactShadows(ctx) {
         for (const s of sceneryItems.stones) {
             if (!s.profile) s.profile = makeObstacleDetail(Math.floor(s.x + s.y), 9, 5);
             withFloorShadow(ctx, s.x, s.y, Math.max(s.rx, s.ry), 0.72, s.rot, (c) => {
-                if (crystalMode && s.facets) {
-                    pathFacetRockOutline(c, { r: Math.max(s.rx, s.ry), facets: s.facets, profile: s.profile });
-                } else {
-                    pathOrganicOval(c, s.rx * 1.05, s.ry * 0.95, 9, s.profile, 0.2);
-                }
+                pathShoreStoneOutline(c, s);
                 c.fill();
             });
         }
@@ -3225,23 +3891,11 @@ function drawSunContactShadows(ctx) {
     }
     if (scenery.sticks) {
         for (const s of sceneryItems.sticks) {
-            withFloorShadow(ctx, s.x, s.y, s.len * 0.4, 0.62, s.rot, (c) => {
-                if (crystalMode) {
-                    c.beginPath();
-                    c.moveTo(-s.len * 0.5, 0);
-                    c.lineTo(-s.len * 0.1, -s.thick * 0.9);
-                    c.lineTo(s.len * 0.5, 0);
-                    c.lineTo(-s.len * 0.1, s.thick * 0.9);
-                    c.closePath();
-                } else {
-                    c.beginPath();
-                    c.moveTo(-s.len * 0.5, -s.thick * 0.35);
-                    c.quadraticCurveTo(0, -s.thick * 0.5, s.len * 0.48, -s.thick * 0.15);
-                    c.lineTo(s.len * 0.52, s.thick * 0.2);
-                    c.quadraticCurveTo(0, s.thick * 0.55, -s.len * 0.5, s.thick * 0.45);
-                    c.closePath();
-                }
-                c.fill();
+            const bend = crystalMode ? 0
+                : nightMode ? 0.8
+                : (s.wet ? 2.5 : 0.5);
+            withFloorShadow(ctx, s.x, s.y, s.len * 0.5, 0.62, s.rot + (s.tipBob || 0), (c) => {
+                fillStickSilhouette(c, s, bend);
             });
         }
     }
@@ -3256,10 +3910,19 @@ function drawSunContactShadows(ctx) {
                     c.closePath();
                 } else {
                     c.beginPath();
-                    c.moveTo(-1.2, 0);
-                    c.quadraticCurveTo(4, -(r.h || 40) * 0.5, 1.5, -(r.h || 40));
-                    c.lineTo(-1.5, -(r.h || 40));
-                    c.quadraticCurveTo(-4, -(r.h || 40) * 0.5, 1.2, 0);
+                    c.moveTo(-1.4, 0);
+                    c.quadraticCurveTo(4, -(r.h || 40) * 0.5, 1.6, -(r.h || 40));
+                    c.lineTo(-1.6, -(r.h || 40));
+                    c.quadraticCurveTo(-4, -(r.h || 40) * 0.5, 1.4, 0);
+                    c.closePath();
+                    c.fill();
+                    c.beginPath();
+                    c.ellipse(1.6, -(r.h || 40), 2.4, 4.8, 0, 0, Math.PI * 2);
+                    c.fill();
+                    c.beginPath();
+                    c.moveTo(-3, 2);
+                    c.quadraticCurveTo(-5, 8, -2, 12);
+                    c.quadraticCurveTo(2, 10, 3, 2);
                     c.closePath();
                 }
                 c.fill();
@@ -3327,22 +3990,10 @@ function drawSunContactShadows(ctx) {
                 }
             });
         }
+        // Floating leaves share the duckweed scenery toggle.
         for (const L of sceneryItems.leaves) {
             withFloorShadow(ctx, L.x, L.y, L.len * 0.55, 0.55, L.rot || 0, (c) => {
-                c.beginPath();
-                if (crystalMode) {
-                    c.moveTo(-L.len * 0.7, 0);
-                    c.lineTo(0, -L.len * 0.45);
-                    c.lineTo(L.len * 0.75, 0);
-                    c.lineTo(0, L.len * 0.4);
-                    c.closePath();
-                } else {
-                    c.moveTo(-L.len * 0.85, 0);
-                    c.quadraticCurveTo(-L.len * 0.2, -L.len * 0.55, L.len * 0.75, -L.len * 0.08);
-                    c.quadraticCurveTo(L.len * 0.95, 0, L.len * 0.75, L.len * 0.1);
-                    c.quadraticCurveTo(-L.len * 0.15, L.len * 0.5, -L.len * 0.85, 0);
-                    c.closePath();
-                }
+                pathFloatingLeafOutline(c, L);
                 c.fill();
             });
         }
@@ -3407,12 +4058,48 @@ function pathPondPlantShadow(ctx, p) {
         return;
     }
     if (p.kind === "coral" || p.kind === "weed") {
+        const s = p.size || 24;
+        if (p.kind === "weed") {
+            ctx.beginPath();
+            ctx.ellipse(0, s * 0.12, s * 0.28, s * 0.12, 0, 0, Math.PI * 2);
+            ctx.fill();
+            const fronds = 7;
+            for (let i = 0; i < fronds; i++) {
+                const a = -1.05 + (i / (fronds - 1)) * 2.1;
+                const reach = s * (0.62 + (i % 3) * 0.1);
+                ctx.beginPath();
+                ctx.moveTo(0, s * 0.08);
+                ctx.quadraticCurveTo(
+                    Math.sin(a) * reach * 0.35,
+                    -reach * 0.25 + s * 0.05,
+                    Math.sin(a) * reach,
+                    -reach * (0.72 + (i % 2) * 0.12)
+                );
+                ctx.lineWidth = Math.max(2.8, s * 0.1);
+                ctx.stroke();
+            }
+            return;
+        }
         ctx.beginPath();
         ctx.moveTo(-s * 0.15, s * 0.35);
         ctx.quadraticCurveTo(-s * 0.35, -s * 0.1, -s * 0.08, -s * 0.55);
         ctx.quadraticCurveTo(0, -s * 0.2, s * 0.1, -s * 0.6);
         ctx.quadraticCurveTo(s * 0.35, -s * 0.05, s * 0.18, s * 0.35);
         ctx.closePath();
+        return;
+    }
+    if (p.kind === "bamboo") {
+        const h = s * 1.45;
+        for (let i = -1; i <= 1; i++) {
+            const x0 = i * 5;
+            ctx.beginPath();
+            ctx.moveTo(x0 - 1.6, 0);
+            ctx.quadraticCurveTo(x0 + 4, -h * 0.5, x0 + 2, -h);
+            ctx.lineTo(x0 - 2, -h);
+            ctx.quadraticCurveTo(x0 - 4, -h * 0.5, x0 + 1.6, 0);
+            ctx.closePath();
+            ctx.fill();
+        }
         return;
     }
     if (p.kind === "mushroom") {
@@ -3428,6 +4115,295 @@ function pathPondPlantShadow(ctx, p) {
     ctx.ellipse(0, 0, s * 0.45, s * 0.32, 0, 0, Math.PI * 2);
 }
 
+function fillTadpoleShadowPaths(ctx, t) {
+    const s = t.size || 6;
+    ctx.beginPath();
+    ctx.moveTo(s * 0.55, 0);
+    ctx.bezierCurveTo(s * 0.25, -s * 0.35, -s * 0.1, -s * 0.32, -s * 0.45, -s * 0.18);
+    ctx.quadraticCurveTo(-s * 0.85, -s * 0.28, -s * 1.05, 0);
+    ctx.quadraticCurveTo(-s * 0.85, s * 0.28, -s * 0.45, s * 0.18);
+    ctx.bezierCurveTo(-s * 0.1, s * 0.32, s * 0.25, s * 0.35, s * 0.55, 0);
+    ctx.closePath();
+    ctx.fill();
+}
+
+function fillBullfrogShadowPaths(ctx, b) {
+    // Same local-space silhouette as drawBullfrogModel (stocky body, pouch, tympanum, kick legs).
+    const S = b.size || 28;
+    const kick = Math.max(0, Math.min(1, b.kick || 0));
+    const pouch = Math.max(0, Math.min(1, b.pouch || 0.15));
+    const breath = 1 + Math.sin(b.breath || 0) * 0.04;
+    const tuckX = -S * (0.35 + kick * 0.85);
+    const tuckY = S * (0.22 - kick * 0.05);
+    const footSpread = S * (0.18 + kick * 0.58);
+    for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(-S * 0.18, side * S * 0.1);
+        ctx.quadraticCurveTo(
+            -S * (0.48 + kick * 0.35), side * S * (0.3 + kick * 0.1),
+            tuckX, side * tuckY
+        );
+        ctx.quadraticCurveTo(-S * (0.58 + kick * 0.48), side * S * 0.05, -S * 0.22, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(tuckX, side * tuckY * 0.85);
+        ctx.lineTo(tuckX - S * (0.18 + kick * 0.32), side * (tuckY + footSpread));
+        ctx.lineTo(tuckX - S * (0.32 + kick * 0.36), side * tuckY * 0.15);
+        ctx.lineTo(tuckX - S * (0.12 + kick * 0.18), side * (tuckY - footSpread * 0.35));
+        ctx.closePath();
+        ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.moveTo(S * 0.16, S * 0.12);
+    ctx.quadraticCurveTo(S * 0.38, S * 0.32, S * 0.24, S * 0.36);
+    ctx.quadraticCurveTo(S * 0.08, S * 0.24, S * 0.1, S * 0.1);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(S * 0.14, -S * 0.06);
+    ctx.quadraticCurveTo(S * 0.3, -S * 0.24, S * 0.2, -S * 0.3);
+    ctx.quadraticCurveTo(S * 0.06, -S * 0.16, S * 0.08, -S * 0.02);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(S * 0.7, 0);
+    ctx.bezierCurveTo(S * 0.48, -S * 0.42 * breath, -S * 0.08, -S * 0.46 * breath, -S * 0.52, -S * 0.14);
+    ctx.bezierCurveTo(-S * 0.7, 0, -S * 0.5, S * 0.18, -S * 0.15, S * 0.36);
+    ctx.bezierCurveTo(S * 0.22, S * 0.46, S * 0.52, S * 0.32, S * 0.7, 0);
+    ctx.closePath();
+    ctx.fill();
+    const pouchR = S * (0.2 + pouch * 0.32);
+    ctx.beginPath();
+    ctx.ellipse(S * 0.22, S * 0.22, pouchR * 1.2, pouchR * (0.8 + pouch * 0.3), 0.12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(S * 0.48, -S * 0.05, S * 0.34, S * 0.28 * breath, -0.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(S * 0.34, S * 0.02, S * 0.15, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+// Pacifist helper casts: reuse the same local-space geometry as each helper draw model.
+function fillPacifistShadowPaths(ctx, p) {
+    const kind = p.kind || "nurse";
+    const S = p.size || 24;
+    if (kind === "axolotl") {
+        const limb = p.limbPhase || 0;
+        const gill = p.gillPhase || 0;
+        const tw = Math.sin(limb * 1.1 + 0.4) * 0.35;
+        const gaitA = 0.5 + 0.5 * Math.sin(limb);
+        const gaitB = 0.5 + 0.5 * Math.sin(limb + Math.PI);
+        // Flat paddle tail (double lobe).
+        ctx.beginPath();
+        ctx.moveTo(-S * 0.42, 0);
+        ctx.bezierCurveTo(
+            -S * 0.62, -S * (0.22 + tw * 0.15),
+            -S * 0.88, -S * (0.32 + tw * 0.25),
+            -S * 1.0, -S * (0.06 + tw * 0.15)
+        );
+        ctx.quadraticCurveTo(-S * 0.9, 0, -S * 1.0, S * (0.06 - tw * 0.15));
+        ctx.bezierCurveTo(
+            -S * 0.88, S * (0.32 - tw * 0.25),
+            -S * 0.62, S * (0.22 - tw * 0.15),
+            -S * 0.42, 0
+        );
+        ctx.closePath();
+        ctx.fill();
+        // Limb paddles.
+        for (const [side, along, gait, isHind] of [
+            [1, -0.15, gaitA, true], [-1, -0.15, gaitB, true],
+            [1, 0.18, gaitB, false], [-1, 0.18, gaitA, false],
+        ]) {
+            const tuck = isHind ? (-0.28 - gait * 0.35) : (0.12 - gait * 0.2);
+            const spread = side * S * (0.22 + gait * 0.35);
+            const baseX = S * along;
+            const tipX = S * tuck;
+            ctx.beginPath();
+            ctx.moveTo(baseX, side * S * (isHind ? 0.05 : 0.04));
+            ctx.quadraticCurveTo((baseX + tipX) * 0.5, side * S * (0.28 + gait * 0.12), tipX, spread);
+            ctx.quadraticCurveTo(tipX + S * 0.08, spread * 0.35, baseX - S * 0.05, 0);
+            ctx.closePath();
+            ctx.fill();
+        }
+        // Fusiform body + blunt head.
+        ctx.beginPath();
+        ctx.moveTo(S * 0.62, 0);
+        ctx.bezierCurveTo(S * 0.42, -S * 0.34, -S * 0.05, -S * 0.38, -S * 0.48, -S * 0.14);
+        ctx.bezierCurveTo(-S * 0.62, 0, -S * 0.48, S * 0.16, -S * 0.12, S * 0.3);
+        ctx.bezierCurveTo(S * 0.22, S * 0.36, S * 0.48, S * 0.26, S * 0.62, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(S * 0.48, -S * 0.02, S * 0.28, S * 0.24, -0.08, 0, Math.PI * 2);
+        ctx.fill();
+        // External gill crowns as filled stalks.
+        for (const side of [-1, 1]) {
+            for (let i = 0; i < 3; i++) {
+                const sway = Math.sin(gill * 1.4 + i * 0.9 + side) * 0.28;
+                const baseX = S * (0.28 + i * 0.03);
+                const baseY = side * S * 0.1;
+                const tipX = S * (0.22 + i * 0.05);
+                const tipY = side * S * (1.25 + i * 0.28 + sway * 0.25);
+                const midX = S * (0.42 + i * 0.08 + sway * 0.1);
+                const midY = side * S * (0.7 + i * 0.22);
+                ctx.beginPath();
+                ctx.moveTo(baseX, baseY - S * 0.03);
+                ctx.quadraticCurveTo(midX, midY, tipX, tipY);
+                ctx.quadraticCurveTo(midX + side * S * 0.04, midY, baseX, baseY + S * 0.03);
+                ctx.closePath();
+                ctx.fill();
+            }
+        }
+        return;
+    }
+    if (kind === "garden" || kind === "lumen") {
+        for (let i = 0; i < 8; i++) {
+            const t = (i - 3.5) / 3.5;
+            const phase = (p.legs && p.legs[i] && p.legs[i].phase) || (p.mantlePulse || 0) + i;
+            const wave = Math.sin(phase) * 0.3;
+            const rootY = t * S * 0.38;
+            const midX = -S * (0.35 + Math.abs(t) * 0.05);
+            const midY = rootY * 1.15 + wave * S * 0.45;
+            const tipX = -S * (0.95 + Math.abs(t) * 0.2);
+            const tipY = rootY * 1.35 + Math.sin(phase * 1.4) * S * 0.4;
+            ctx.beginPath();
+            ctx.moveTo(S * 0.05, rootY - S * 0.04);
+            ctx.quadraticCurveTo(midX, midY - S * 0.05, tipX, tipY);
+            ctx.quadraticCurveTo(midX, midY + S * 0.05, S * 0.05, rootY + S * 0.04);
+            ctx.closePath();
+            ctx.fill();
+        }
+        ctx.beginPath();
+        ctx.ellipse(S * 0.28, 0, S * 0.42, S * 0.36, 0, 0, Math.PI * 2);
+        ctx.fill();
+        return;
+    }
+    if (kind === "lotus" || kind === "prism") {
+        const kick = p.kick || 0.4;
+        const neck = Math.min(1, p.neckReach || 0.2);
+        const L = S;
+        const W = L * 0.42;
+        for (const [along, side, f, scale] of [
+            [0.1, 1, kick, 1.0], [0.02, -1, 1 - kick, 1.0],
+            [-0.22, 1, 1 - kick, 0.78], [-0.22, -1, kick, 0.78],
+        ]) {
+            ctx.beginPath();
+            ctx.ellipse(
+                L * (along - f * 0.05),
+                side * W * (0.72 + f * 0.08),
+                L * (0.16 + f * 0.04) * scale,
+                W * 0.32 * scale,
+                side * (0.55 + f * 0.15),
+                0, Math.PI * 2
+            );
+            ctx.fill();
+        }
+        ctx.beginPath();
+        ctx.moveTo(L * 0.38, 0);
+        ctx.bezierCurveTo(L * 0.18, -W * 1.15, -L * 0.22, -W * 1.2, -L * 0.45, -W * 0.22);
+        ctx.quadraticCurveTo(-L * 0.52, 0, -L * 0.45, W * 0.22);
+        ctx.bezierCurveTo(-L * 0.22, W * 1.05, L * 0.18, W * 1.0, L * 0.38, 0);
+        ctx.closePath();
+        ctx.fill();
+        const neckLen = L * (0.08 + neck * 0.06);
+        const headX = L * 0.32 + neckLen;
+        ctx.beginPath();
+        ctx.ellipse(headX, 0, L * 0.1, W * 0.3, 0, 0, Math.PI * 2);
+        ctx.fill();
+        return;
+    }
+    if (kind === "ribbon") {
+        const L = S;
+        const W = L * 0.24;
+        const sailT = p.sailWave || p.tailPhase || 0;
+        const sailH = 2.15 + Math.sin(sailT) * 0.2;
+        const tw = Math.sin(sailT) * 0.15;
+        ctx.beginPath();
+        ctx.moveTo(L * 0.45, 0);
+        ctx.bezierCurveTo(L * 0.2, -W * 1.0, -L * 0.1, -W * 1.1, -L * 0.42, -W * 0.35);
+        ctx.bezierCurveTo(-L * 0.5, 0, -L * 0.42, W * 0.35, -L * 0.05, W * 0.85);
+        ctx.bezierCurveTo(L * 0.25, W * 0.65, L * 0.4, W * 0.25, L * 0.45, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(L * 0.32, -W * 0.12);
+        ctx.lineTo(L * 0.95, 0);
+        ctx.lineTo(L * 0.32, W * 0.12);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(-L * 0.12, -W * 0.45);
+        ctx.quadraticCurveTo(L * 0.08, -W * sailH, L * 0.32, -W * 0.4);
+        ctx.quadraticCurveTo(L * 0.1, -W * 0.95, -L * 0.12, -W * 0.45);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(-L * 0.36, 0);
+        ctx.quadraticCurveTo(-L * 0.55, -W * (0.85 + tw), -L * 0.82, -W * (0.7 + tw));
+        ctx.quadraticCurveTo(-L * 0.58, 0, -L * 0.82, W * (0.7 - tw));
+        ctx.quadraticCurveTo(-L * 0.55, W * (0.85 - tw), -L * 0.36, 0);
+        ctx.closePath();
+        ctx.fill();
+        return;
+    }
+    if (kind === "beluga" || kind === "singer") {
+        fillWhaleShadowPaths(ctx, S, S * (kind === "beluga" ? 0.36 : 0.3));
+        return;
+    }
+    // Nurse / shard (and fallback): torpedo + heterocercal caudal + dorsals + pecs.
+    {
+        const L = S;
+        const W = L * 0.36;
+        const limb = p.limbPhase || 0;
+        const tw = Math.sin(limb) * 0.25;
+        const pec = Math.sin(limb * 0.9) * 0.12;
+        const crystal = kind === "shard";
+        ctx.beginPath();
+        ctx.moveTo(-L * 0.4, 0);
+        ctx.bezierCurveTo(-L * 0.55, -W * 0.45, -L * 0.8, -W * (1.2 + tw), -L * 1.0, -W * (0.9 + tw));
+        ctx.quadraticCurveTo(-L * 0.7, -W * 0.15, -L * 0.55, 0);
+        ctx.quadraticCurveTo(-L * 0.7, W * 0.2, -L * 0.88, W * (0.6 + tw * 0.3));
+        ctx.bezierCurveTo(-L * 0.72, W * 0.35, -L * 0.52, W * 0.2, -L * 0.4, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(L * 0.35, 0);
+        ctx.bezierCurveTo(L * 0.15, -W * 0.95, -L * 0.1, -W * 1.05, -L * 0.4, -W * 0.4);
+        ctx.quadraticCurveTo(-L * 0.48, 0, -L * 0.4, W * 0.4);
+        ctx.bezierCurveTo(-L * 0.1, W * 1.0, L * 0.15, W * 0.9, L * 0.35, 0);
+        ctx.closePath();
+        ctx.fill();
+        if (crystal) {
+            ctx.beginPath();
+            ctx.moveTo(L * 0.28, -W * 0.35);
+            ctx.lineTo(L * 0.7, 0);
+            ctx.lineTo(L * 0.28, W * 0.35);
+            ctx.closePath();
+            ctx.fill();
+        } else {
+            ctx.beginPath();
+            ctx.ellipse(L * 0.42, W * 0.06, L * 0.28, W * 0.62, 0.08, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.beginPath();
+        ctx.moveTo(L * 0.05, -W * 0.7);
+        ctx.lineTo(-L * 0.02, -W * 1.45);
+        ctx.lineTo(-L * 0.18, -W * 0.65);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(-L * 0.22, -W * 0.5);
+        ctx.lineTo(-L * 0.28, -W * 0.95);
+        ctx.lineTo(-L * 0.38, -W * 0.45);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(L * 0.02, W * (0.9 + pec), L * 0.26, W * 0.55, 0.45, 0, Math.PI * 2);
+        ctx.ellipse(L * 0.02, -W * (0.75 + pec * 0.4), L * 0.18, W * 0.35, -0.35, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
 function drawSunCreatureShadows(ctx) {
     if (!lightCastsFloorShadows()) return;
     const p = floorShadowParams();
@@ -3435,25 +4411,49 @@ function drawSunCreatureShadows(ctx) {
     ctx.globalCompositeOperation = "multiply";
     ctx.globalAlpha = Math.min(1, p.contactMul + 0.04);
     for (const f of fishes) {
-        if (f.dead) continue;
+        if (!castsFloorShadow(f)) continue;
         const { L, W, shape } = fishShadowDims(f);
-        const scale = f.golden ? (1 - (f.sinkDepth || 0) * 0.35) : 1;
-        const yOff = f.golden ? (f.sinkDepth || 0) * 6 : 0;
-        const liftZ = f.pickerLiftZ || 0;
-        // Lifted fish: longer floor contact; keep day shadows readable but softer.
-        const alpha = f.golden ? 0.62 : (liftZ > 1 ? 0.55 : 0.78);
-        withFloorShadow(ctx, f.x, f.y + yOff, L, alpha, f.dir, (c) => {
-            c.scale(scale, scale);
-            fillFishShadowPaths(c, L, W, shape);
-        });
+        const pose = fishLiveSwimPose(f);
+        const scale = f.golden ? (1 - pose.sink * 0.35) : 1;
+        const yOff = f.golden ? pose.sink * 6 : 0;
+        const giantA = f._giantFlyAlpha != null ? f._giantFlyAlpha : 1;
+        const alpha = (f.golden ? 0.62 : (pose.liftZ > 1 ? 0.55 : 0.78)) * giantA;
+        // Match Fish.draw placement: thrash offset, bob, ribbon yaw, disc pulse.
+        withFloorShadow(
+            ctx,
+            f.x + pose.thrash * 3,
+            f.y + yOff + pose.bobY,
+            L,
+            alpha,
+            f.dir + pose.thrash * 0.45 + pose.ribbonYaw,
+            (c) => {
+                c.scale(scale * pose.discPulse, scale * (shape === "eel" ? 1 : pose.discPulse));
+                if (f.frogHybrid && !f.golden && !f.isRainbow) {
+                    fillFrogShadowPaths(c, { size: L * 0.95 });
+                    // Caudal wedge so the hybrid shadow matches the fish fin.
+                    c.beginPath();
+                    c.moveTo(-L * 0.4, 0);
+                    c.lineTo(-L * 1.05, -L * 0.22);
+                    c.lineTo(-L * 1.05, L * 0.22);
+                    c.closePath();
+                    c.fill();
+                } else {
+                    fillFishShadowPaths(c, L, W, shape, pose.wig, {
+                        noDorsal: pose.noDorsal,
+                        tail: pose.tail,
+                        type: f.type,
+                    });
+                }
+            }
+        );
     }
     for (const r of reptiles) {
-        if (r.dead) continue;
+        if (!castsFloorShadow(r)) continue;
         withFloorShadow(ctx, r.x, r.y, r.size, 0.76, r.dir, (c) => {
             fillReptileShadowPaths(c, r);
         });
     }
-    if (swordfish && !swordfish.dead) {
+    if (castsFloorShadow(swordfish)) {
         withFloorShadow(ctx, swordfish.x, swordfish.y, swordfish.size, 0.76, swordfish.dir, (c) => {
             const L = swordfish.size;
             const W = L * 0.32;
@@ -3468,66 +4468,48 @@ function drawSunCreatureShadows(ctx) {
             c.fill();
         });
     }
-    if (octopus && !octopus.dead) {
-        withFloorShadow(ctx, octopus.x, octopus.y, octopus.size * 1.35, 0.7, 0, (c) => {
+    if (castsFloorShadow(octopus)) {
+        withFloorShadow(ctx, octopus.x, octopus.y, octopus.size * 2.4, 0.7, 0, (c) => {
             fillOctopusShadowPaths(c, octopus);
         });
     }
-    if (crystalMantle && !crystalMantle.dead) {
-        withFloorShadow(ctx, crystalMantle.x, crystalMantle.y, crystalMantle.size * 1.35, 0.72, 0, (c) => {
+    if (castsFloorShadow(crystalMantle)) {
+        withFloorShadow(ctx, crystalMantle.x, crystalMantle.y, crystalMantle.size * 2.4, 0.72, 0, (c) => {
             fillOctopusShadowPaths(c, crystalMantle);
         });
     }
-    if (shark && !shark.dead) {
+    if (castsFloorShadow(shark)) {
         const L = shark.size;
         const W = shark.size * 0.38;
         withFloorShadow(ctx, shark.x, shark.y, L, 0.8, shark.dir, (c) => {
             fillSharkShadowPaths(c, L, W);
         });
     }
-    if (whale && !whale.dead) {
+    if (castsFloorShadow(whale)) {
         const L = whale.size;
         const W = whale.size * 0.3;
         withFloorShadow(ctx, whale.x, whale.y, L, 0.72, whale.dir, (c) => {
             fillWhaleShadowPaths(c, L, W);
         });
     }
-    if (crystalSerpent && !crystalSerpent.dead) {
+    if (castsFloorShadow(crystalSerpent)) {
         withFloorShadow(ctx, crystalSerpent.x, crystalSerpent.y, crystalSerpent.size, 0.74, crystalSerpent.dir, (c) => {
             c.beginPath();
             c.ellipse(0, 0, crystalSerpent.size * 0.48, crystalSerpent.size * 0.16, 0, 0, Math.PI * 2);
             c.fill();
         });
     }
-    for (const p of pacifistVisitors || []) {
-        if (!p || p.dead) continue;
-        withFloorShadow(ctx, p.x, p.y, p.size, 0.72, p.dir, (c) => {
-            if (p.kind === "ribbon") {
-                fillFishShadowPaths(c, p.size, p.size * 0.28, "arrow");
-            } else if (p.kind === "garden") {
-                c.beginPath();
-                c.ellipse(0, 0, p.size * 0.42, p.size * 0.34, 0, 0, Math.PI * 2);
-                c.fill();
-            } else if (p.kind === "lotus") {
-                c.beginPath();
-                c.ellipse(0, 0, p.size * 0.42, p.size * 0.4, 0, 0, Math.PI * 2);
-                c.fill();
-            } else if (p.kind === "axolotl") {
-                c.beginPath();
-                c.moveTo(p.size * 0.55, 0);
-                c.bezierCurveTo(p.size * 0.25, -p.size * 0.28, -p.size * 0.1, -p.size * 0.3, -p.size * 0.45, -p.size * 0.16);
-                c.quadraticCurveTo(-p.size * 0.75, -p.size * 0.2, -p.size * 0.95, 0);
-                c.quadraticCurveTo(-p.size * 0.75, p.size * 0.2, -p.size * 0.45, p.size * 0.16);
-                c.bezierCurveTo(-p.size * 0.1, p.size * 0.3, p.size * 0.25, p.size * 0.28, p.size * 0.55, 0);
-                c.closePath();
-                c.fill();
-            } else {
-                fillWhaleShadowPaths(c, p.size, p.size * 0.32);
-            }
+    for (const pv of pacifistVisitors || []) {
+        if (!castsFloorShadow(pv)) continue;
+        const sink = pv.golden ? (pv.sinkDepth || 0) : 0;
+        const yOff = pv.golden ? sink * 6 : 0;
+        const alpha = pv.golden ? 0.62 : 0.72;
+        withFloorShadow(ctx, pv.x, pv.y + yOff, pv.size * (pv.kind === "garden" || pv.kind === "lumen" ? 1.6 : 1), alpha, pv.dir, (c) => {
+            fillPacifistShadowPaths(c, pv);
         });
     }
     for (const g of biomeGuardians || []) {
-        if (!g || g.dead) continue;
+        if (!castsFloorShadow(g)) continue;
         withFloorShadow(ctx, g.x, g.y, g.size, 0.74, g.dir, (c) => {
             fillFishShadowPaths(c, g.size, g.size * 0.34, "oval");
         });
@@ -3536,35 +4518,51 @@ function drawSunCreatureShadows(ctx) {
         for (const g of frogGroups) {
             const frog = g.frog;
             if (!frog || frog.dead) continue;
-            withFloorShadow(ctx, frog.x, frog.y, frog.size, 0.7, frog.dir || 0, (c) => {
+            const fade = g.leaving ? 1 - clamp01(g.fade) : 1;
+            if (fade < 0.05) continue;
+            withFloorShadow(ctx, frog.x, frog.y, frog.size, 0.7 * fade, frog.dir || 0, (c) => {
                 fillFrogShadowPaths(c, frog);
             });
             for (const t of g.tadpoles || []) {
-                withFloorShadow(ctx, t.x, t.y, t.size || 6, 0.5, t.dir || 0, (c) => {
-                    const s = t.size || 6;
-                    c.beginPath();
-                    c.moveTo(s * 0.55, 0);
-                    c.bezierCurveTo(s * 0.25, -s * 0.35, -s * 0.1, -s * 0.32, -s * 0.45, -s * 0.18);
-                    c.quadraticCurveTo(-s * 0.85, -s * 0.28, -s * 1.05, 0);
-                    c.quadraticCurveTo(-s * 0.85, s * 0.28, -s * 0.45, s * 0.18);
-                    c.bezierCurveTo(-s * 0.1, s * 0.32, s * 0.25, s * 0.35, s * 0.55, 0);
-                    c.closePath();
-                    c.fill();
+                withFloorShadow(ctx, t.x, t.y, t.size || 6, 0.5 * fade, t.dir || 0, (c) => {
+                    fillTadpoleShadowPaths(c, t);
                 });
             }
         }
-        for (const t of hungryTadpoles) {
-            withFloorShadow(ctx, t.x, t.y, t.size || 6, 0.5, t.dir || 0, (c) => {
-                const s = t.size || 6;
-                c.beginPath();
-                c.moveTo(s * 0.55, 0);
-                c.bezierCurveTo(s * 0.25, -s * 0.35, -s * 0.1, -s * 0.32, -s * 0.45, -s * 0.18);
-                c.quadraticCurveTo(-s * 0.85, -s * 0.28, -s * 1.05, 0);
-                c.quadraticCurveTo(-s * 0.85, s * 0.28, -s * 0.45, s * 0.18);
-                c.bezierCurveTo(-s * 0.1, s * 0.32, s * 0.25, s * 0.35, s * 0.55, 0);
-                c.closePath();
-                c.fill();
+    }
+    for (const t of hungryTadpoles) {
+        if (!t) continue;
+        withFloorShadow(ctx, t.x, t.y, t.size || 6, 0.5, t.dir || 0, (c) => {
+            fillTadpoleShadowPaths(c, t);
+        });
+    }
+    if (frogFinale && frogFinale.frog && !frogFinale.frog.dead) {
+        const fa = frogFinale.alpha == null ? 1 : frogFinale.alpha;
+        if (fa > 0.05) {
+            withFloorShadow(ctx, frogFinale.frog.x, frogFinale.frog.y, frogFinale.frog.size, 0.7 * fa, frogFinale.frog.dir || 0, (c) => {
+                fillFrogShadowPaths(c, frogFinale.frog);
             });
+        }
+    }
+    if (bullfrog && !bullfrog.dead && !bullfrogFinale) {
+        withFloorShadow(ctx, bullfrog.x, bullfrog.y, bullfrog.size * 1.35, 0.72, bullfrog.dir || 0, (c) => {
+            fillBullfrogShadowPaths(c, bullfrog);
+        });
+    }
+    if (bullfrogFinale) {
+        const e = bullfrogFinale;
+        if (e.kind === "defeat" && e.frog && !e.frog.dead) {
+            withFloorShadow(ctx, e.frog.x, e.frog.y, e.frog.size, 0.7, e.frog.dir || 0, (c) => {
+                fillFrogShadowPaths(c, e.frog);
+            });
+        }
+        if (e.bullfrog && !e.bullfrog.dead) {
+            const ba = e.alpha == null ? 1 : e.alpha;
+            if (ba > 0.05) {
+                withFloorShadow(ctx, e.bullfrog.x, e.bullfrog.y, e.bullfrog.size * 1.35, 0.72 * ba, e.bullfrog.dir || 0, (c) => {
+                    fillBullfrogShadowPaths(c, e.bullfrog);
+                });
+            }
         }
     }
     // Floating food: each pellet keeps its own round cast.
@@ -3777,13 +4775,21 @@ function makeObstacleDetail(i, n, scale) {
 function rebuildObstacles() {
     const next = [];
     const pad = Math.min(viewW, viewH) * 0.12;
-    // Shore and lake clutter: weathered wood, stone, and a few human remnants.
-    const kinds = [
-        "boulder", "log", "log", "stump", "plank", "driftwood",
+    // One of each debris kind so the elements registry can complete, then a few extras.
+    const unique = [
+        "boulder", "log", "stump", "plank", "driftwood",
         "mossrock", "pot", "reedraft", "crate", "barrel",
     ];
-    for (let i = 0; i < 13; i++) {
-        const kind = kinds[Math.floor(seeded(i + 700) * kinds.length)];
+    const kinds = unique.slice();
+    for (let i = kinds.length - 1; i > 0; i--) {
+        const j = Math.floor(seeded(i + 690) * (i + 1));
+        const tmp = kinds[i];
+        kinds[i] = kinds[j];
+        kinds[j] = tmp;
+    }
+    kinds.push("log", "log", "stump");
+    for (let i = 0; i < kinds.length; i++) {
+        const kind = kinds[i];
         const x = pad + seeded(i + 710) * (viewW - pad * 2);
         const y = pad + seeded(i + 720) * (viewH - pad * 2);
         const base = {
@@ -4227,16 +5233,31 @@ function drawCattails(ctx, t, dt) {
             ctx.fill();
         } else {
             const g = Math.floor(65 + c.green * 85);
-            ctx.strokeStyle = `rgba(${35 + g * 0.15},${g},${50 + g * 0.1},0.78)`;
-            ctx.lineWidth = 2.2;
+            ctx.strokeStyle = `rgba(${35 + g * 0.15},${g},${50 + g * 0.1},0.82)`;
+            ctx.lineWidth = 2.3;
             ctx.lineCap = "round";
             ctx.beginPath();
             ctx.moveTo(0, 0);
             ctx.quadraticCurveTo(5 + sway * 12, -c.h * 0.5, sway * 14, -c.h);
             ctx.stroke();
-            ctx.fillStyle = "rgba(105,75,38,0.82)";
+            ctx.strokeStyle = `rgba(${30 + g * 0.12},${g - 14},${45 + g * 0.1},0.5)`;
+            ctx.lineWidth = 1.2;
             ctx.beginPath();
-            ctx.ellipse(sway * 14, -c.h * 0.82, 3.8, 11, sway, 0, Math.PI * 2);
+            ctx.moveTo(0.7, 0);
+            ctx.quadraticCurveTo(5.7 + sway * 12, -c.h * 0.5, sway * 14 + 0.7, -c.h);
+            ctx.stroke();
+            const headY = -c.h * 0.82;
+            const headGrad = ctx.createLinearGradient(sway * 14, headY - 11, sway * 14, headY + 11);
+            headGrad.addColorStop(0, "rgba(130,95,48,0.88)");
+            headGrad.addColorStop(0.5, "rgba(105,75,38,0.9)");
+            headGrad.addColorStop(1, "rgba(85,58,28,0.88)");
+            ctx.fillStyle = headGrad;
+            ctx.beginPath();
+            ctx.ellipse(sway * 14, headY, 3.9, 11.5, sway, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "rgba(180,150,90,0.35)";
+            ctx.beginPath();
+            ctx.ellipse(sway * 14 - 1.2, headY - 4, 1.4, 3.2, sway, 0, Math.PI * 2);
             ctx.fill();
         }
         ctx.restore();
@@ -4279,8 +5300,18 @@ function drawDuckweed(ctx, t, dt) {
                 ctx.ellipse(0, 0, rr * 0.22, rr * 0.14, 0, 0, Math.PI * 2);
                 ctx.fill();
             } else {
-                ctx.fillStyle = i % 2 ? "rgba(90,140,70,0.78)" : "rgba(60,110,55,0.72)";
-                pathOrganicOval(ctx, rr * 0.55, rr * 0.38, 7, null, 0.22);
+                ctx.fillStyle = i % 2 ? "rgba(90,140,70,0.82)" : "rgba(60,110,55,0.76)";
+                pathOrganicOval(ctx, rr * 0.55, rr * 0.38, 9, null, 0.18);
+                ctx.fill();
+                ctx.strokeStyle = i % 2 ? "rgba(40,80,38,0.35)" : "rgba(32,68,30,0.32)";
+                ctx.lineWidth = 0.55;
+                ctx.beginPath();
+                ctx.moveTo(-rr * 0.08, 0);
+                ctx.lineTo(rr * 0.22, 0);
+                ctx.stroke();
+                ctx.fillStyle = "rgba(120,170,90,0.28)";
+                ctx.beginPath();
+                ctx.ellipse(-rr * 0.08, -rr * 0.04, rr * 0.18, rr * 0.1, 0.2, 0, Math.PI * 2);
                 ctx.fill();
             }
             ctx.restore();
@@ -4305,12 +5336,7 @@ function drawLeaves(ctx, t, dt) {
             g.addColorStop(0.5, "rgba(210,190,255,0.85)");
             g.addColorStop(1, "rgba(90,170,220,0.7)");
             ctx.fillStyle = g;
-            ctx.beginPath();
-            ctx.moveTo(-L.len * 0.7, 0);
-            ctx.lineTo(0, -L.len * 0.45);
-            ctx.lineTo(L.len * 0.75, 0);
-            ctx.lineTo(0, L.len * 0.4);
-            ctx.closePath();
+            pathFloatingLeafOutline(ctx, L);
             ctx.fill();
             ctx.strokeStyle = "rgba(240,230,255,0.4)";
             ctx.lineWidth = 0.8;
@@ -4318,12 +5344,7 @@ function drawLeaves(ctx, t, dt) {
         } else if (nightMode) {
             const c = Math.floor(70 + L.tone * 60);
             ctx.fillStyle = `rgba(${c * 0.7},${c * 0.85},${c + 20},0.78)`;
-            ctx.beginPath();
-            ctx.moveTo(-L.len * 0.85, 0);
-            ctx.quadraticCurveTo(-L.len * 0.2, -L.len * 0.55, L.len * 0.75, -L.len * 0.08);
-            ctx.quadraticCurveTo(L.len * 0.95, 0, L.len * 0.75, L.len * 0.1);
-            ctx.quadraticCurveTo(-L.len * 0.15, L.len * 0.5, -L.len * 0.85, 0);
-            ctx.closePath();
+            pathFloatingLeafOutline(ctx, L);
             ctx.fill();
             ctx.strokeStyle = `rgba(${c - 20},${c},${c + 30},0.4)`;
             ctx.lineWidth = 0.8;
@@ -4333,22 +5354,25 @@ function drawLeaves(ctx, t, dt) {
             ctx.stroke();
         } else {
             const c = Math.floor(90 + L.tone * 70);
-            ctx.fillStyle = `rgba(${c},${Math.floor(c * 0.7)},${Math.floor(c * 0.25)},0.8)`;
-            ctx.beginPath();
-            ctx.moveTo(-L.len * 0.85, 0);
-            ctx.quadraticCurveTo(-L.len * 0.2, -L.len * 0.55, L.len * 0.75, -L.len * 0.08);
-            ctx.quadraticCurveTo(L.len * 0.95, 0, L.len * 0.75, L.len * 0.1);
-            ctx.quadraticCurveTo(-L.len * 0.15, L.len * 0.5, -L.len * 0.85, 0);
-            ctx.closePath();
+            const lg = ctx.createLinearGradient(-L.len, 0, L.len, 0);
+            lg.addColorStop(0, `rgba(${c - 18},${Math.floor(c * 0.62)},${Math.floor(c * 0.2)},0.82)`);
+            lg.addColorStop(0.45, `rgba(${c},${Math.floor(c * 0.72)},${Math.floor(c * 0.28)},0.88)`);
+            lg.addColorStop(1, `rgba(${c - 22},${Math.floor(c * 0.58)},${Math.floor(c * 0.18)},0.8)`);
+            ctx.fillStyle = lg;
+            pathFloatingLeafOutline(ctx, L);
             ctx.fill();
-            ctx.strokeStyle = `rgba(${c - 30},${Math.floor(c * 0.5)},20,0.5)`;
-            ctx.lineWidth = 0.8;
+            ctx.strokeStyle = `rgba(${c - 30},${Math.floor(c * 0.5)},20,0.48)`;
+            ctx.lineWidth = 0.85;
             ctx.beginPath();
-            ctx.moveTo(-L.len * 0.7, 0);
-            ctx.quadraticCurveTo(0, L.len * 0.04, L.len * 0.7, 0);
+            ctx.moveTo(-L.len * 0.72, 0);
+            ctx.quadraticCurveTo(0, L.len * 0.035, L.len * 0.72, 0);
             ctx.moveTo(-L.len * 0.15, -L.len * 0.15);
             ctx.quadraticCurveTo(L.len * 0.1, 0, L.len * 0.35, L.len * 0.12);
             ctx.stroke();
+            ctx.fillStyle = "rgba(200,220,140,0.2)";
+            ctx.beginPath();
+            ctx.ellipse(-L.len * 0.15, -L.len * 0.06, L.len * 0.22, L.len * 0.08, 0.15, 0, Math.PI * 2);
+            ctx.fill();
         }
         ctx.restore();
     }
@@ -4364,6 +5388,9 @@ let frogGroups = [];
 let frogCheckTimer = 0;
 let hungryTadpoles = []; // post-finale tadpoles that eat food and become frogs
 let frogFinale = null; // { frog, group, t, burst }
+let bullfrog = null; // rare large frog that hunts pond frogs and tadpoles
+let bullfrogCheckTimer = 0;
+let bullfrogFinale = null; // { kind: "feast"|"defeat", t, clock, wall0, ... }
 
 function easeInOutCubic(t) {
     const x = clamp01(t);
@@ -4410,6 +5437,9 @@ function spawnFrogGroup() {
         biteTimer: 0,
         prey: null,
         dead: false,
+        isPondFrog: true,
+        isPink: false,       // breed blush from pink pellets (befriended frogs only)
+        breedCooldown: 0,
     };
     const tadpoles = [];
     for (let i = 0; i < 6; i++) {
@@ -4491,21 +5521,85 @@ function befriendFrog(frog) {
     spawnSplash(frog.x, frog.y, frog.size * 0.35, 0.4);
 }
 
+function frogToneBodyHex(tone) {
+    const t = tone == null ? 0.5 : tone;
+    const r = 50 + Math.floor(t * 30);
+    const g = 105 + Math.floor(t * 50);
+    const b = 70 + Math.floor(t * 30);
+    return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
+
+function frogToneBellyHex(tone) {
+    const t = tone == null ? 0.5 : tone;
+    const r = 130 + Math.floor(t * 35);
+    const g = 155 + Math.floor(t * 28);
+    const b = 100 + Math.floor(t * 20);
+    return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
+
+function isPondFrog(ent) {
+    return !!(ent && ent.isPondFrog);
+}
+
+function canBreedFrog(frog) {
+    return !!(frog && frog.isPondFrog && frog.befriended && frog.isPink
+        && !frog.dead
+        && (frog.breedCooldown || 0) <= 0
+        && !(frogFinale && frogFinale.frog === frog));
+}
+
+function frogTurnPink(frog) {
+    if (!frog || frog.dead || !frog.befriended) return false;
+    frog.isPink = true;
+    if (frog.breedCooldown == null) frog.breedCooldown = 0;
+    const pan = Math.max(-1, Math.min(1, (frog.x / viewW) * 2 - 1));
+    Audio.fishNote({
+        freq: 340,
+        wave: "sine",
+        pan,
+        dur: 0.45,
+        level: 0.1,
+        partialAmt: 0.28,
+        bright: 1.2,
+    });
+    water.disturb(frog.x, frog.y, frog.size * 0.55, 140);
+    spawnSplash(frog.x, frog.y, frog.size * 0.26, 0.35);
+    return true;
+}
+
+function findPinkFishMateForFrog(frog) {
+    if (!canBreedFrog(frog)) return null;
+    let best = null;
+    let bd = Infinity;
+    for (const f of fishes) {
+        if (!canBreedFish(f)) continue;
+        const d = Math.hypot(f.x - frog.x, f.y - frog.y);
+        if (d < bd) { bd = d; best = f; }
+    }
+    return best;
+}
+
 function frogBiteFood(frog) {
     const food = frog.foodTarget;
     if (!food || food.eaten) return;
     const pan = Math.max(-1, Math.min(1, (frog.x / viewW) * 2 - 1));
     food.eaten = true;
     frog.foodTarget = null;
+    // Pink breed pellets blush befriended frogs the same way they blush fish.
+    if (food.pink) {
+        frogTurnPink(frog);
+        frog.biteTimer = 0.28;
+        return;
+    }
     let growAmt = 4 + food.size * 0.08;
     if (food.grower) growAmt = CONFIG.growerBoost * 0.85;
     else if (food.carcass) growAmt = 16;
-    else if (food.golden || food.rainbow) growAmt = 10;
-    else if (food.pink) growAmt = 6;
+    else if (food.golden || food.rainbow || food.platinum || food.hero) growAmt = 10;
+    else if (food.green) growAmt = 6;
     frog.size = Math.min(CONFIG.sharkSize * 1.35, frog.size + growAmt);
     frog.speed = Math.min(70, (frog.speed || 30) + 1.5);
     Audio.fishNote({
-        freq: food.rainbow ? 420 : food.golden ? 380 : 250,
+        freq: food.rainbow ? 420 : food.golden || food.platinum ? 380 : food.hero ? 300 : 250,
         wave: "sine",
         pan,
         dur: 0.4,
@@ -4514,7 +5608,7 @@ function frogBiteFood(frog) {
         bright: 1.1,
     });
     if (food.rainbow && Audio.rainbowChime) Audio.rainbowChime(pan);
-    if (food.golden && Audio.goldChime) Audio.goldChime(pan);
+    if ((food.golden || food.platinum) && Audio.goldChime) Audio.goldChime(pan);
     water.disturb(frog.x, frog.y, frog.size * 0.55, 150);
     spawnSplash(frog.x, frog.y, frog.size * 0.28, 0.35);
     frog.biteTimer = 0.28;
@@ -4525,7 +5619,19 @@ function frogTryFood(frog, dt) {
     if (!frog.befriended || frog.dead) return null;
     const range = CONFIG.perception * 1.4;
     if (!frog.foodTarget || frog.foodTarget.eaten) {
-        frog.foodTarget = nearestFood(frog.x, frog.y, range);
+        // Prefer pink breed pellets when the frog is not already blushed.
+        if (!frog.isPink) {
+            let bestPink = null;
+            let bestD = range;
+            for (const f of foods) {
+                if (f.eaten || !f.pink || f.sinkProgress > 0.7) continue;
+                const d = Math.hypot(frog.x - f.x, frog.y - f.y);
+                if (d < bestD) { bestD = d; bestPink = f; }
+            }
+            frog.foodTarget = bestPink || nearestFood(frog.x, frog.y, range);
+        } else {
+            frog.foodTarget = nearestFood(frog.x, frog.y, range);
+        }
     }
     if (!frog.foodTarget) return null;
     frog.biteTimer -= dt;
@@ -4538,7 +5644,13 @@ function frogTryFood(frog, dt) {
 }
 
 function frogFindPrey(frog) {
-    if (!frog.befriended || frog.size < CONFIG.sharkSize * 0.85) return null;
+    if (!frog.befriended) return null;
+    // Large frogs can turn the tables on a bullfrog that outgrew the school.
+    if (bullfrog && !bullfrog.dead && !bullfrogFinale
+        && frog.size > bullfrog.size * 1.02) {
+        return { kind: "bullfrog", x: bullfrog.x, y: bullfrog.y, size: bullfrog.size };
+    }
+    if (frog.size < CONFIG.sharkSize * 0.85) return null;
     // Large hero frogs hunt apex threats the way hero fish do.
     if (shark && !shark.dead && !shark.leaving && frog.size > shark.size) {
         return { kind: "shark", x: shark.x, y: shark.y, size: shark.size };
@@ -4555,6 +5667,18 @@ function frogFindPrey(frog) {
 
 function frogEatPrey(frog, prey) {
     if (!prey) return;
+    if (prey.kind === "bullfrog" && bullfrog && !bullfrog.dead) {
+        const meal = bullfrog.size;
+        const eaten = bullfrog;
+        bullfrog.dead = true;
+        Audio.predatorEat(0);
+        frog.size = Math.min(CONFIG.sharkSize * 1.4, frog.size + meal * 0.22);
+        water.disturb(frog.x, frog.y, frog.size, 420);
+        spawnSplash(frog.x, frog.y, 24, 0.85);
+        beginBullfrogFinale("defeat", eaten, frog);
+        bullfrog = null;
+        return;
+    }
     if (prey.kind === "shark" && shark && !shark.dead) {
         const wasOrca = !!shark.isOrca;
         shark.dead = true;
@@ -4685,6 +5809,532 @@ function updateFrogFinale(dt) {
     if (t >= 4.6 || finaleOvertime(e)) frogFinale = null;
 }
 
+// ---------------------------------------------------------------------------
+// Bullfrog: rare oversized frog that hunts frogs and tadpoles.
+// Oversized befriended frogs can eat it. Feast / defeat share one ending object.
+// ---------------------------------------------------------------------------
+function spawnBullfrog() {
+    if (bullfrog || bullfrogFinale || pondFinaleActive()) return null;
+    if (!scenery.frogs) return null;
+    const fromLeft = Math.random() < 0.5;
+    const b = {
+        x: fromLeft ? -40 : viewW + 40,
+        y: viewH * (0.58 + Math.random() * 0.22),
+        size: 28 + Math.random() * 8,
+        dir: fromLeft ? 0 : Math.PI,
+        tone: 0.35 + Math.random() * 0.4,
+        kick: 0,
+        speed: 26 + Math.random() * 10,
+        breath: Math.random() * Math.PI * 2,
+        blink: 0,
+        nextBlink: 1.2 + Math.random() * 2.5,
+        pitch: 0,
+        bobPhase: Math.random() * Math.PI * 2,
+        age: 0,
+        pouch: 0.15,
+        meals: 0,
+        prey: null,
+        tongueT: 0,
+        biteTimer: 0,
+        dead: false,
+        isBullfrog: true,
+    };
+    bullfrog = b;
+    water.disturb(Math.max(20, Math.min(viewW - 20, b.x)), b.y, b.size * 0.5, 120);
+    spawnSplash(Math.max(20, Math.min(viewW - 20, b.x)), b.y, 12, 0.4);
+    return b;
+}
+
+function bullfrogFindPrey(b) {
+    let best = null;
+    let bestD = CONFIG.perception * 1.8;
+    for (const g of frogGroups) {
+        const frog = g.frog;
+        if (!frog || frog.dead) continue;
+        if (frog.size >= b.size * 0.98) continue; // size gate: only eat smaller frogs
+        const d = Math.hypot(frog.x - b.x, frog.y - b.y);
+        if (d < bestD) {
+            bestD = d;
+            best = { kind: "frog", ref: frog, group: g, x: frog.x, y: frog.y, size: frog.size };
+        }
+        for (const t of g.tadpoles || []) {
+            const td = Math.hypot(t.x - b.x, t.y - b.y);
+            if (td < bestD) {
+                bestD = td;
+                best = { kind: "tadpole", ref: t, group: g, x: t.x, y: t.y, size: t.size };
+            }
+        }
+    }
+    for (const t of hungryTadpoles) {
+        const td = Math.hypot(t.x - b.x, t.y - b.y);
+        if (td < bestD) {
+            bestD = td;
+            best = { kind: "hungry", ref: t, x: t.x, y: t.y, size: t.size };
+        }
+    }
+    return best;
+}
+
+function bullfrogEatPrey(b, prey) {
+    if (!b || !prey || b.dead) return;
+    const pan = Math.max(-1, Math.min(1, (b.x / viewW) * 2 - 1));
+    if (prey.kind === "frog" && prey.ref && !prey.ref.dead) {
+        prey.ref.dead = true;
+        for (let i = frogGroups.length - 1; i >= 0; i--) {
+            if (frogGroups[i].frog === prey.ref) {
+                // Escort tadpoles scatter as free hungry tadpoles briefly, then get hunted.
+                for (const t of frogGroups[i].tadpoles || []) {
+                    hungryTadpoles.push({
+                        x: t.x, y: t.y, dir: Math.random() * Math.PI * 2,
+                        size: t.size, phase: t.phase || 0, tone: t.tone || 0.4,
+                        speed: 40 + Math.random() * 20, foodTarget: null, biteTimer: 0.2,
+                        hungry: true, vx: (Math.random() - 0.5) * 40, vy: (Math.random() - 0.5) * 30,
+                        sprayT: 0.35,
+                    });
+                }
+                frogGroups.splice(i, 1);
+            }
+        }
+        b.size = Math.min(CONFIG.sharkSize * 1.15, b.size + prey.size * 0.45);
+        b.meals += 1;
+        Audio.predatorEat(pan);
+    } else if (prey.kind === "tadpole" && prey.group && prey.ref) {
+        const list = prey.group.tadpoles;
+        const idx = list.indexOf(prey.ref);
+        if (idx >= 0) list.splice(idx, 1);
+        b.size = Math.min(CONFIG.sharkSize * 1.15, b.size + 2.2);
+        b.meals += 0.35;
+        Audio.fishNote({
+            freq: 180, wave: "triangle", pan, dur: 0.28, level: 0.08, partialAmt: 0.15, bright: 0.7,
+        });
+    } else if (prey.kind === "hungry" && prey.ref) {
+        const idx = hungryTadpoles.indexOf(prey.ref);
+        if (idx >= 0) hungryTadpoles.splice(idx, 1);
+        b.size = Math.min(CONFIG.sharkSize * 1.15, b.size + 2.4);
+        b.meals += 0.4;
+        Audio.fishNote({
+            freq: 170, wave: "triangle", pan, dur: 0.28, level: 0.08, partialAmt: 0.15, bright: 0.7,
+        });
+    } else {
+        return;
+    }
+    b.tongueT = 0.28;
+    b.pouch = Math.min(1, b.pouch + 0.2);
+    b.biteTimer = 0.35;
+    water.disturb(b.x, b.y, b.size * 0.7, 220);
+    spawnSplash(b.x, b.y, b.size * 0.35, 0.55);
+    if (b.meals >= CONFIG.bullfrogMealsForFinale || b.size >= CONFIG.sharkSize * 0.92) {
+        beginBullfrogFinale("feast", b, null);
+    }
+}
+
+function beginBullfrogFinale(kind, b, victorFrog) {
+    if (bullfrogFinale) return;
+    // Defeat can interrupt quieter pond life; feast needs no other hard finale.
+    if (kind === "feast" && pondFinaleActive()) return;
+    if (kind === "defeat" && (frogFinale || povAttack || giantEnding || heroRemorseEnding
+        || orcaFeastEnding || swordfishSpearEnding || rainbowNinjaEnding
+        || octopusWhaleFight || crystalApexEnding || apexDuel)) {
+        return;
+    }
+    const body = b || bullfrog;
+    if (!body && kind === "feast") return;
+    const actor = body ? {
+        x: body.x, y: body.y, size: body.size, dir: body.dir || 0,
+        tone: body.tone, kick: body.kick || 0, breath: body.breath || 0,
+        pouch: body.pouch || 0.4, blink: 0, pitch: body.pitch || 0,
+        bobPhase: body.bobPhase || 0, age: body.age || 0, tongueT: 0,
+        dead: false, isBullfrog: true,
+    } : null;
+    if (kind === "feast" && bullfrog) bullfrog.dead = true;
+    bullfrogFinale = {
+        kind: kind === "defeat" ? "defeat" : "feast",
+        t: 0,
+        clock: 0,
+        wall0: performance.now(),
+        bullfrog: actor,
+        frog: victorFrog || null,
+        wash: 0,
+        wake: [],
+        alpha: 1,
+        burst: false,
+        contactHit: false,
+        _bfStartSize: actor ? actor.size : 28,
+        orbitAng: actor
+            ? Math.atan2(actor.y - viewH * 0.5, actor.x - viewW * 0.5)
+            : 0,
+        orbitRad: actor
+            ? Math.max(40, Math.hypot(actor.x - viewW * 0.5, actor.y - viewH * 0.5))
+            : 80,
+    };
+    if (kind === "feast") bullfrog = null;
+    const pan = actor ? Math.max(-1, Math.min(1, (actor.x / viewW) * 2 - 1)) : 0;
+    Audio.predatorEat(pan);
+    if (Audio.goldChime) Audio.goldChime(pan * 0.5);
+}
+
+function finishBullfrogFinale() {
+    if (!bullfrogFinale) return;
+    const e = bullfrogFinale;
+    if (!e.burst && e.kind === "feast" && e.bullfrog) {
+        // Force the finish path on overtime so softlocks cannot stick.
+        explodeBullfrogFeast(e.bullfrog);
+    } else if (!e.burst && e.kind === "defeat" && e.bullfrog) {
+        releaseBullfrogDefeatTadpoles(e.bullfrog);
+    }
+    bullfrogFinale = null;
+    if (bullfrog && bullfrog.dead) bullfrog = null;
+}
+
+function explodeBullfrogFeast(b) {
+    if (!b) return;
+    const cx = b.x;
+    const cy = b.y;
+    for (let i = 0; i < 5; i++) {
+        const ang = (i / 5) * Math.PI * 2 + Math.random() * 0.3;
+        const rad = 12 + Math.random() * 28;
+        foods.push(new Food(
+            cx + Math.cos(ang) * rad,
+            cy + Math.sin(ang) * rad,
+            10 + Math.random() * 8,
+            { carcass: true }
+        ));
+    }
+    water.disturb(cx, cy, 110, 640);
+    spawnSplash(cx, cy, 40, 1);
+    if (Audio.sharkStrike) Audio.sharkStrike(0);
+    b.dead = true;
+}
+
+function releaseBullfrogDefeatTadpoles(b) {
+    if (!b) return;
+    const n = 8;
+    for (let i = 0; i < n; i++) {
+        const ang = (i / n) * Math.PI * 2 + Math.random() * 0.2;
+        const spd = 55 + Math.random() * 40;
+        hungryTadpoles.push({
+            x: b.x + Math.cos(ang) * 10,
+            y: b.y + Math.sin(ang) * 8,
+            dir: ang,
+            size: 5 + Math.random() * 2.2,
+            phase: Math.random() * Math.PI * 2,
+            tone: 0.2 + Math.random() * 0.5,
+            speed: 50 + Math.random() * 20,
+            foodTarget: null,
+            biteTimer: 0.1,
+            hungry: true,
+            vx: Math.cos(ang) * spd,
+            vy: Math.sin(ang) * spd,
+            sprayT: 0.5 + Math.random() * 0.3,
+        });
+    }
+    water.disturb(b.x, b.y, 90, 480);
+    spawnSplash(b.x, b.y, 28, 0.9);
+    if (Audio.rainbowChime) Audio.rainbowChime(0);
+    b.dead = true;
+}
+
+function updateBullfrogFinale(dt) {
+    if (!bullfrogFinale) return;
+    const e = bullfrogFinale;
+    e.t += dt;
+    tickFinaleClock(e, dt);
+    const b = e.bullfrog;
+    const cx = viewW * 0.5;
+    const cy = viewH * 0.5;
+    const ease = (rate) => finaleEase(rate, dt);
+    const t = e.t;
+
+    if (e.kind === "feast" && b && !b.dead && !e.burst) {
+        softSizeToward(b, CONFIG.sharkSize * 1.05, dt, 1.35);
+        e.orbitAng += dt * (0.7 + Math.min(0.9, t * 0.22));
+        e.orbitRad += (22 - e.orbitRad) * ease(0.85);
+        const tx = cx + Math.cos(e.orbitAng) * e.orbitRad;
+        const ty = cy + Math.sin(e.orbitAng) * e.orbitRad * 0.65;
+        easeToward(b, tx, ty, dt, 40 + Math.min(32, t * 12), 1.0);
+        bankToward(b, e.orbitAng + Math.PI * 0.5, dt, 1.2);
+        b.kick = 0.3 + 0.45 * Math.abs(Math.sin(t * 3.8));
+        b.pouch = 0.35 + 0.55 * (0.5 + 0.5 * Math.sin(t * 2.4));
+        b.breath += dt * 2.0;
+        b.age += dt;
+        e.wash += ((t < 3.2 ? Math.min(0.62, t * 0.2) : 0.75) - e.wash) * ease(1.8);
+        if (Math.random() < 0.16) {
+            water.disturb(b.x, b.y, b.size * 0.45, 60);
+            pushFinaleWake(e.wake, b.x, b.y, 1, { ang: b.dir + Math.PI, hue: 90, warm: true, spd: 22 });
+        }
+        if (t > 3.4) e.alpha = Math.max(0.12, 1 - (t - 3.4) / 0.85);
+        if (t >= 4.2 && !e.burst) {
+            e.burst = true;
+            explodeBullfrogFeast(b);
+            pushFinaleWake(e.wake, cx, cy, 16, { hue: 85, spd: 70, warm: true, lift: 10 });
+        }
+    } else if (e.kind === "defeat") {
+        const frog = e.frog;
+        if (b && !e.burst) {
+            easeToward(b, cx, cy, dt, 42, 0.9);
+            softSizeToward(b, Math.max(10, e._bfStartSize * Math.max(0.35, 1 - t * 0.22)), dt, 1.6);
+            b.kick = 0.15 + 0.25 * Math.abs(Math.sin(t * 6.5));
+            b.pouch = Math.max(0.05, b.pouch - dt * 0.35);
+            b.dir += dt * 2.4;
+            e.alpha = Math.max(0.08, 1 - t / 3.2);
+            e.wash += (0.45 - e.wash) * ease(1.5);
+        }
+        if (frog && !frog.dead) {
+            // Drive the victor into the bullfrog before the burst (no empty orbit).
+            const tx = b && !e.burst ? b.x : cx;
+            const ty = b && !e.burst ? b.y : cy;
+            easeToward(frog, tx, ty, dt, 58 + Math.min(40, t * 20), 1.35);
+            bankToward(frog, Math.atan2(ty - frog.y, tx - frog.x), dt, 1.6);
+            frog.kick = 0.4 + 0.4 * Math.abs(Math.sin(t * 5));
+            frog.petTimer = Math.max(frog.petTimer || 0, 1.1);
+            if (b && !e.burst && !e.contactHit
+                && Math.hypot(frog.x - b.x, frog.y - b.y) < frog.size * 0.55 + b.size * 0.45) {
+                e.contactHit = true;
+                spawnSplash((frog.x + b.x) * 0.5, (frog.y + b.y) * 0.5, 16, 0.7);
+                water.disturb(b.x, b.y, b.size * 0.7, 200);
+                if (Audio.predatorEat) Audio.predatorEat(0);
+            }
+        }
+        if (b && !e.burst && (t >= 2.35 || (e.contactHit && t >= 1.4))) {
+            e.burst = true;
+            releaseBullfrogDefeatTadpoles(b);
+        }
+    }
+    updateFinaleWake(e.wake, dt, 18);
+    if (t >= 5.4 || finaleOvertime(e)) finishBullfrogFinale();
+}
+
+function updateBullfrog(dt) {
+    updateBullfrogFinale(dt);
+    if (!bullfrog || bullfrog.dead) {
+        if (bullfrog && bullfrog.dead) bullfrog = null;
+        return;
+    }
+    if (bullfrogFinale) return;
+    const b = bullfrog;
+    const padX = viewW * 0.06;
+    const yMin = viewH * 0.45;
+    const yMax = viewH * 0.9;
+    b.age += dt;
+    b.breath += dt * 1.6;
+    b.bobPhase += dt * 0.95;
+    b.biteTimer = Math.max(0, b.biteTimer - dt);
+    b.tongueT = Math.max(0, b.tongueT - dt);
+    b.pouch += ((0.12 + Math.min(0.35, b.meals * 0.04)) - b.pouch) * Math.min(1, 1.5 * dt);
+    b.nextBlink -= dt;
+    if (b.nextBlink <= 0) {
+        b.blink = 0.12;
+        b.nextBlink = 1.8 + Math.random() * 3;
+    }
+    if (b.blink > 0) b.blink = Math.max(0, b.blink - dt);
+
+    // Flee oversized befriended frogs instead of softlocking a chase.
+    let flee = null;
+    for (const g of frogGroups) {
+        const frog = g.frog;
+        if (!frog || frog.dead || !frog.befriended) continue;
+        if (frog.size > b.size * 1.02) {
+            const d = Math.hypot(frog.x - b.x, frog.y - b.y);
+            if (d < CONFIG.perception * 1.5) {
+                flee = frog;
+                break;
+            }
+        }
+    }
+
+    let desired = b.dir;
+    let spd = b.speed;
+    if (flee) {
+        desired = Math.atan2(b.y - flee.y, b.x - flee.x);
+        spd = b.speed * 1.35;
+        b.kick = 0.55 + 0.4 * Math.abs(Math.sin(b.age * 5.5));
+    } else {
+        const prey = bullfrogFindPrey(b);
+        b.prey = prey;
+        if (prey) {
+            desired = Math.atan2(prey.y - b.y, prey.x - b.x);
+            spd = b.speed * 1.25 + b.size * 0.15;
+            b.kick = 0.5 + 0.45 * Math.abs(Math.sin(b.age * 5));
+            const dist = Math.hypot(prey.x - b.x, prey.y - b.y);
+            if (dist < b.size * 0.55 + prey.size * 0.5 + 10 && b.biteTimer <= 0) {
+                bullfrogEatPrey(b, prey);
+            }
+        } else {
+            if (Math.random() < 0.01) desired = b.dir + (Math.random() - 0.5) * 1.2;
+            b.kick = 0.15 + 0.25 * Math.abs(Math.sin(b.age * 2.2));
+            spd = b.speed * 0.7;
+        }
+    }
+    if (b.x < padX) desired = 0;
+    if (b.x > viewW - padX) desired = Math.PI;
+    if (b.y < yMin) desired = Math.atan2(0.7, Math.cos(desired) || 0.01);
+    if (b.y > yMax) desired = Math.atan2(-0.6, Math.cos(desired) || 0.01);
+    const diff = normAngle(desired - b.dir);
+    b.dir += Math.max(-2.2 * dt, Math.min(2.2 * dt, diff));
+    b.x += Math.cos(b.dir) * spd * dt;
+    b.y += Math.sin(b.dir) * spd * dt * 0.55 + Math.sin(b.bobPhase) * 5 * dt;
+    b.x = Math.max(padX * 0.4, Math.min(viewW - padX * 0.4, b.x));
+    b.y = Math.max(yMin, Math.min(yMax, b.y));
+    const desiredPitch = Math.sin(b.dir) * 0.3 + Math.sin(b.bobPhase) * 0.06;
+    b.pitch += (desiredPitch - (b.pitch || 0)) * Math.min(1, 3.5 * dt);
+}
+
+function drawBullfrogModel(ctx, b, alpha) {
+    // Same swim silhouette family as pond frogs, but darker, thicker, with
+    // a throat pouch, round tympanum, and yellow eyes so it reads as a bullfrog.
+    if (!b || b.dead) return;
+    const S = b.size;
+    const kick = Math.max(0, Math.min(1, b.kick || 0));
+    const pouch = Math.max(0, Math.min(1, b.pouch || 0.15));
+    const breath = 1 + Math.sin(b.breath || 0) * 0.04;
+    const tone = b.tone == null ? 0.45 : b.tone;
+    const r = 38 + Math.floor(tone * 22);
+    const gCol = 68 + Math.floor(tone * 28);
+    const bl = 36 + Math.floor(tone * 18);
+    const bellyR = 105 + Math.floor(tone * 30);
+    const bellyG = 115 + Math.floor(tone * 24);
+    const bellyB = 70 + Math.floor(tone * 16);
+    const a = (alpha == null ? 1 : alpha) * 0.88;
+
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.rotate((b.dir || 0) + (b.pitch || 0));
+    ctx.globalAlpha = a;
+
+    // Hind legs: tucked along the body, swept back on kick (same layout as pond frogs).
+    const tuckX = -S * (0.35 + kick * 0.85);
+    const tuckY = S * (0.22 - kick * 0.05);
+    const footSpread = S * (0.18 + kick * 0.58);
+    for (const side of [-1, 1]) {
+        ctx.fillStyle = `rgba(${r - 12},${gCol - 18},${bl - 10},0.92)`;
+        ctx.beginPath();
+        ctx.moveTo(-S * 0.18, side * S * 0.1);
+        ctx.quadraticCurveTo(
+            -S * (0.48 + kick * 0.35), side * S * (0.3 + kick * 0.1),
+            tuckX, side * tuckY
+        );
+        ctx.quadraticCurveTo(-S * (0.58 + kick * 0.48), side * S * 0.05, -S * 0.22, 0);
+        ctx.closePath();
+        ctx.fill();
+        // Broad webbed foot (reads as frog foot, not a split fish tail).
+        ctx.fillStyle = `rgba(${r + 8},${gCol + 18},${bl + 8},0.55)`;
+        ctx.beginPath();
+        ctx.moveTo(tuckX, side * tuckY * 0.85);
+        ctx.lineTo(tuckX - S * (0.18 + kick * 0.32), side * (tuckY + footSpread));
+        ctx.lineTo(tuckX - S * (0.32 + kick * 0.36), side * tuckY * 0.15);
+        ctx.lineTo(tuckX - S * (0.12 + kick * 0.18), side * (tuckY - footSpread * 0.35));
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    // Forelimbs under the chest.
+    ctx.fillStyle = `rgba(${r - 6},${gCol - 12},${bl - 6},0.8)`;
+    ctx.beginPath();
+    ctx.moveTo(S * 0.16, S * 0.12);
+    ctx.quadraticCurveTo(S * 0.38, S * 0.32, S * 0.24, S * 0.36);
+    ctx.quadraticCurveTo(S * 0.08, S * 0.24, S * 0.1, S * 0.1);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(S * 0.14, -S * 0.06);
+    ctx.quadraticCurveTo(S * 0.3, -S * 0.24, S * 0.2, -S * 0.3);
+    ctx.quadraticCurveTo(S * 0.06, -S * 0.16, S * 0.08, -S * 0.02);
+    ctx.fill();
+
+    // Stocky frog body (shorter snout than a fish oval).
+    const bodyG = ctx.createLinearGradient(0, -S * 0.38, 0, S * 0.4);
+    bodyG.addColorStop(0, `rgba(${r + 18},${gCol + 26},${bl + 14},0.96)`);
+    bodyG.addColorStop(0.45, `rgba(${r},${gCol},${bl},0.94)`);
+    bodyG.addColorStop(1, `rgba(${bellyR},${bellyG},${bellyB},0.92)`);
+    ctx.fillStyle = bodyG;
+    ctx.beginPath();
+    ctx.moveTo(S * 0.7, 0);
+    ctx.bezierCurveTo(S * 0.48, -S * 0.42 * breath, -S * 0.08, -S * 0.46 * breath, -S * 0.52, -S * 0.14);
+    ctx.bezierCurveTo(-S * 0.7, 0, -S * 0.5, S * 0.18, -S * 0.15, S * 0.36);
+    ctx.bezierCurveTo(S * 0.22, S * 0.46, S * 0.52, S * 0.32, S * 0.7, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Dorsal blotches instead of fish-like full vertical bands.
+    ctx.fillStyle = `rgba(${r - 28},${gCol - 38},${bl - 16},0.32)`;
+    for (const [sx, sy, sr] of [
+        [0.08, -0.14, 0.12], [-0.18, 0.06, 0.1], [0.32, 0.04, 0.08], [-0.36, -0.06, 0.09],
+    ]) {
+        ctx.beginPath();
+        ctx.ellipse(S * sx, S * sy, S * sr, S * sr * 0.65, 0.2, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Throat pouch under the jaw (the bullfrog tell).
+    const pouchR = S * (0.2 + pouch * 0.32);
+    const pouchGrad = ctx.createRadialGradient(S * 0.22, S * 0.24, 0, S * 0.22, S * 0.24, pouchR);
+    pouchGrad.addColorStop(0, `rgba(${bellyR + 35},${bellyG + 25},${bellyB + 12},0.95)`);
+    pouchGrad.addColorStop(1, `rgba(${r - 5},${gCol - 15},${bl - 5},0.7)`);
+    ctx.fillStyle = pouchGrad;
+    ctx.beginPath();
+    ctx.ellipse(S * 0.22, S * 0.22, pouchR * 1.2, pouchR * (0.8 + pouch * 0.3), 0.12, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Broad head.
+    ctx.fillStyle = `rgba(${r + 12},${gCol + 20},${bl + 10},0.96)`;
+    ctx.beginPath();
+    ctx.ellipse(S * 0.48, -S * 0.05, S * 0.34, S * 0.28 * breath, -0.1, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Round tympanum behind the eye.
+    ctx.strokeStyle = `rgba(${r - 22},${gCol - 28},${bl - 12},0.6)`;
+    ctx.lineWidth = Math.max(1.1, S * 0.04);
+    ctx.beginPath();
+    ctx.arc(S * 0.34, S * 0.02, S * 0.15, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(S * 0.34, S * 0.02, S * 0.055, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Yellow-gold eye on the upper head.
+    const ex = S * 0.54;
+    const ey = -S * 0.22;
+    ctx.fillStyle = `rgba(${r + 16},${gCol + 28},${bl + 12},0.95)`;
+    ctx.beginPath();
+    ctx.ellipse(ex, ey, S * 0.125, S * 0.115, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if (b.blink > 0.02) {
+        ctx.strokeStyle = "rgba(20,30,22,0.9)";
+        ctx.lineWidth = Math.max(1.2, S * 0.055);
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(ex - S * 0.08, ey);
+        ctx.quadraticCurveTo(ex, ey + S * 0.03, ex + S * 0.08, ey);
+        ctx.stroke();
+    } else {
+        ctx.fillStyle = "rgba(240,210,70,0.95)";
+        ctx.beginPath();
+        ctx.ellipse(ex, ey, S * 0.078, S * 0.072, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(18,22,16,0.95)";
+        ctx.beginPath();
+        ctx.ellipse(ex + S * 0.012, ey, S * 0.034, S * 0.048, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.7)";
+        ctx.beginPath();
+        ctx.arc(ex - S * 0.02, ey - S * 0.024, S * 0.015, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Short tongue flick only right after a meal (never a long idle filament).
+    if ((b.tongueT || 0) > 0.02) {
+        const u = clamp01(b.tongueT / 0.28);
+        ctx.strokeStyle = `rgba(200,90,90,${0.65 * u})`;
+        ctx.lineWidth = Math.max(1.2, S * 0.045);
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(S * 0.68, S * 0.05);
+        ctx.quadraticCurveTo(S * (0.82 + u * 0.12), S * 0.1, S * (0.88 + u * 0.18), S * 0.04);
+        ctx.stroke();
+    }
+
+    ctx.restore();
+}
+
 function updateHungryTadpoles(dt) {
     const yMin = viewH * 0.35;
     const yMax = viewH * 0.9;
@@ -4718,7 +6368,10 @@ function updateHungryTadpoles(dt) {
             if (dist < eatDist && t.biteTimer <= 0) {
                 food.eaten = true;
                 t.foodTarget = null;
-                t.size += food.grower ? 3.2 : food.golden || food.rainbow ? 2.2 : 1.1;
+                t.size += food.grower ? 3.2
+                    : food.golden || food.rainbow || food.platinum || food.hero ? 2.2
+                    : food.pink || food.green || food.carcass ? 1.6
+                    : 1.1;
                 t.biteTimer = 0.22;
                 const pan = Math.max(-1, Math.min(1, (t.x / viewW) * 2 - 1));
                 Audio.fishNote({
@@ -4763,8 +6416,9 @@ function updateHungryTadpoles(dt) {
 }
 
 function updateFrogGroups(dt) {
-    if (!scenery.frogs && !frogFinale && !hungryTadpoles.length) return;
+    if (!scenery.frogs && !frogFinale && !bullfrogFinale && !hungryTadpoles.length && !bullfrog) return;
     updateFrogFinale(dt);
+    updateBullfrog(dt);
     updateHungryTadpoles(dt);
     if (!scenery.frogs) return;
 
@@ -4809,6 +6463,9 @@ function updateFrogGroups(dt) {
             frog.nextBlink = 2 + Math.random() * 3.5;
         }
         if (frog.blink > 0) frog.blink = Math.max(0, frog.blink - dt);
+        if (frog.breedCooldown > 0) {
+            frog.breedCooldown = Math.max(0, frog.breedCooldown - dt);
+        }
 
         let steered = false;
         if (frog.befriended) {
@@ -4822,7 +6479,26 @@ function updateFrogGroups(dt) {
                 frog.kick = 0.55 + 0.4 * Math.abs(Math.sin(frog.age * 5));
                 const dist = Math.hypot(prey.x - frog.x, prey.y - frog.y);
                 if (dist < frog.size * 0.55 + prey.size * 0.4 + 10) frogEatPrey(frog, prey);
-            } else {
+            } else if (canBreedFrog(frog)) {
+                const mate = findPinkFishMateForFrog(frog);
+                if (mate) {
+                    steered = true;
+                    const dist = Math.hypot(mate.x - frog.x, mate.y - frog.y);
+                    const touch = pinkBreedRange(frog, mate);
+                    const desired = Math.atan2(mate.y - frog.y, mate.x - frog.x);
+                    const diff = normAngle(desired - frog.dir);
+                    frog.dir += Math.max(-2.8 * dt, Math.min(2.8 * dt, diff));
+                    frog.kick = 0.4 + 0.45 * Math.abs(Math.sin(frog.age * 6));
+                    if (dist <= touch) {
+                        frog.speed = Math.max(10, frog.speed * 0.35);
+                        spawnFrogFishHybrid(frog, mate);
+                    } else {
+                        const close = Math.max(0.35, Math.min(1, (dist - touch) / Math.max(40, touch)));
+                        frog.speed = 36 + frog.size * 0.3 + 28 * close;
+                    }
+                }
+            }
+            if (!steered) {
                 const foodChase = frogTryFood(frog, dt);
                 if (foodChase) {
                     steered = true;
@@ -4835,6 +6511,20 @@ function updateFrogGroups(dt) {
             if (frog.size >= CONFIG.sharkSize * 0.98 && !frogFinale) {
                 beginFrogFinale(frog);
                 continue;
+            }
+        }
+
+        // Smaller frogs steer away from a nearby bullfrog (wild or befriended).
+        if (!steered && bullfrog && !bullfrog.dead && !bullfrogFinale
+            && frog.size < bullfrog.size * 0.98) {
+            const threatD = Math.hypot(frog.x - bullfrog.x, frog.y - bullfrog.y);
+            if (threatD < CONFIG.fleeRange * 0.9 && threatD > 1) {
+                steered = true;
+                const fleeAng = Math.atan2(frog.y - bullfrog.y, frog.x - bullfrog.x);
+                const diff = normAngle(fleeAng - frog.dir);
+                frog.dir += Math.max(-3.2 * dt, Math.min(3.2 * dt, diff));
+                frog.speed = (40 + frog.size * 0.4) * CONFIG.fleeSpeedMult * 0.82;
+                frog.kick = 0.55 + 0.4 * Math.abs(Math.sin(frog.age * 6.5));
             }
         }
 
@@ -4927,12 +6617,6 @@ function drawTadpole(ctx, t, alpha) {
     ctx.rotate(t.dir);
     ctx.globalAlpha = 0.72 * alpha;
 
-    // Soft shadow on the bed.
-    ctx.fillStyle = "rgba(20,30,25,0.18)";
-    ctx.beginPath();
-    ctx.ellipse(1, L * 0.35, L * 0.7, L * 0.28, 0, 0, Math.PI * 2);
-    ctx.fill();
-
     const g = 70 + Math.floor(t.tone * 40);
     const body = ctx.createLinearGradient(-L * 0.2, -L * 0.4, L * 0.3, L * 0.5);
     body.addColorStop(0, `rgba(${40 + g * 0.2},${g + 20},${55},0.92)`);
@@ -5001,24 +6685,30 @@ function drawFrogModel(ctx, frog, alpha) {
     const kick = frog.kick || 0;
     const breath = 1 + Math.sin(frog.breath) * 0.04;
     const tone = frog.tone;
-    const r = 50 + Math.floor(tone * 30);
-    const g = 105 + Math.floor(tone * 50);
-    const b = 70 + Math.floor(tone * 30);
-    const bellyR = 130 + Math.floor(tone * 35);
-    const bellyG = 155 + Math.floor(tone * 28);
-    const bellyB = 100 + Math.floor(tone * 20);
+    let r = 50 + Math.floor(tone * 30);
+    let g = 105 + Math.floor(tone * 50);
+    let b = 70 + Math.floor(tone * 30);
+    let bellyR = 130 + Math.floor(tone * 35);
+    let bellyG = 155 + Math.floor(tone * 28);
+    let bellyB = 100 + Math.floor(tone * 20);
+    if (frog.isPink) {
+        r = Math.min(255, Math.floor(r * 0.45 + 255 * 0.55));
+        g = Math.min(255, Math.floor(g * 0.45 + 126 * 0.55));
+        b = Math.min(255, Math.floor(b * 0.45 + 182 * 0.55));
+        bellyR = Math.min(255, Math.floor(bellyR * 0.5 + 255 * 0.5));
+        bellyG = Math.min(255, Math.floor(bellyG * 0.5 + 200 * 0.5));
+        bellyB = Math.min(255, Math.floor(bellyB * 0.5 + 220 * 0.5));
+    }
 
     ctx.save();
     ctx.translate(frog.x, frog.y);
     ctx.rotate(frog.dir + (frog.pitch || 0));
     // Submerged look: cooler, a bit translucent.
     ctx.globalAlpha = 0.62 * alpha;
-
-    // Soft underwater shadow beneath the body.
-    ctx.fillStyle = "rgba(10,25,30,0.2)";
-    ctx.beginPath();
-    ctx.ellipse(-S * 0.05, S * 0.45, S * 1.1, S * 0.22, 0, 0, Math.PI * 2);
-    ctx.fill();
+    if (frog.isPink) {
+        ctx.shadowColor = "rgba(255,140,190,0.65)";
+        ctx.shadowBlur = gfxQuality <= 0 ? 0 : 12;
+    }
 
     // Hind legs: tucked along the body when kick~0, swept back when kick~1.
     const tuckX = -S * (0.35 + kick * 0.85);
@@ -5147,6 +6837,146 @@ function drawFrogModel(ctx, frog, alpha) {
     ctx.restore();
 }
 
+// Frog-fish hybrid: froggy body and kick legs with a fish caudal / dorsal fin.
+function drawFrogFishHybridModel(ctx, fish) {
+    const S = fish.size;
+    const kick = 0.35 + 0.45 * Math.abs(Math.sin((fish.age || 0) * 5.2));
+    const breath = 1 + Math.sin((fish.age || 0) * 2.1) * 0.035;
+    const pose = typeof fishLiveSwimPose === "function" ? fishLiveSwimPose(fish) : { thrash: 0, bobY: 0 };
+    const bodyHex = fish.type && fish.type.body ? fish.type.body : "#5a8a58";
+    const bellyHex = fish.type && fish.type.belly ? fish.type.belly : "#c8d8a0";
+    const body = parseHexColor(bodyHex) || { r: 90, g: 138, b: 88 };
+    const belly = parseHexColor(bellyHex) || { r: 200, g: 216, b: 160 };
+    const r = body.r, g = body.g, b = body.b;
+    const bellyR = belly.r, bellyG = belly.g, bellyB = belly.b;
+
+    ctx.save();
+    ctx.translate(fish.x + (pose.thrash || 0) * 2, fish.y + (pose.bobY || 0));
+    ctx.rotate(fish.dir + (pose.thrash || 0) * 0.35);
+    ctx.globalAlpha = 0.88;
+    if (fish.isHero) {
+        ctx.shadowColor = "rgba(60,140,210,0.45)";
+        ctx.shadowBlur = gfxQuality <= 0 ? 0 : 10;
+    }
+
+    // Hind kick legs (frog).
+    const tuckX = -S * (0.32 + kick * 0.7);
+    const tuckY = S * (0.18 - kick * 0.04);
+    const footSpread = S * (0.12 + kick * 0.45);
+    for (const side of [-1, 1]) {
+        ctx.fillStyle = `rgba(${Math.max(0, r - 12)},${Math.max(0, g - 18)},${Math.max(0, b - 10)},0.9)`;
+        ctx.beginPath();
+        ctx.moveTo(-S * 0.15, side * S * 0.06);
+        ctx.quadraticCurveTo(-S * (0.4 + kick * 0.3), side * S * (0.24 + kick * 0.08), tuckX, side * tuckY);
+        ctx.quadraticCurveTo(-S * (0.5 + kick * 0.4), side * S * 0.04, -S * 0.2, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = `rgba(${r},${Math.min(255, g + 18)},${Math.min(255, b + 12)},0.48)`;
+        ctx.beginPath();
+        ctx.moveTo(tuckX, side * tuckY * 0.85);
+        ctx.lineTo(tuckX - S * (0.16 + kick * 0.28), side * (tuckY + footSpread));
+        ctx.lineTo(tuckX - S * (0.28 + kick * 0.32), side * tuckY * 0.15);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    // Fish caudal fin behind the kick.
+    const tw = Math.sin((fish.age || 0) * 7 + kick) * 0.2;
+    ctx.fillStyle = `rgba(${Math.max(0, r - 20)},${Math.max(0, g - 10)},${Math.max(0, b - 5)},0.78)`;
+    ctx.beginPath();
+    ctx.moveTo(-S * 0.45, 0);
+    ctx.quadraticCurveTo(-S * 0.85, -S * (0.32 + tw), -S * 1.15, -S * (0.08 + tw * 0.5));
+    ctx.quadraticCurveTo(-S * 0.95, 0, -S * 1.15, S * (0.08 - tw * 0.5));
+    ctx.quadraticCurveTo(-S * 0.85, S * (0.32 - tw), -S * 0.45, 0);
+    ctx.fill();
+
+    // Soft dorsal fin (fish cue).
+    ctx.fillStyle = `rgba(${r},${g},${b},0.55)`;
+    ctx.beginPath();
+    ctx.moveTo(-S * 0.05, -S * 0.28 * breath);
+    ctx.quadraticCurveTo(S * 0.05, -S * 0.55, S * 0.28, -S * 0.22);
+    ctx.quadraticCurveTo(S * 0.1, -S * 0.32, -S * 0.05, -S * 0.28 * breath);
+    ctx.fill();
+
+    // Froggy torso with fish color mix.
+    const bodyG = ctx.createLinearGradient(0, -S * 0.32, 0, S * 0.32);
+    bodyG.addColorStop(0, `rgba(${Math.min(255, r + 18)},${Math.min(255, g + 22)},${Math.min(255, b + 16)},0.95)`);
+    bodyG.addColorStop(0.45, `rgba(${r},${g},${b},0.94)`);
+    bodyG.addColorStop(1, `rgba(${bellyR},${bellyG},${bellyB},0.92)`);
+    ctx.fillStyle = bodyG;
+    ctx.beginPath();
+    ctx.moveTo(S * 0.72, 0);
+    ctx.bezierCurveTo(S * 0.5, -S * 0.34 * breath, -S * 0.05, -S * 0.38 * breath, -S * 0.48, -S * 0.1);
+    ctx.bezierCurveTo(-S * 0.62, 0, -S * 0.48, S * 0.12, -S * 0.12, S * 0.3);
+    ctx.bezierCurveTo(S * 0.22, S * 0.38, S * 0.52, S * 0.26, S * 0.72, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Mottling from frog parent.
+    ctx.fillStyle = `rgba(${Math.max(0, r - 30)},${Math.max(0, g - 35)},${Math.max(0, b - 18)},0.26)`;
+    for (const [sx, sy, sr] of [[0.08, -0.1, 0.09], [-0.12, 0.07, 0.07], [0.3, 0.04, 0.055]]) {
+        ctx.beginPath();
+        ctx.ellipse(S * sx, S * sy, S * sr, S * sr * 0.65, 0.2, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Frog-style raised eye.
+    const ex = S * 0.52;
+    const ey = -S * 0.2;
+    ctx.fillStyle = `rgba(${Math.min(255, r + 16)},${Math.min(255, g + 24)},${Math.min(255, b + 12)},0.95)`;
+    ctx.beginPath();
+    ctx.ellipse(ex, ey, S * 0.1, S * 0.09, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(245,248,240,0.92)";
+    ctx.beginPath();
+    ctx.ellipse(ex, ey, S * 0.065, S * 0.06, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = fish.isHero ? "rgba(30,90,160,0.95)" : "rgba(18,26,22,0.95)";
+    ctx.beginPath();
+    ctx.arc(ex + S * 0.01, ey, S * 0.034, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (fish.isHero) {
+        ctx.fillStyle = "rgba(40,120,190,0.18)";
+        ctx.beginPath();
+        ctx.ellipse(-S * 0.02, 0, S * 0.9, S * 0.4, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    if (fish.petTimer > 0) {
+        ctx.strokeStyle = "rgba(180,220,160,0.45)";
+        ctx.lineWidth = Math.max(1.1, S * 0.07);
+        ctx.beginPath();
+        ctx.ellipse(-S * 0.02, 0, S * (1.0 + fish.petTimer * 0.06), S * 0.46, 0, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+
+    ctx.shadowBlur = 0;
+    ctx.restore();
+}
+
+// Gold look for pacifist helpers: same lakebed palette as golden pond fish.
+function pacifistGoldGradient(ctx, p, halfH) {
+    const deep = !!(p && (p.sinkDepth || 0) > 0.85);
+    const g = ctx.createLinearGradient(0, -halfH, 0, halfH);
+    if (deep) {
+        g.addColorStop(0, "#d4b86a");
+        g.addColorStop(0.55, "#b8891e");
+        g.addColorStop(1, "#8a6a18");
+    } else {
+        g.addColorStop(0, "#fff3b0");
+        g.addColorStop(0.55, "#f0c437");
+        g.addColorStop(1, "#a9791a");
+    }
+    return g;
+}
+
+function pacifistApplyGoldShadow(ctx, p) {
+    if (!p || !p.golden) return false;
+    ctx.shadowColor = "rgba(255,200,80,0.55)";
+    ctx.shadowBlur = gfxQuality <= 0 ? 0 : 12;
+    return true;
+}
+
 // Pond axolotl: frog-cousin silhouette (not a recycled fish oval).
 // Soft salamander body, feathery external gills, diagonal paddle gait, flat tail.
 function drawPacifistAxolotlModel(ctx, p, alpha) {
@@ -5159,20 +6989,31 @@ function drawPacifistAxolotlModel(ctx, p, alpha) {
     // Diagonal walk: front-left with hind-right, opposite pair out of phase.
     const gaitA = 0.5 + 0.5 * Math.sin(limb);
     const gaitB = 0.5 + 0.5 * Math.sin(limb + Math.PI);
-    const bodyWiggle = Math.sin(limb * 0.85) * 0.08;
+    const bodyWiggle = p.golden ? 0 : Math.sin(limb * 0.85) * 0.08;
 
-    const r = tamed ? 248 : 232;
-    const g = tamed ? 170 : 130;
-    const b = tamed ? 190 : 160;
-    const bellyR = 255;
-    const bellyG = 230;
-    const bellyB = 235;
+    let r = tamed ? 248 : 232;
+    let g = tamed ? 170 : 130;
+    let b = tamed ? 190 : 160;
+    let bellyR = 255;
+    let bellyG = 230;
+    let bellyB = 235;
+    if (p.golden) {
+        const deep = (p.sinkDepth || 0) > 0.85;
+        r = deep ? 184 : 240;
+        g = deep ? 137 : 196;
+        b = deep ? 30 : 55;
+        bellyR = deep ? 212 : 255;
+        bellyG = deep ? 184 : 243;
+        bellyB = deep ? 106 : 176;
+    }
 
     ctx.save();
     ctx.translate(p.x, p.y);
     ctx.rotate(p.dir + bodyWiggle);
     ctx.globalAlpha = (alpha == null ? 0.94 : alpha);
-    if (p.rainbowMood > 0) {
+    if (pacifistApplyGoldShadow(ctx, p)) {
+        // gold sheen already set
+    } else if (p.rainbowMood > 0) {
         const hue = (performance.now() * 0.18) % 360;
         ctx.shadowColor = `hsla(${hue}, 90%, 65%, 0.8)`;
         ctx.shadowBlur = gfxQuality <= 0 ? 0 : 16;
@@ -5183,12 +7024,6 @@ function drawPacifistAxolotlModel(ctx, p, alpha) {
         ctx.shadowColor = "rgba(255,180,210,0.55)";
         ctx.shadowBlur = gfxQuality <= 0 ? 0 : 12;
     }
-
-    // Soft underwater shadow.
-    ctx.fillStyle = "rgba(40,20,30,0.18)";
-    ctx.beginPath();
-    ctx.ellipse(-S * 0.05, S * 0.42, S * 1.05, S * 0.2, 0, 0, Math.PI * 2);
-    ctx.fill();
 
     // Flat paddle tail (undulates opposite the limbs).
     const tw = Math.sin(limb * 1.1 + 0.4) * 0.35;
@@ -5382,17 +7217,24 @@ function drawPacifistOctopusHelper(ctx, p, alpha) {
     ctx.translate(p.x, p.y);
     ctx.rotate(p.dir);
     ctx.globalAlpha = alpha == null ? 0.94 : alpha;
-    if (p.tamed) {
+    if (!pacifistApplyGoldShadow(ctx, p) && p.tamed) {
         ctx.shadowColor = crystal ? "rgba(180,140,255,0.7)" : "rgba(90,180,160,0.55)";
         ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
     }
 
-    const armFill = crystal
+    let armFill = crystal
         ? (p.tamed ? "#a070d8" : "#7048b0")
         : (p.tamed ? "#48a888" : "#2f6a58");
-    const mantleA = crystal ? "#f0e8ff" : "#80c8b0";
-    const mantleB = crystal ? "#a070d8" : "#388870";
-    const mantleC = crystal ? "#503088" : "#1a5040";
+    let mantleA = crystal ? "#f0e8ff" : "#80c8b0";
+    let mantleB = crystal ? "#a070d8" : "#388870";
+    let mantleC = crystal ? "#503088" : "#1a5040";
+    if (p.golden) {
+        const deep = (p.sinkDepth || 0) > 0.85;
+        armFill = deep ? "#c9a24b" : "#e0b030";
+        mantleA = deep ? "#d4b86a" : "#fff3b0";
+        mantleB = deep ? "#b8891e" : "#f0c437";
+        mantleC = deep ? "#8a6a18" : "#a9791a";
+    }
 
     // Hard local-space trailing tentacles (never a radial urchin or tadpole cone).
     for (let i = 0; i < 8; i++) {
@@ -5480,14 +7322,19 @@ function drawPacifistBelugaHelper(ctx, p, alpha) {
     ctx.translate(p.x, p.y);
     ctx.rotate(p.dir);
     ctx.globalAlpha = alpha == null ? 0.94 : alpha;
-    if (p.tamed) {
+    if (!pacifistApplyGoldShadow(ctx, p) && p.tamed) {
         ctx.shadowColor = "rgba(200,230,255,0.7)";
         ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
     }
-    const g = ctx.createLinearGradient(0, -W, 0, W);
-    g.addColorStop(0, "#ffffff");
-    g.addColorStop(0.5, p.tamed ? "#eef6ff" : "#f7fafc");
-    g.addColorStop(1, "#c5d0dc");
+    const g = p.golden
+        ? pacifistGoldGradient(ctx, p, W)
+        : (() => {
+            const lg = ctx.createLinearGradient(0, -W, 0, W);
+            lg.addColorStop(0, "#ffffff");
+            lg.addColorStop(0.5, p.tamed ? "#eef6ff" : "#f7fafc");
+            lg.addColorStop(1, "#c5d0dc");
+            return lg;
+        })();
     ctx.fillStyle = g;
     // One continuous white body into melon (not stacked blobs).
     ctx.beginPath();
@@ -5545,14 +7392,19 @@ function drawPacifistWhaleHelper(ctx, p, alpha) {
     ctx.translate(p.x, p.y);
     ctx.rotate(p.dir);
     ctx.globalAlpha = alpha == null ? 0.94 : alpha;
-    if (p.tamed) {
+    if (!pacifistApplyGoldShadow(ctx, p) && p.tamed) {
         ctx.shadowColor = "rgba(120,180,220,0.65)";
         ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
     }
-    const g = ctx.createLinearGradient(0, -W, 0, W);
-    g.addColorStop(0, "#7a9aac");
-    g.addColorStop(0.45, p.tamed ? "#4a7088" : "#2f4a5c");
-    g.addColorStop(1, "#d8e4ec");
+    const g = p.golden
+        ? pacifistGoldGradient(ctx, p, W)
+        : (() => {
+            const lg = ctx.createLinearGradient(0, -W, 0, W);
+            lg.addColorStop(0, "#7a9aac");
+            lg.addColorStop(0.45, p.tamed ? "#4a7088" : "#2f4a5c");
+            lg.addColorStop(1, "#d8e4ec");
+            return lg;
+        })();
     ctx.fillStyle = g;
     // Wide horizontal fluke.
     ctx.beginPath();
@@ -5619,20 +7471,25 @@ function drawPacifistTurtleHelper(ctx, p, alpha) {
     ctx.translate(p.x, p.y);
     ctx.rotate(p.dir);
     ctx.globalAlpha = alpha == null ? 0.94 : alpha;
-    if (p.tamed) {
+    if (!pacifistApplyGoldShadow(ctx, p) && p.tamed) {
         ctx.shadowColor = crystal ? "rgba(160,200,255,0.65)" : "rgba(140,200,120,0.55)";
         ctx.shadowBlur = gfxQuality <= 0 ? 0 : 12;
     }
-    const g = ctx.createLinearGradient(0, -W, 0, W);
-    if (crystal) {
-        g.addColorStop(0, "#d0e8ff");
-        g.addColorStop(0.5, p.tamed ? "#90c0e8" : "#70a0d0");
-        g.addColorStop(1, "#4060a0");
-    } else {
-        g.addColorStop(0, "#b8c890");
-        g.addColorStop(0.45, p.tamed ? "#7a9a58" : "#5a7a40");
-        g.addColorStop(1, "#3a4824");
-    }
+    const g = p.golden
+        ? pacifistGoldGradient(ctx, p, W)
+        : (() => {
+            const lg = ctx.createLinearGradient(0, -W, 0, W);
+            if (crystal) {
+                lg.addColorStop(0, "#d0e8ff");
+                lg.addColorStop(0.5, p.tamed ? "#90c0e8" : "#70a0d0");
+                lg.addColorStop(1, "#4060a0");
+            } else {
+                lg.addColorStop(0, "#b8c890");
+                lg.addColorStop(0.45, p.tamed ? "#7a9a58" : "#5a7a40");
+                lg.addColorStop(1, "#3a4824");
+            }
+            return lg;
+        })();
     ctx.fillStyle = g;
 
     // Broad swimming flippers rooted under the shell rim (not floating off).
@@ -5736,20 +7593,25 @@ function drawPacifistNurseHelper(ctx, p, alpha) {
     ctx.translate(p.x, p.y);
     ctx.rotate(p.dir);
     ctx.globalAlpha = alpha == null ? 0.94 : alpha;
-    if (p.tamed) {
+    if (!pacifistApplyGoldShadow(ctx, p) && p.tamed) {
         ctx.shadowColor = crystal ? "rgba(180,140,255,0.65)" : "rgba(200,170,100,0.5)";
         ctx.shadowBlur = gfxQuality <= 0 ? 0 : 12;
     }
-    const g = ctx.createLinearGradient(0, -W, 0, W);
-    if (crystal) {
-        g.addColorStop(0, "#e8d8ff");
-        g.addColorStop(0.55, p.tamed ? "#9060c8" : "#6848a0");
-        g.addColorStop(1, "#40a0b8");
-    } else {
-        g.addColorStop(0, "#d8c49a");
-        g.addColorStop(0.55, p.tamed ? "#a88858" : "#8a6a40");
-        g.addColorStop(1, "#5a4830");
-    }
+    const g = p.golden
+        ? pacifistGoldGradient(ctx, p, W)
+        : (() => {
+            const lg = ctx.createLinearGradient(0, -W, 0, W);
+            if (crystal) {
+                lg.addColorStop(0, "#e8d8ff");
+                lg.addColorStop(0.55, p.tamed ? "#9060c8" : "#6848a0");
+                lg.addColorStop(1, "#40a0b8");
+            } else {
+                lg.addColorStop(0, "#d8c49a");
+                lg.addColorStop(0.55, p.tamed ? "#a88858" : "#8a6a40");
+                lg.addColorStop(1, "#5a4830");
+            }
+            return lg;
+        })();
     ctx.fillStyle = g;
     // Heterocercal caudal.
     ctx.beginPath();
@@ -5845,14 +7707,19 @@ function drawPacifistSailHelper(ctx, p, alpha) {
     ctx.translate(p.x, p.y);
     ctx.rotate(p.dir);
     ctx.globalAlpha = alpha == null ? 0.94 : alpha;
-    if (p.tamed || p.rainbowMood > 0) {
+    if (!pacifistApplyGoldShadow(ctx, p) && (p.tamed || p.rainbowMood > 0)) {
         ctx.shadowColor = "rgba(100,200,255,0.7)";
         ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
     }
-    const g = ctx.createLinearGradient(0, -W, 0, W);
-    g.addColorStop(0, "#70c8e8");
-    g.addColorStop(0.45, p.tamed ? "#40a0d0" : "#2a88b8");
-    g.addColorStop(1, "#184868");
+    const g = p.golden
+        ? pacifistGoldGradient(ctx, p, W)
+        : (() => {
+            const lg = ctx.createLinearGradient(0, -W, 0, W);
+            lg.addColorStop(0, "#70c8e8");
+            lg.addColorStop(0.45, p.tamed ? "#40a0d0" : "#2a88b8");
+            lg.addColorStop(1, "#184868");
+            return lg;
+        })();
     ctx.fillStyle = g;
     // Slim body.
     ctx.beginPath();
@@ -5933,6 +7800,38 @@ function drawFrogGroups(ctx) {
         drawFinaleWake(ctx, frogFinale.wake, 0.9);
         drawFrogModel(ctx, frogFinale.frog, frogFinale.alpha == null ? 1 : frogFinale.alpha);
     }
+    // Bullfrog sits above ordinary frogs so the hunter reads clearly.
+    if (bullfrog && !bullfrog.dead && !bullfrogFinale) {
+        drawBullfrogModel(ctx, bullfrog, 1);
+    }
+    if (bullfrogFinale) {
+        const e = bullfrogFinale;
+        if (e.wash > 0.02 && e.bullfrog) {
+            ctx.save();
+            const wash = ctx.createRadialGradient(
+                e.bullfrog.x, e.bullfrog.y, e.bullfrog.size * 0.2,
+                e.bullfrog.x, e.bullfrog.y, Math.max(viewW, viewH) * 0.55
+            );
+            const warm = e.kind === "feast";
+            wash.addColorStop(0, warm
+                ? `rgba(90, 130, 50, ${e.wash * 0.28})`
+                : `rgba(120, 180, 140, ${e.wash * 0.2})`);
+            wash.addColorStop(0.5, warm
+                ? `rgba(40, 70, 30, ${e.wash * 0.14})`
+                : `rgba(50, 100, 70, ${e.wash * 0.1})`);
+            wash.addColorStop(1, "rgba(16, 28, 18, 0)");
+            ctx.fillStyle = wash;
+            ctx.fillRect(0, 0, viewW, viewH);
+            ctx.restore();
+        }
+        drawFinaleWake(ctx, e.wake, 0.9);
+        if (e.kind === "defeat" && e.frog && !e.frog.dead) {
+            drawFrogModel(ctx, e.frog, 1);
+        }
+        if (e.bullfrog && !e.bullfrog.dead) {
+            drawBullfrogModel(ctx, e.bullfrog, e.alpha == null ? 1 : e.alpha);
+        }
+    }
     for (const t of hungryTadpoles) drawTadpole(ctx, t, 1);
 }
 
@@ -5966,6 +7865,101 @@ function pathOrganicOval(ctx, rx, ry, points, profile, wobble) {
         else ctx.lineTo(x, y);
     }
     ctx.closePath();
+}
+
+// Shore stone outline shared by draw + floor cast (smooth enough to read round).
+function pathShoreStoneOutline(ctx, s) {
+    if (!s.profile) s.profile = makeObstacleDetail(Math.floor(s.x + s.y), 9, 5);
+    if (crystalMode && s.facets) {
+        pathFacetRockOutline(ctx, { r: Math.max(s.rx, s.ry), facets: s.facets, profile: s.profile });
+    } else {
+        // Dense points so hard black casts do not read as blocky polygons.
+        pathOrganicOval(ctx, s.rx, s.ry, 22, s.profile, 0.14);
+    }
+}
+
+function ensureStickLeaves(s) {
+    if (s.leaves) return s.leaves;
+    if (crystalMode) {
+        s.leaves = [];
+        return s.leaves;
+    }
+    const seed = Math.floor(Math.abs((s.x || 0) * 7.1 + (s.y || 0) * 13.3 + (s.len || 0) * 3.7));
+    const n = s.wet ? 5 : 3 + (seed % 2);
+    const leaves = [];
+    for (let i = 0; i < n; i++) {
+        const t = -0.36 + (i / Math.max(1, n - 1)) * 0.74;
+        const side = ((i + seed) % 2 === 0) ? 1 : -1;
+        leaves.push({
+            t,
+            side,
+            r: 2.6 + ((seed + i * 17) % 6) * 0.45,
+            ang: side * (0.5 + ((seed + i * 3) % 5) * 0.1),
+        });
+    }
+    s.leaves = leaves;
+    return leaves;
+}
+
+function pathStickBody(ctx, s, bend) {
+    const b = bend || 0;
+    if (crystalMode) {
+        ctx.beginPath();
+        ctx.moveTo(-s.len * 0.5, 0);
+        ctx.lineTo(-s.len * 0.08, -s.thick * 1.1);
+        ctx.lineTo(s.len * 0.5, 0);
+        ctx.lineTo(-s.len * 0.08, s.thick * 1.1);
+        ctx.closePath();
+        return;
+    }
+    ctx.beginPath();
+    ctx.moveTo(-s.len * 0.5, -s.thick * 0.35);
+    ctx.quadraticCurveTo(0, b - s.thick * 0.5, s.len * 0.48, -s.thick * 0.15);
+    ctx.lineTo(s.len * 0.52, s.thick * 0.2);
+    ctx.quadraticCurveTo(0, b + s.thick * 0.55, -s.len * 0.5, s.thick * 0.45);
+    ctx.closePath();
+}
+
+function pathStickLeaf(ctx, x, y, r, ang) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(ang);
+    ctx.beginPath();
+    // Heart / pad lobe matching the green sprout drawn on wet sticks.
+    ctx.moveTo(0, r * 0.55);
+    ctx.bezierCurveTo(r * 0.9, r * 0.08, r * 0.72, -r * 0.72, 0, -r * 0.22);
+    ctx.bezierCurveTo(-r * 0.72, -r * 0.72, -r * 0.9, r * 0.08, 0, r * 0.55);
+    ctx.closePath();
+    ctx.restore();
+}
+
+function fillStickSilhouette(ctx, s, bend) {
+    pathStickBody(ctx, s, bend);
+    ctx.fill();
+    if (crystalMode) return;
+    for (const leaf of ensureStickLeaves(s)) {
+        const lx = s.len * leaf.t;
+        const ly = leaf.side * (s.thick * 0.55 + leaf.r * 0.35);
+        pathStickLeaf(ctx, lx, ly, leaf.r, leaf.ang);
+        ctx.fill();
+    }
+}
+
+function pathFloatingLeafOutline(ctx, L) {
+    ctx.beginPath();
+    if (crystalMode) {
+        ctx.moveTo(-L.len * 0.7, 0);
+        ctx.lineTo(0, -L.len * 0.45);
+        ctx.lineTo(L.len * 0.75, 0);
+        ctx.lineTo(0, L.len * 0.4);
+        ctx.closePath();
+    } else {
+        ctx.moveTo(-L.len * 0.85, 0);
+        ctx.quadraticCurveTo(-L.len * 0.2, -L.len * 0.55, L.len * 0.75, -L.len * 0.08);
+        ctx.quadraticCurveTo(L.len * 0.95, 0, L.len * 0.75, L.len * 0.1);
+        ctx.quadraticCurveTo(-L.len * 0.15, L.len * 0.5, -L.len * 0.85, 0);
+        ctx.closePath();
+    }
 }
 
 // Weathered crate / box with bowed sides and chewed corners.
@@ -6009,6 +8003,8 @@ function fishSlimForShape(shape, type) {
         case "eel": return 0.34;
         case "arrow": return 0.4;
         case "round": return 0.78;
+        case "egg": return 1.02;
+        case "deep": return 1.0;
         case "puffer": return 0.98;
         case "diamond": return 0.9;
         case "angel": return 1.08;
@@ -6121,34 +8117,48 @@ function pathFishBody(ctx, L, W, shape, opts) {
         return;
     }
 
-    // Fusiform families: oval, slim, round, koi, longfin (default).
-    const head = shape === "round" ? L * 0.42
+    // Fusiform families: oval, slim, round, egg, deep, koi, longfin (default).
+    const isEgg = shape === "egg" || (shape === "round" && opts && opts.noDorsal);
+    const isDeep = shape === "deep";
+    const head = shape === "round" || isEgg ? L * (isEgg ? 0.38 : 0.42)
+        : isDeep ? L * 0.44
         : shape === "koi" ? L * 0.48
         : shape === "slim" ? L * 0.54
         : shape === "longfin" ? L * 0.46
         : L * 0.5;
     const back = shape === "slim" ? W * 0.78
+        : isEgg ? W * (opts && opts.noDorsal ? 1.22 : 1.18)
         : shape === "round" ? W * 1.12
+        : isDeep ? W * 1.28
         : shape === "koi" ? W * 1.04
         : shape === "longfin" ? W * 0.95
         : W;
     const belly = shape === "slim" ? W * 0.7
+        : isEgg ? W * 1.28
         : shape === "round" ? W * 1.18
+        : isDeep ? W * 1.32
         : shape === "koi" ? W * 1.08
         : shape === "longfin" ? W * 0.98
         : W * 1.0;
     const ped = shape === "slim" ? -L * 0.48
+        : isEgg ? -L * 0.32
         : shape === "round" ? -L * 0.36
+        : isDeep ? -L * 0.34
         : shape === "longfin" ? -L * 0.38
         : -L * 0.42;
-    const nape = shape === "koi" ? 0.9 : shape === "round" ? 1.05 : 1;
+    // Ranchu / egg: arched nape with soft forehead; deep bodies have a taller shoulder.
+    const nape = shape === "koi" ? 0.9
+        : isEgg ? (opts && opts.noDorsal ? 1.22 : 1.12)
+        : isDeep ? 1.18
+        : shape === "round" ? 1.05
+        : 1;
     ctx.beginPath();
     ctx.moveTo(head, 0);
     // Snout to nape with a living forehead rise.
     ctx.bezierCurveTo(head * 0.78, -back * 0.28, head * 0.4, -back * 0.92 * nape, L * 0.05, -back * 1.1);
     ctx.bezierCurveTo(ped * 0.15, -back * 1.0, ped * 0.5, -back * 0.58, ped * 0.85, -back * 0.26);
     ctx.bezierCurveTo(ped * 0.96, -back * 0.1, ped, -back * 0.03, ped, 0);
-    // Peduncle through belly to jaw (rounder chin on koi / round).
+    // Peduncle through belly to jaw (deeper chin on egg / deep / round).
     ctx.bezierCurveTo(ped, belly * 0.06, ped * 0.9, belly * 0.35, ped * 0.5, belly * 0.68);
     ctx.bezierCurveTo(ped * 0.1, belly * 1.02, L * 0.05, belly * 1.12, head * 0.42, belly * 0.58);
     ctx.bezierCurveTo(head * 0.72, belly * 0.3, head * 0.92, belly * 0.12, head, 0);
@@ -6167,15 +8177,15 @@ function clipFishBody(ctx, L, W, shape) {
 }
 
 // Soft dorsal darkening + belly lift for a rounder, more solid fish read.
-function paintFishBodyVolume(ctx, L, W, shape, body, belly, wig) {
-    const tall = isTallDiscFishShape(shape) || shape === "ray";
+function paintFishBodyVolume(ctx, L, W, shape, body, belly, wig, opts) {
+    const tall = isTallDiscFishShape(shape) || shape === "ray" || shape === "deep" || shape === "egg";
     const g = ctx.createLinearGradient(0, -W * (tall ? 1.35 : 1.15), 0, W * (tall ? 1.35 : 1.15));
     g.addColorStop(0, body);
     g.addColorStop(0.38, body);
     g.addColorStop(0.72, belly);
     g.addColorStop(1, belly);
     ctx.fillStyle = g;
-    pathFishBody(ctx, L, W, shape || "oval", { wig: wig || 0 });
+    pathFishBody(ctx, L, W, shape || "oval", { wig: wig || 0, noDorsal: !!(opts && opts.noDorsal) });
     ctx.fill();
 
     if (gfxQuality <= 0) return;
@@ -6187,7 +8197,7 @@ function paintFishBodyVolume(ctx, L, W, shape, body, belly, wig) {
     shade.addColorStop(0, "rgba(10,25,40,0.55)");
     shade.addColorStop(1, "rgba(10,25,40,0)");
     ctx.fillStyle = shade;
-    pathFishBody(ctx, L, W, shape || "oval", { wig: wig || 0 });
+    pathFishBody(ctx, L, W, shape || "oval", { wig: wig || 0, noDorsal: !!(opts && opts.noDorsal) });
     ctx.fill();
     ctx.restore();
 
@@ -6239,6 +8249,79 @@ function drawFishScaleField(ctx, L, W, alpha) {
             ctx.stroke();
         }
     }
+    ctx.restore();
+}
+
+// Fancy goldfish raspberry wen (oranda / ranchu).
+function drawFancyWen(ctx, L, W, body, belly) {
+    const hx = L * 0.2;
+    const hy = -W * 0.58;
+    const lumps = [
+        [0, -0.02, 0.13],
+        [0.09, 0.05, 0.095],
+        [-0.08, 0.06, 0.09],
+        [0.02, 0.12, 0.075],
+        [-0.02, -0.1, 0.07],
+    ];
+    for (const [ox, oy, r] of lumps) {
+        const cx = hx + L * ox;
+        const cy = hy + W * oy;
+        const g = ctx.createRadialGradient(cx - L * r * 0.25, cy - L * r * 0.25, L * r * 0.1, cx, cy, L * r);
+        g.addColorStop(0, belly || "#ffe0b8");
+        g.addColorStop(0.55, body || "#e86830");
+        g.addColorStop(1, "rgba(90,40,20,0.35)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, L * r, L * r * 0.82, 0.15, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+// Flowerhorn nuchal hump: one large forehead bump.
+function drawNuchalHump(ctx, L, W, body, belly) {
+    const hx = L * 0.12;
+    const hy = -W * 0.72;
+    const g = ctx.createRadialGradient(hx - L * 0.04, hy - L * 0.04, L * 0.02, hx, hy, L * 0.2);
+    g.addColorStop(0, belly || "#f8c8a0");
+    g.addColorStop(0.55, body || "#d05040");
+    g.addColorStop(1, "rgba(60,20,20,0.4)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(hx, hy, L * 0.2, L * 0.16, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha *= 0.55;
+    ctx.beginPath();
+    ctx.ellipse(hx + L * 0.06, hy + L * 0.04, L * 0.12, L * 0.1, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha /= 0.55;
+}
+
+// Night lanternfish: glowing lure ahead of the snout.
+function drawLanternLure(ctx, L, W, age) {
+    const pulse = 0.55 + 0.45 * Math.sin((age || 0) * 5.2);
+    const lx = L * 0.78;
+    const ly = -W * 0.08;
+    ctx.strokeStyle = "rgba(210,220,190,0.75)";
+    ctx.lineWidth = Math.max(0.8, L * 0.028);
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(L * 0.48, -W * 0.12);
+    ctx.quadraticCurveTo(L * 0.62, -W * 0.42, lx, ly);
+    ctx.stroke();
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    const glow = ctx.createRadialGradient(lx, ly, 0, lx, ly, L * 0.28);
+    glow.addColorStop(0, `rgba(255,245,170,${0.65 * pulse})`);
+    glow.addColorStop(0.45, `rgba(255,200,70,${0.28 * pulse})`);
+    glow.addColorStop(1, "rgba(255,170,40,0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(lx, ly, L * 0.28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = `rgba(255,252,220,${0.9 * pulse})`;
+    ctx.beginPath();
+    ctx.arc(lx, ly, Math.max(1.4, L * 0.055), 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
 }
 
@@ -6582,28 +8665,60 @@ function drawObstacles(ctx, dt) {
             ctx.fill();
             drawMossPatches(ctx, o, woodTone(o.tone), o.r * 0.45, o.r * 0.35);
         } else if (o.kind === "reedraft") {
-            const stems = o.stems || 6;
-            for (let i = 0; i < stems; i++) {
-                const t = (i / (stems - 1) - 0.5) * o.r * 1.6;
-                const lean = (o.profile[i % o.profile.length] - 1) * 0.4;
-                const g = Math.floor(70 + o.tone * 60 + i * 3);
-                ctx.strokeStyle = `rgba(${40 + g * 0.2},${g},${55 + g * 0.15},0.8)`;
-                ctx.lineWidth = 2.2;
+            const r = o.r;
+            const stems = reedRaftStemLayout(o);
+            // Floating base: cut reed butts at the water line.
+            const base = ctx.createLinearGradient(0, r * 0.42, 0, -r * 0.08);
+            base.addColorStop(0, "rgba(75,95,55,0.55)");
+            base.addColorStop(0.55, "rgba(110,130,70,0.72)");
+            base.addColorStop(1, "rgba(140,165,90,0.82)");
+            ctx.fillStyle = base;
+            ctx.beginPath();
+            ctx.ellipse(0, r * 0.24, r * 0.86, r * 0.28, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = "rgba(45,60,35,0.35)";
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            // Individual reed stems fanning upward.
+            for (let i = 0; i < stems.length; i++) {
+                const stem = stems[i];
+                const g = Math.floor(68 + o.tone * 58 + i * 4);
+                const grad = ctx.createLinearGradient(stem.x0, r * 0.18, stem.x0 + stem.lean * 8, -stem.h);
+                grad.addColorStop(0, `rgba(${38 + g * 0.18},${g - 8},${48 + g * 0.12},0.88)`);
+                grad.addColorStop(0.55, `rgba(${42 + g * 0.2},${g},${52 + g * 0.14},0.92)`);
+                grad.addColorStop(1, `rgba(${55 + g * 0.22},${g + 12},${60 + g * 0.16},0.85)`);
+                ctx.fillStyle = grad;
+                pathReedRaftStem(ctx, stem, r, 1.85);
+                ctx.fill();
+                // Hollow cut tip.
+                ctx.strokeStyle = `rgba(${30 + g * 0.12},${g - 18},${40 + g * 0.1},0.55)`;
+                ctx.lineWidth = 1.1;
                 ctx.lineCap = "round";
+                const tipX = stem.x0 + stem.lean * 12;
                 ctx.beginPath();
-                ctx.moveTo(t * 0.3, o.r * 0.35);
-                ctx.quadraticCurveTo(t + lean * 8, 0, t * 1.1 + lean * 14, -o.r * 0.95);
+                ctx.moveTo(tipX - 2.2, -stem.h + 1.5);
+                ctx.lineTo(tipX + 2.2, -stem.h + 1.5);
                 ctx.stroke();
             }
-            // Twine binding.
-            ctx.strokeStyle = "rgba(120,95,55,0.7)";
-            ctx.lineWidth = 1.4;
+            // Rope binding band.
+            const rope = ctx.createLinearGradient(-r * 0.5, 0, r * 0.5, 0);
+            rope.addColorStop(0, "rgba(95,70,38,0.85)");
+            rope.addColorStop(0.5, "rgba(165,125,58,0.92)");
+            rope.addColorStop(1, "rgba(95,70,38,0.85)");
+            ctx.strokeStyle = rope;
+            ctx.lineWidth = 2.6;
             ctx.beginPath();
-            ctx.ellipse(0, o.r * 0.05, o.r * 0.7, o.r * 0.22, 0, 0, Math.PI * 2);
+            ctx.ellipse(0, r * 0.06, r * 0.8, r * 0.16, 0, 0, Math.PI * 2);
             ctx.stroke();
-            ctx.fillStyle = "rgba(55,80,50,0.35)";
+            ctx.strokeStyle = "rgba(55,40,22,0.45)";
+            ctx.lineWidth = 1;
             ctx.beginPath();
-            ctx.ellipse(0, o.r * 0.25, o.r * 0.65, o.r * 0.28, 0, 0, Math.PI * 2);
+            ctx.ellipse(0, r * 0.06, r * 0.68, r * 0.11, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            // Wet sheen on the base.
+            ctx.fillStyle = "rgba(180,210,160,0.18)";
+            ctx.beginPath();
+            ctx.ellipse(-r * 0.12, r * 0.18, r * 0.34, r * 0.1, -0.25, 0, Math.PI * 2);
             ctx.fill();
         } else {
             // Stump: bark sides + jagged ringed cut face.
@@ -6697,7 +8812,7 @@ function drawShoreStones(ctx, dt) {
             g.addColorStop(1, `rgba(${40 + s.tone * 20},${28 + s.tone * 18},${70 + s.tone * 30},0.92)`);
             ctx.fillStyle = g;
             ctx.globalAlpha = 0.86;
-            pathFacetRockOutline(ctx, { r: Math.max(s.rx, s.ry), facets, profile: s.profile });
+            pathShoreStoneOutline(ctx, s);
             ctx.fill();
             ctx.strokeStyle = "rgba(210,180,255,0.35)";
             ctx.lineWidth = 1;
@@ -6713,7 +8828,7 @@ function drawShoreStones(ctx, dt) {
             g.addColorStop(1, `rgb(${c0 - 14},${c0 - 10},${c0 + 4})`);
             ctx.fillStyle = g;
             ctx.globalAlpha = 0.8;
-            pathOrganicOval(ctx, s.rx, s.ry, 9, s.profile, 0.2);
+            pathShoreStoneOutline(ctx, s);
             ctx.fill();
             ctx.strokeStyle = "rgba(140,170,210,0.22)";
             ctx.lineWidth = 1;
@@ -6729,7 +8844,7 @@ function drawShoreStones(ctx, dt) {
             g.addColorStop(1, `rgb(${c - 25},${c - 20},${c - 18})`);
             ctx.fillStyle = g;
             ctx.globalAlpha = 0.78;
-            pathOrganicOval(ctx, s.rx, s.ry, 9, s.profile, 0.2);
+            pathShoreStoneOutline(ctx, s);
             ctx.fill();
             ctx.strokeStyle = "rgba(140,170,160,0.28)";
             ctx.lineWidth = 1;
@@ -6760,12 +8875,7 @@ function drawSticks(ctx, dt) {
             g.addColorStop(0.5, "rgba(200,180,255,0.72)");
             g.addColorStop(1, "rgba(90,160,210,0.55)");
             ctx.fillStyle = g;
-            ctx.beginPath();
-            ctx.moveTo(-s.len * 0.5, 0);
-            ctx.lineTo(-s.len * 0.08, -s.thick * 1.1);
-            ctx.lineTo(s.len * 0.5, 0);
-            ctx.lineTo(-s.len * 0.08, s.thick * 1.1);
-            ctx.closePath();
+            pathStickBody(ctx, s, 0);
             ctx.fill();
             ctx.strokeStyle = "rgba(230,220,255,0.35)";
             ctx.lineWidth = 0.8;
@@ -6773,30 +8883,35 @@ function drawSticks(ctx, dt) {
         } else if (nightMode) {
             const bend = 0.8 + lift * 0.2;
             ctx.fillStyle = s.wet ? "rgba(55,62,78,0.62)" : "rgba(70,78,92,0.7)";
-            ctx.beginPath();
-            ctx.moveTo(-s.len * 0.5, -s.thick * 0.35);
-            ctx.quadraticCurveTo(0, bend - s.thick * 0.5, s.len * 0.48, -s.thick * 0.15);
-            ctx.lineTo(s.len * 0.52, s.thick * 0.2);
-            ctx.quadraticCurveTo(0, bend + s.thick * 0.55, -s.len * 0.5, s.thick * 0.45);
-            ctx.closePath();
+            pathStickBody(ctx, s, bend);
             ctx.fill();
             ctx.strokeStyle = "rgba(150,180,220,0.16)";
             ctx.lineWidth = Math.max(0.8, s.thick * 0.28);
             ctx.stroke();
+            for (const leaf of ensureStickLeaves(s)) {
+                const lx = s.len * leaf.t;
+                const ly = leaf.side * (s.thick * 0.55 + leaf.r * 0.35);
+                ctx.fillStyle = `rgba(${50 + leaf.r * 8},${90 + leaf.r * 12},${70 + leaf.r * 6},0.72)`;
+                pathStickLeaf(ctx, lx, ly, leaf.r, leaf.ang);
+                ctx.fill();
+            }
         } else {
             const bend = (s.wet ? 2.5 : 0.5) + lift * 0.25;
             ctx.fillStyle = s.wet ? "rgba(90,70,45,0.58)" : "rgba(110,85,55,0.68)";
-            ctx.beginPath();
-            ctx.moveTo(-s.len * 0.5, -s.thick * 0.35);
-            ctx.quadraticCurveTo(0, bend - s.thick * 0.5, s.len * 0.48, -s.thick * 0.15);
-            ctx.lineTo(s.len * 0.52, s.thick * 0.2);
-            ctx.quadraticCurveTo(0, bend + s.thick * 0.55, -s.len * 0.5, s.thick * 0.45);
-            ctx.closePath();
+            pathStickBody(ctx, s, bend);
             ctx.fill();
             if (s.wet) {
                 ctx.strokeStyle = "rgba(160,200,190,0.18)";
                 ctx.lineWidth = Math.max(0.8, s.thick * 0.3);
                 ctx.stroke();
+            }
+            for (const leaf of ensureStickLeaves(s)) {
+                const lx = s.len * leaf.t;
+                const ly = leaf.side * (s.thick * 0.55 + leaf.r * 0.35);
+                const g = Math.floor(95 + leaf.r * 18);
+                ctx.fillStyle = `rgba(${40 + g * 0.15},${g},${55 + g * 0.1},0.82)`;
+                pathStickLeaf(ctx, lx, ly, leaf.r, leaf.ang);
+                ctx.fill();
             }
         }
         ctx.restore();
@@ -6851,16 +8966,29 @@ function drawReeds(ctx, t, dt) {
             ctx.fill();
         } else {
             const g = Math.floor(70 + r.green * 90);
-            ctx.strokeStyle = `rgba(${40 + g * 0.2},${g},${60 + g * 0.15},0.72)`;
-            ctx.lineWidth = 1.6;
+            ctx.strokeStyle = `rgba(${40 + g * 0.2},${g},${60 + g * 0.15},0.78)`;
+            ctx.lineWidth = 1.7;
             ctx.lineCap = "round";
             ctx.beginPath();
             ctx.moveTo(0, 0);
             ctx.quadraticCurveTo(4 + sway * 10, -r.h * 0.5, sway * 16, -r.h);
             ctx.stroke();
-            ctx.fillStyle = `rgba(${50 + g * 0.15},${g - 10},55,0.55)`;
+            ctx.strokeStyle = `rgba(${35 + g * 0.15},${g - 12},${50 + g * 0.12},0.55)`;
+            ctx.lineWidth = 1.1;
             ctx.beginPath();
-            ctx.ellipse(sway * 16, -r.h, 2.2, 4.5, sway, 0, Math.PI * 2);
+            ctx.moveTo(0.6, 0);
+            ctx.quadraticCurveTo(4.6 + sway * 10, -r.h * 0.5, sway * 16 + 0.6, -r.h);
+            ctx.stroke();
+            ctx.fillStyle = `rgba(${50 + g * 0.15},${g - 10},55,0.58)`;
+            ctx.beginPath();
+            ctx.ellipse(sway * 16, -r.h, 2.4, 4.8, sway, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = `rgba(${70 + g * 0.18},${g + 8},${58 + g * 0.14},0.42)`;
+            ctx.beginPath();
+            ctx.moveTo(-3, 2);
+            ctx.quadraticCurveTo(-5, 8, -2, 12);
+            ctx.quadraticCurveTo(2, 10, 3, 2);
+            ctx.closePath();
             ctx.fill();
         }
         ctx.restore();
@@ -6878,65 +9006,62 @@ function drawLilies(ctx, t, dt) {
         ctx.save();
         ctx.translate(L.x, L.y + bob);
         ctx.rotate(L.rot + tip);
-        ctx.globalAlpha = 0.82;
-        ctx.fillStyle = crystalMode
-            ? "rgba(40,10,70,0.22)"
-            : nightMode
-                ? "rgba(0,8,24,0.22)"
-                : "rgba(0,0,0,0.18)";
-        ctx.save();
-        ctx.translate(1.5, 2.5);
-        pathOrganicOval(ctx, L.r * 1.05, L.r * 0.82, 10, null, 0.12);
-        ctx.fill();
-        ctx.restore();
-        const g = ctx.createRadialGradient(-L.r * 0.2, -L.r * 0.2, 2, 0, 0, L.r);
+        ctx.globalAlpha = 0.88;
+        if (!lightCastsFloorShadows()) {
+            ctx.fillStyle = crystalMode
+                ? "rgba(40,10,70,0.18)"
+                : nightMode
+                    ? "rgba(0,8,24,0.2)"
+                    : "rgba(0,0,0,0.16)";
+            ctx.save();
+            ctx.translate(1.2, 2.2);
+            pathLilyPad(ctx, L.r * 1.02);
+            ctx.fill();
+            ctx.restore();
+        }
+        const g = ctx.createRadialGradient(-L.r * 0.22, -L.r * 0.18, 1, 0, 0, L.r * 1.05);
         if (crystalMode) {
-            g.addColorStop(0, "#d8c0ff");
-            g.addColorStop(0.45, "#8a70d0");
-            g.addColorStop(1, "#3a2868");
+            g.addColorStop(0, "#e8d8ff");
+            g.addColorStop(0.35, "#a888e0");
+            g.addColorStop(0.72, "#5a4090");
+            g.addColorStop(1, "#2a1848");
         } else if (nightMode) {
-            g.addColorStop(0, "#8aa8b8");
-            g.addColorStop(0.55, "#4a6878");
-            g.addColorStop(1, "#1a2838");
+            g.addColorStop(0, "#9ab0c0");
+            g.addColorStop(0.4, "#5a7888");
+            g.addColorStop(0.75, "#304858");
+            g.addColorStop(1, "#142028");
         } else {
-            g.addColorStop(0, "#6f9a5a");
-            g.addColorStop(0.55, "#4a7a42");
-            g.addColorStop(1, "#2a4a2c");
+            g.addColorStop(0, "#7faa68");
+            g.addColorStop(0.32, "#5f9248");
+            g.addColorStop(0.68, "#3f6a38");
+            g.addColorStop(1, "#244828");
         }
         ctx.fillStyle = g;
         pathLilyPad(ctx, L.r);
         ctx.fill();
+        strokeLilyPadVeins(ctx, L.r, crystalMode ? 0.5 : nightMode ? 0.32 : 0.42);
+        ctx.strokeStyle = crystalMode
+            ? "rgba(220,200,255,0.42)"
+            : nightMode
+                ? "rgba(160,200,230,0.26)"
+                : "rgba(24, 52, 28, 0.32)";
+        ctx.lineWidth = Math.max(0.7, L.r * 0.04);
+        ctx.stroke();
         if (crystalMode) {
-            ctx.strokeStyle = "rgba(220,200,255,0.45)";
-            ctx.lineWidth = 1;
-            ctx.stroke();
-            ctx.fillStyle = "rgba(240,230,255,0.35)";
+            ctx.fillStyle = "rgba(240,230,255,0.32)";
             ctx.beginPath();
-            ctx.ellipse(-L.r * 0.15, -L.r * 0.1, L.r * 0.22, L.r * 0.14, 0.4, 0, Math.PI * 2);
+            ctx.ellipse(-L.r * 0.14, -L.r * 0.1, L.r * 0.24, L.r * 0.15, 0.35, 0, Math.PI * 2);
             ctx.fill();
         } else if (nightMode) {
-            ctx.strokeStyle = "rgba(160,200,230,0.28)";
-            ctx.lineWidth = 0.8;
-            ctx.stroke();
-            ctx.fillStyle = "rgba(200,230,255,0.14)";
+            ctx.fillStyle = "rgba(200,230,255,0.12)";
             ctx.beginPath();
-            ctx.ellipse(-L.r * 0.12, -L.r * 0.08, L.r * 0.28, L.r * 0.16, 0.2, 0, Math.PI * 2);
+            ctx.ellipse(-L.r * 0.1, -L.r * 0.07, L.r * 0.26, L.r * 0.14, 0.15, 0, Math.PI * 2);
             ctx.fill();
         } else {
-            ctx.strokeStyle = "rgba(30, 60, 35, 0.35)";
-            ctx.lineWidth = 0.8;
-            for (let i = 0; i < 5; i++) {
-                const a = 0.5 + i * 0.9;
-                ctx.beginPath();
-                ctx.moveTo(0, 0);
-                ctx.quadraticCurveTo(
-                    Math.cos(a) * L.r * 0.35,
-                    Math.sin(a) * L.r * 0.3,
-                    Math.cos(a) * L.r * 0.85,
-                    Math.sin(a) * L.r * 0.75
-                );
-                ctx.stroke();
-            }
+            ctx.fillStyle = "rgba(180, 220, 140, 0.22)";
+            ctx.beginPath();
+            ctx.ellipse(-L.r * 0.16, -L.r * 0.12, L.r * 0.28, L.r * 0.16, 0.25, 0, Math.PI * 2);
+            ctx.fill();
         }
         ctx.restore();
     }
@@ -6952,6 +9077,7 @@ const pondPlants = [];
 const GREEN_POND_SPECIALS = [
     "lantern", "buoy", "bottle", "shell", "mushroom",
     "bamboo", "shipwheel", "teapot", "coral",
+    "lotus", "weed",
 ];
 // Dev menu + rare wooden fish share this list.
 const PLANT_KINDS = GREEN_POND_SPECIALS.concat(["woodenfish"]);
@@ -7292,19 +9418,36 @@ function drawPondPlants(ctx, t, dt) {
                 ctx.stroke();
             }
         } else if (p.kind === "mushroom") {
-            ctx.rotate(sway * 0.5);
-            const h = p.size * 0.7;
+            ctx.rotate(sway * 0.35);
+            const h = p.size * 0.72;
+            const spots = ["#d86858", "#c89050", "#b87840"];
             for (let i = 0; i < 3; i++) {
-                const ox = (i - 1) * p.size * 0.22;
-                const stemH = h * (0.45 + i * 0.08);
-                ctx.fillStyle = "rgba(210,200,170,0.85)";
-                ctx.fillRect(ox - 2.5, -stemH * 0.2, 5, stemH * 0.75);
-                const cap = ctx.createRadialGradient(ox, -stemH * 0.35, 1, ox, -stemH * 0.2, p.size * 0.22);
-                cap.addColorStop(0, i === 1 ? "#d86858" : "#c89050");
-                cap.addColorStop(1, i === 1 ? "#8a3028" : "#7a5030");
+                const ox = (i - 1) * p.size * 0.24;
+                const stemH = h * (0.48 + i * 0.07);
+                const stemW = 4.5 - Math.abs(i - 1) * 0.4;
+                const stemG = ctx.createLinearGradient(ox, stemH * 0.2, ox, -stemH * 0.05);
+                stemG.addColorStop(0, "rgba(210,198,165,0.92)");
+                stemG.addColorStop(1, "rgba(235,225,195,0.95)");
+                ctx.fillStyle = stemG;
+                ctx.beginPath();
+                ctx.moveTo(ox - stemW * 0.5, stemH * 0.15);
+                ctx.quadraticCurveTo(ox - stemW * 0.55, -stemH * 0.05, ox - stemW * 0.42, -stemH * 0.18);
+                ctx.lineTo(ox + stemW * 0.42, -stemH * 0.18);
+                ctx.quadraticCurveTo(ox + stemW * 0.55, -stemH * 0.05, ox + stemW * 0.5, stemH * 0.15);
+                ctx.closePath();
+                ctx.fill();
+                const capR = p.size * (0.17 + i * 0.018);
+                const cap = ctx.createRadialGradient(ox - capR * 0.2, -stemH * 0.32, 1, ox, -stemH * 0.22, capR * 1.2);
+                cap.addColorStop(0, i === 1 ? "#e88870" : "#d8a060");
+                cap.addColorStop(0.55, spots[i]);
+                cap.addColorStop(1, i === 1 ? "#7a3028" : "#6a4828");
                 ctx.fillStyle = cap;
                 ctx.beginPath();
-                ctx.ellipse(ox, -stemH * 0.25, p.size * (0.16 + i * 0.02), p.size * 0.12, 0, Math.PI, Math.PI * 2);
+                ctx.ellipse(ox, -stemH * 0.22, capR, capR * 0.72, 0, Math.PI, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = "rgba(255,240,220,0.55)";
+                ctx.beginPath();
+                ctx.arc(ox - capR * 0.25, -stemH * 0.28, capR * 0.12, 0, Math.PI * 2);
                 ctx.fill();
             }
         } else if (p.kind === "bamboo") {
@@ -7415,25 +9558,29 @@ function drawPondPlants(ctx, t, dt) {
             p.tipBob = (p.tipBob || 0) + ((wake * 0.04) - (p.tipBob || 0)) * Math.min(1, (dt || 0.016) * 2.5);
             const r = p.size * (p.kind === "lotus" ? 0.7 : 0.55);
             if (!lightCastsFloorShadows()) {
-            ctx.fillStyle = "rgba(0,0,0,0.16)";
-            ctx.beginPath();
-            ctx.ellipse(1, 2, r * 1.05, r * 0.85, 0, 0, Math.PI * 2);
-            ctx.fill();
+                ctx.fillStyle = "rgba(0,0,0,0.14)";
+                ctx.save();
+                ctx.translate(1.2, 2);
+                pathLilyPad(ctx, r * 1.02);
+                ctx.fill();
+                ctx.restore();
             }
-            const g = ctx.createRadialGradient(-r * 0.2, -r * 0.2, 2, 0, 0, r);
-            g.addColorStop(0, p.kind === "lotus" ? "#7eb86a" : "#6f9a5a");
-            g.addColorStop(0.7, "#3f6a3a");
+            const g = ctx.createRadialGradient(-r * 0.2, -r * 0.18, 1, 0, 0, r);
+            g.addColorStop(0, p.kind === "lotus" ? "#8ec878" : "#7faa68");
+            g.addColorStop(0.55, p.kind === "lotus" ? "#4a7a42" : "#4f8240");
             g.addColorStop(1, "#2a4a2c");
             ctx.fillStyle = g;
-            ctx.beginPath();
-            ctx.arc(0, 0, r, 0.35, Math.PI * 2 - 0.35);
-            ctx.lineTo(0, 0);
-            ctx.closePath();
+            pathLilyPad(ctx, r);
             ctx.fill();
+            strokeLilyPadVeins(ctx, r, 0.38);
             if (p.kind === "lotus") {
+                ctx.fillStyle = "rgba(240,190,150,0.78)";
+                ctx.beginPath();
+                ctx.ellipse(0, 0, r * 0.14, r * 0.11, 0, 0, Math.PI * 2);
+                ctx.fill();
                 ctx.fillStyle = "rgba(230,180,190,0.75)";
                 ctx.beginPath();
-                ctx.arc(0, 0, r * 0.28, 0, Math.PI * 2);
+                ctx.arc(0, 0, r * 0.24, 0, Math.PI * 2);
                 ctx.fill();
             }
         } else if (p.kind === "reed" || p.kind === "cattail") {
@@ -7456,19 +9603,36 @@ function drawPondPlants(ctx, t, dt) {
                 ctx.fill();
             }
         } else if (p.kind === "weed") {
-            ctx.rotate(p.rot + sway);
-            ctx.strokeStyle = `rgba(50,120,70,0.7)`;
-            ctx.lineWidth = 1.5;
-            ctx.lineCap = "round";
-            for (let i = 0; i < 5; i++) {
-                const a = (i / 5) * Math.PI * 2;
+            ctx.rotate(p.rot + sway * 0.25);
+            const s = p.size * 0.62;
+            if (!lightCastsFloorShadows()) {
+                ctx.fillStyle = "rgba(0,0,0,0.14)";
                 ctx.beginPath();
-                ctx.moveTo(0, 0);
+                ctx.ellipse(1.5, 2.5, s * 0.55, s * 0.22, 0, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.fillStyle = "rgba(55,95,58,0.55)";
+            ctx.beginPath();
+            ctx.ellipse(0, s * 0.12, s * 0.28, s * 0.12, 0, 0, Math.PI * 2);
+            ctx.fill();
+            const fronds = 7;
+            for (let i = 0; i < fronds; i++) {
+                const a = -1.05 + (i / (fronds - 1)) * 2.1;
+                const reach = s * (0.62 + (i % 3) * 0.1);
+                const g = ctx.createLinearGradient(0, s * 0.08, Math.sin(a) * reach, -reach);
+                g.addColorStop(0, "rgba(42,105,58,0.75)");
+                g.addColorStop(0.55, "rgba(58,130,72,0.82)");
+                g.addColorStop(1, "rgba(78,155,88,0.7)");
+                ctx.strokeStyle = g;
+                ctx.lineWidth = Math.max(1.6, s * 0.07);
+                ctx.lineCap = "round";
+                ctx.beginPath();
+                ctx.moveTo(0, s * 0.08);
                 ctx.quadraticCurveTo(
-                    Math.cos(a) * p.size * 0.35,
-                    Math.sin(a) * p.size * 0.2,
-                    Math.cos(a + sway) * p.size * 0.7,
-                    Math.sin(a + sway) * p.size * 0.55
+                    Math.sin(a) * reach * 0.35,
+                    -reach * 0.25 + s * 0.05,
+                    Math.sin(a + sway * 0.08) * reach,
+                    -reach * (0.72 + (i % 2) * 0.12)
                 );
                 ctx.stroke();
             }
@@ -7744,6 +9908,8 @@ class Food {
         this.platinum = !!(flags && flags.platinum);
         this.hero = !!(flags && flags.hero);
         this.carcass = !!(flags && flags.carcass);
+        // Axolotl helper gifts: other eaters welcome; the giver skips these.
+        this.fromAxolotlGift = !!(flags && flags.fromAxolotlGift);
         this.rare = isRareFoodFlags(this);
         this.eaten = false;
         this.age = 0;
@@ -7866,7 +10032,7 @@ function nearestFood(x, y, range) {
     return best;
 }
 
-// Rainbow trail that spells the exit message, then fades after the fish leaves.
+// Rainbow trail that follows the fish-logo path, then fades after the fish leaves.
 const rainbowScriptTrail = [];
 
 // Continuous cursive-friendly letterforms (clearer proportions for pond-scale reading).
@@ -7947,7 +10113,7 @@ function cursiveConnector(from, to, samples) {
 function buildFishLogoPath(fromX, fromY) {
     const cx = viewW * 0.5;
     const cy = viewH * 0.48;
-    const s = Math.min(viewW, viewH) * 0.17;
+    const s = Math.min(viewW, viewH) * 0.24;
     const ox = cx - s * 0.15;
     const oy = cy;
     // Unit fish facing right: forked tail on the left, round snout on the right.
@@ -8495,7 +10661,7 @@ class Fish {
         this.trailDrop = 0;
         this.erraticTimer = 0;
         this.golden = false;  // turned to gold and resting on the lakebed
-        this.isPink = false;  // breeding blush from pink food; stays until gold/rainbow/etc.
+        this.isPink = false;  // breeding blush from pink food; clears after one litter (or other transforms)
         this.breedCooldown = 0;
         this.sinkTimer = 0;
         this.sinkDepth = 0;
@@ -8506,7 +10672,7 @@ class Fish {
         this.redeemed = false; // once good again, never turns evil from eating
         this.debrisFlee = null; // flinch away from hauled debris
         this.dead = false;
-        this.giantEnded = false; // one-shot: already triggered the half-screen ending
+        this.giantEnded = false; // one-shot: already triggered the near screen-filling ending
         this._chaseBoost = 1;
         this.hatSeed = Math.random();
         this.blobPetCount = 0;
@@ -8667,11 +10833,12 @@ class Fish {
     }
 
     grow(amount, opts) {
-        if (this.golden || this.isRainbow || this.isPlatinum) return;
+        // Golden is frozen; rainbow and platinum can still snack and bulk up a little.
+        if (this.golden) return;
         const cap = fishGrowCap(this, opts);
         this.size = Math.min(cap, this.size + amount);
-        // Redeemed and hero fish keep growing but never turn evil.
-        if (this.redeemed || this.isHero || this.isMonster) {
+        // Rainbow / platinum / redeemed / hero / monster keep growing but never turn evil.
+        if (this.isRainbow || this.isPlatinum || this.redeemed || this.isHero || this.isMonster) {
             this.maybeBeginGiantEnding();
             return;
         }
@@ -8807,7 +10974,7 @@ class Fish {
         }
     }
 
-    // Eating pink breeding food: soft blush; stays pink after breeding.
+    // Eating pink breeding food: soft blush; clears after the first offspring.
     // Heroes blush too. Pink recolor beats most food looks except gold / rainbow.
     turnPink() {
         if (this.dead || this.golden || this.isRainbow || this.rainbowLeaving) return;
@@ -9350,6 +11517,7 @@ class Fish {
     }
 
     // Nearest eligible pink partner for breeding (both may seek each other).
+    // Includes blushed befriended frogs for frog-fish hybrids.
     findPinkMate() {
         if (!canBreedFish(this)) return null;
         let best = null;
@@ -9358,6 +11526,12 @@ class Fish {
             if (f === this || !canBreedFish(f)) continue;
             const d = Math.hypot(f.x - this.x, f.y - this.y);
             if (d < bd) { bd = d; best = f; }
+        }
+        for (const g of frogGroups) {
+            const fr = g.frog;
+            if (!canBreedFrog(fr)) continue;
+            const d = Math.hypot(fr.x - this.x, fr.y - this.y);
+            if (d < bd) { bd = d; best = fr; }
         }
         return best;
     }
@@ -9664,7 +11838,8 @@ class Fish {
                     // Ease together instead of orbiting past a tight center hitbox.
                     hardChase = false;
                     speed = this.baseSpeed * 0.28;
-                    spawnBreedOffspring(this, mate);
+                    if (isPondFrog(mate)) spawnFrogFishHybrid(mate, this);
+                    else spawnBreedOffspring(this, mate);
                 } else {
                     hardChase = true;
                     // Close the last gap gently so large bodies can still meet small partners.
@@ -10129,9 +12304,10 @@ class Fish {
             this.target = null;
             if (!this.isRainbow) this.turnToPlatinum();
             else {
-                this.grow(2);
+                this.grow(6);
                 const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
                 if (Audio.goldChime) Audio.goldChime(pan);
+                water.disturb(this.x, this.y, this.size * 0.55, 160);
             }
             return;
         }
@@ -10141,9 +12317,10 @@ class Fish {
             this.target = null;
             if (!this.isPlatinum) this.turnToRainbow();
             else {
-                this.grow(2);
+                this.grow(6);
                 const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
                 if (Audio.rainbowChime) Audio.rainbowChime(pan);
+                water.disturb(this.x, this.y, this.size * 0.55, 160);
             }
             return;
         }
@@ -10190,7 +12367,23 @@ class Fish {
         if (food.hero) {
             food.eaten = true;
             this.target = null;
-            this.turnHero();
+            // Rainbow / platinum ignore hero form; snack instead of a silent no-op.
+            if (this.isRainbow || this.isPlatinum) {
+                this.grow(6);
+                const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+                Audio.fishNote({
+                    freq: 290 * (this.type.register || 1),
+                    wave: "sine",
+                    pan,
+                    dur: 0.45,
+                    level: 0.11,
+                    partialAmt: 0.28,
+                    bright: 1.25,
+                });
+                water.disturb(this.x, this.y, this.size * 0.55, 160);
+            } else {
+                this.turnHero();
+            }
             return;
         }
 
@@ -10452,23 +12645,21 @@ class Fish {
         if (povAttack && povAttack.fish === this) return; // drawn in POV overlay
         if (this.insideShark) return; // hidden while the shark carries the glow fish
 
+        // Frog-fish hybrids use a dedicated blend model unless gold / rainbow / platinum.
+        if (this.frogHybrid && !this.golden && !this.isRainbow && !this.isPlatinum) {
+            drawFrogFishHybridModel(ctx, this);
+            return;
+        }
+
         const shape = this.type.shape || "oval";
         const slim = fishSlimForShape(shape, this.type);
         const L = this.size;
         const W = this.size * 0.5 * slim;
-        const wigAmt = this.golden ? 0 : (this.type.wiggle || 1);
-        const liftZ = this.pickerLiftZ || 0;
-        const thrash = liftZ > 2 ? Math.sin(this.tailPhase * 2.4) * 0.35 : 0;
-        let wig = Math.sin(this.tailPhase) * 0.5 * wigAmt + thrash * 0.2;
-        if (!this.golden && shape === "ray") {
-            wig += Math.sin(this._flap || this.tailPhase) * 0.28;
-        } else if (!this.golden && shape === "eel") {
-            wig += Math.sin(this._ribbon || this.tailPhase * 1.4) * 0.22;
-        } else if (!this.golden && (shape === "angel" || shape === "discus")) {
-            wig *= 0.72;
-            wig += Math.sin(this.tailPhase * 0.55) * 0.12;
-        }
-        const sink = this.golden ? (this.sinkDepth || 0) : 0;
+        const pose = fishLiveSwimPose(this);
+        const wig = pose.wig;
+        const thrash = pose.thrash;
+        const liftZ = pose.liftZ;
+        const sink = pose.sink;
         const isKoi = !!(this.type.koi || shape === "koi");
         const isRay = shape === "ray";
         const isEel = shape === "eel";
@@ -10514,37 +12705,15 @@ class Fish {
 
         ctx.save();
         if (this.plantMorph) drawPlantMorphAura(ctx, this);
-        // Lifted fish: shape-matched shadow stays on the water plane.
-        if (liftZ > 1 && !this.golden) {
-            ctx.save();
-            ctx.globalCompositeOperation = "multiply";
-            const liftA = 0.28 + 0.22 * Math.min(1, liftZ / 50);
-            const { stamp, dim } = stampFloorShadowSilhouette(L, (c) => {
-                fillFishShadowPaths(c, L, W, shape);
-            });
-            ctx.translate(this.x, this.y);
-            ctx.scale(1, 0.55);
-            ctx.rotate(this.dir);
-            ctx.globalAlpha = liftA;
-            ctx.drawImage(stamp, -dim * 0.5, -dim * 0.5);
-            ctx.restore();
-        }
-        const bobY = (!this.golden && (shape === "angel" || shape === "discus"))
-            ? Math.sin(this.tailPhase * 0.7) * (2.2 + this.size * 0.04)
-            : 0;
+        // Floor contact for lifted fish is drawn in drawSunCreatureShadows so it
+        // stays under the body and never doubles up with a second stamp here.
         ctx.translate(
             this.x + thrash * 3,
-            this.y + (this.golden ? sink * 6 : 0) - liftZ + bobY
+            this.y + (this.golden ? sink * 6 : 0) - liftZ + pose.bobY
         );
         const s = (1 - sink * 0.35) * (1 + liftZ / 220);
-        const discPulse = (!this.golden && shape === "ray")
-            ? 1 + Math.sin(this._flap || this.tailPhase) * 0.04
-            : 1;
-        ctx.scale(s * discPulse, s * (shape === "eel" ? 1 : discPulse));
-        const ribbonYaw = (!this.golden && shape === "eel")
-            ? Math.sin(this._ribbon || this.tailPhase) * 0.12
-            : 0;
-        ctx.rotate(this.dir + thrash * 0.45 + ribbonYaw);
+        ctx.scale(s * pose.discPulse, s * (shape === "eel" ? 1 : pose.discPulse));
+        ctx.rotate(this.dir + thrash * 0.45 + pose.ribbonYaw);
         // Golden fish settle on the lakebed and stay visible (dimmer) until refresh.
         const ghost = this.type.ghost || 1;
         const morphA = this.plantMorph && this._morphAlpha != null ? this._morphAlpha : 1;
@@ -10552,6 +12721,19 @@ class Fish {
             ? this._giantFlyAlpha : 1;
         const giantParts = (giantEnding && giantEnding.fish === this && giantEnding.parts)
             ? giantEnding.parts : null;
+        // Once the farewell starts cracking, draw discrete anatomy instead of
+        // offsetting full-fish layers (that silhouette read as a giant hand).
+        if (giantParts && giantEnding && giantEnding.fish === this) {
+            const splitStart = giantEnding.kind === "peace" ? 1.15 : 0.7;
+            const splitDur = giantEnding.kind === "peace" ? 2.6 : 2.0;
+            const split = clamp01((giantEnding.t - splitStart) / splitDur);
+            if (split > 0.03 && giantA > 0.02) {
+                ctx.globalAlpha = (0.92 * ghost) * morphA * giantA;
+                drawGiantSeparatedAnatomy(ctx, this, giantParts, L, W, body, belly, split);
+                ctx.restore();
+                return;
+            }
+        }
         const withGiantPart = (key, drawFn) => {
             if (!giantParts || !giantParts[key]) {
                 drawFn();
@@ -10622,63 +12804,27 @@ class Fish {
             ctx.shadowBlur = 0;
         }
 
-        // Caudal fin: lobed peduncle fork, whip (ray), or soft ribbon tip (eel).
+        // Caudal fin: lobed peduncle fork, twin fan, veil, whip (ray), or soft ribbon tip (eel).
+        const tailStyle = pose.tail || fishTailStyle(this.type, shape);
         withPeacePart("tail", () => {
             const tailFill = contrastTailFill(body, belly);
             ctx.fillStyle = tailFill;
-            ctx.beginPath();
-            if (isRay) {
-                // Whip tail with a small venom spine flare near the base.
-                ctx.moveTo(-L * 0.45, 0);
-                ctx.quadraticCurveTo(-L * 0.85, -W * (0.08 + wig * 0.05), -L * 1.45, wig * W * 0.15);
-                ctx.quadraticCurveTo(-L * 0.9, W * 0.06, -L * 0.45, 0);
+            withFishCaudalSwing(ctx, L, shape, wig, () => {
+                pathFishCaudal(ctx, L, W, shape, wig, { tail: tailStyle, type: this.type });
                 ctx.fill();
-                ctx.beginPath();
-                ctx.moveTo(-L * 0.72, -W * 0.02);
-                ctx.lineTo(-L * 0.95, -W * 0.22);
-                ctx.lineTo(-L * 0.82, 0);
-                ctx.closePath();
-            } else if (shape === "koi" || shape === "longfin") {
-                const spread = isKoi ? 1.22 : shape === "longfin" ? 1.28 : 1.08;
-                ctx.moveTo(-L * 0.38, 0);
-                ctx.bezierCurveTo(-L * 0.58, -W * (0.85 + wig * 0.25) * spread, -L * 0.88, -W * (1.55 + wig) * spread, -L * 1.22, -W * (1.25 + wig) * spread);
-                ctx.quadraticCurveTo(-L * 0.95, -W * 0.35, -L * 0.72, -W * 0.08);
-                ctx.quadraticCurveTo(-L * 0.58, 0, -L * 0.72, W * 0.08);
-                ctx.quadraticCurveTo(-L * 0.95, W * 0.35, -L * 1.22, W * (1.25 + wig) * spread);
-                ctx.bezierCurveTo(-L * 0.88, W * (1.55 + wig) * spread, -L * 0.58, W * (0.85 + wig * 0.25) * spread, -L * 0.38, 0);
-            } else if (isTall) {
-                ctx.moveTo(-L * 0.32, 0);
-                ctx.quadraticCurveTo(-L * 0.52, -W * 0.95, -L * 0.85, -W * 1.65);
-                ctx.quadraticCurveTo(-L * 0.62, -W * 0.15, -L * 0.48, 0);
-                ctx.quadraticCurveTo(-L * 0.62, W * 0.15, -L * 0.85, W * 1.65);
-                ctx.quadraticCurveTo(-L * 0.52, W * 0.95, -L * 0.32, 0);
-            } else if (isEel) {
-                ctx.moveTo(-L * 0.92, 0);
-                ctx.quadraticCurveTo(-L * 1.08, -W * (0.7 + wig * 0.2), -L * 1.28, -W * (0.25 + wig * 0.15));
-                ctx.quadraticCurveTo(-L * 1.12, 0, -L * 1.28, W * (0.25 + wig * 0.15));
-                ctx.quadraticCurveTo(-L * 1.08, W * (0.7 + wig * 0.2), -L * 0.92, 0);
-            } else if (shape === "blob") {
-                ctx.moveTo(-L * 0.55, W * 0.05);
-                ctx.quadraticCurveTo(-L * 0.78, -W * 0.55, -L * 0.95, -W * (0.35 + wig * 0.2));
-                ctx.quadraticCurveTo(-L * 0.72, W * 0.05, -L * 0.95, W * (0.75 + wig * 0.25));
-                ctx.quadraticCurveTo(-L * 0.7, W * 0.55, -L * 0.55, W * 0.05);
-            } else if (shape === "arrow") {
-                ctx.moveTo(-L * 0.72, 0);
-                ctx.bezierCurveTo(-L * 0.85, -W * 0.35, -L * 0.98, -W * (0.75 + wig * 0.25), -L * 1.18, -W * (0.55 + wig * 0.2));
-                ctx.quadraticCurveTo(-L * 0.95, 0, -L * 1.18, W * (0.55 + wig * 0.2));
-                ctx.bezierCurveTo(-L * 0.98, W * (0.75 + wig * 0.25), -L * 0.85, W * 0.35, -L * 0.72, 0);
-            } else {
-                ctx.moveTo(-L * 0.4, 0);
-                ctx.bezierCurveTo(-L * 0.55, -W * 0.45, -L * 0.72, -W * (0.9 + wig * 0.35), -L * 1.02, -W * (1.12 + wig * 0.45));
-                ctx.quadraticCurveTo(-L * 0.78, -W * 0.2, -L * 0.62, 0);
-                ctx.quadraticCurveTo(-L * 0.78, W * 0.2, -L * 1.02, W * (1.12 + wig * 0.45));
-                ctx.bezierCurveTo(-L * 0.72, W * (0.9 + wig * 0.35), -L * 0.55, W * 0.45, -L * 0.4, 0);
-            }
-            ctx.fill();
-            // Soft rim so the fork stays separated from the water wash.
-            ctx.strokeStyle = "rgba(12, 22, 28, 0.32)";
-            ctx.lineWidth = Math.max(0.7, L * 0.018);
-            ctx.stroke();
+                if (isRay) {
+                    ctx.beginPath();
+                    ctx.moveTo(-L * 0.72, -W * 0.02);
+                    ctx.lineTo(-L * 0.95, -W * 0.22);
+                    ctx.lineTo(-L * 0.82, 0);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+                // Soft rim so the fork stays separated from the water wash.
+                ctx.strokeStyle = "rgba(12, 22, 28, 0.32)";
+                ctx.lineWidth = Math.max(0.7, L * 0.018);
+                ctx.stroke();
+            }, tailStyle);
             // Fin ray strokes for depth without heavy fill cost.
             if (!isRay && shape !== "blob" && L > 14) {
                 ctx.save();
@@ -10686,26 +12832,33 @@ class Fish {
                 ctx.strokeStyle = "rgba(15,30,40,0.55)";
                 ctx.lineWidth = Math.max(0.5, L * 0.012);
                 ctx.lineCap = "round";
-                const baseX = isTall ? -L * 0.34 : isEel ? -L * 0.9 : shape === "arrow" ? -L * 0.7 : -L * 0.42;
-                for (let r = -2; r <= 2; r++) {
-                    if (r === 0) continue;
-                    ctx.beginPath();
-                    ctx.moveTo(baseX, r * W * 0.06);
-                    ctx.quadraticCurveTo(
-                        baseX - L * 0.22,
-                        r * W * (0.55 + wig * 0.15),
-                        baseX - L * (0.48 + Math.abs(r) * 0.04),
-                        r * W * (0.95 + wig * 0.2)
-                    );
-                    ctx.stroke();
-                }
+                const baseX = fishCaudalPeduncleX(L, shape, tailStyle);
+                withFishCaudalSwing(ctx, L, shape, wig, () => {
+                    for (let r = -2; r <= 2; r++) {
+                        if (r === 0) continue;
+                        const reach = tailStyle === "veil" || tailStyle === "comet" ? 0.62
+                            : tailStyle === "twin" ? 0.42
+                            : 0.48;
+                        ctx.beginPath();
+                        ctx.moveTo(baseX, r * W * 0.06);
+                        ctx.quadraticCurveTo(
+                            baseX - L * 0.22,
+                            r * W * (0.55 + wig * 0.15),
+                            baseX - L * (reach + Math.abs(r) * 0.04),
+                            r * W * (0.95 + wig * 0.2)
+                        );
+                        ctx.stroke();
+                    }
+                }, tailStyle);
                 ctx.restore();
             }
         });
 
         // Body: volumetric silhouette with dorsal shade and belly lift.
         withPeacePart("body", () => {
-            paintFishBodyVolume(ctx, L, W, shape, body, belly, wig);
+            paintFishBodyVolume(ctx, L, W, shape, body, belly, wig, {
+                noDorsal: !!this.type.noDorsal,
+            });
             if (!this.golden && !this.isMonster && !isRay) {
                 drawFishLateralLine(ctx, L, W);
             }
@@ -10780,15 +12933,20 @@ class Fish {
                     ctx.fill();
                     ctx.globalAlpha /= 0.55;
                 }
-            } else if (!this.golden) {
-                const tall = shape === "longfin" ? 2.35
+            } else if (!this.golden && !this.type.noDorsal) {
+                const tall = shape === "longfin" || tailStyle === "veil" ? 2.35
                     : shape === "angel" ? 2.05
                     : shape === "discus" ? 1.85
                     : shape === "diamond" ? 1.75
+                    : shape === "deep" ? 1.95
                     : shape === "arrow" ? 1.15
+                    : shape === "egg" ? 1.35
                     : isKoi ? 1.4 : 1.55;
-                const startX = shape === "arrow" ? L * 0.05 : -L * 0.08;
-                const softFin = shape === "longfin" || shape === "angel";
+                const startX = shape === "arrow" ? L * 0.05
+                    : shape === "deep" ? -L * 0.02
+                    : -L * 0.08;
+                const softFin = shape === "longfin" || shape === "angel" || tailStyle === "veil";
+                const finWag = 1 + wig * 0.04;
                 ctx.fillStyle = body;
                 ctx.globalAlpha *= softFin ? 0.48 : 0.82;
                 if (softFin) {
@@ -10796,7 +12954,7 @@ class Fish {
                 }
                 ctx.beginPath();
                 ctx.moveTo(startX, -W * 0.72);
-                ctx.quadraticCurveTo(L * 0.02, -W * tall, L * 0.22, -W * (tall * 0.92));
+                ctx.quadraticCurveTo(L * 0.02, -W * tall * finWag, L * 0.22, -W * (tall * 0.92) * finWag);
                 ctx.quadraticCurveTo(L * 0.32, -W * 0.55, L * 0.18, -W * 0.48);
                 ctx.quadraticCurveTo(L * 0.05, -W * 0.72, startX, -W * 0.72);
                 ctx.fill();
@@ -10809,7 +12967,7 @@ class Fish {
                         const t = 0.15 + i * 0.22;
                         ctx.beginPath();
                         ctx.moveTo(-L * 0.02 + t * L * 0.2, -W * 0.7);
-                        ctx.quadraticCurveTo(L * (0.05 + t * 0.15), -W * (tall * (0.75 + i * 0.05)), L * (0.18 + t * 0.1), -W * 0.52);
+                        ctx.quadraticCurveTo(L * (0.05 + t * 0.15), -W * (tall * finWag * (0.75 + i * 0.05)), L * (0.18 + t * 0.1), -W * 0.52);
                         ctx.stroke();
                     }
                     ctx.restore();
@@ -10821,20 +12979,22 @@ class Fish {
                     ctx.globalAlpha /= 0.82;
                 }
             }
-            if (shape === "longfin" || shape === "angel") {
+            if (shape === "longfin" || shape === "angel" || tailStyle === "veil") {
                 ctx.save();
                 ctx.globalCompositeOperation = "lighter";
                 ctx.fillStyle = body;
                 ctx.globalAlpha *= 0.28;
+                const finWag = 1 + wig * 0.04;
                 ctx.beginPath();
                 ctx.moveTo(-L * 0.18, -W * 0.48);
-                ctx.quadraticCurveTo(L * 0.08, -W * (shape === "angel" ? 2.45 : 2.35), L * 0.4, -W * 0.32);
+                ctx.quadraticCurveTo(L * 0.08, -W * ((shape === "angel" ? 2.45 : 2.35) * finWag), L * 0.4, -W * 0.32);
                 ctx.quadraticCurveTo(L * 0.08, -W * 0.95, -L * 0.18, -W * 0.48);
                 ctx.fill();
                 ctx.restore();
             }
             // Soft adipose / rear dorsal nub on most shapes.
-            if (!this.golden && !isRay && !isEel && shape !== "blob" && shape !== "longfin" && shape !== "angel") {
+            if (!this.golden && !isRay && !isEel && shape !== "blob" && shape !== "longfin"
+                && shape !== "angel" && shape !== "egg" && tailStyle !== "veil") {
                 ctx.fillStyle = body;
                 ctx.globalAlpha *= 0.45;
                 ctx.beginPath();
@@ -10857,11 +13017,18 @@ class Fish {
                     ctx.quadraticCurveTo(-L * 0.25, W * (0.95 + wig * 0.1), -L * 0.8, W * 0.35);
                     ctx.quadraticCurveTo(-L * 0.2, W * 0.7, L * 0.05, W * 0.45);
                     ctx.fill();
-                } else if (isTall) {
+                } else if (isTall || shape === "deep") {
                     ctx.beginPath();
                     ctx.moveTo(-L * 0.05, W * 0.7);
                     ctx.quadraticCurveTo(L * 0.08, W * 1.85, -L * 0.22, W * 1.95 + wig * W * 0.1);
                     ctx.quadraticCurveTo(-L * 0.18, W * 0.95, -L * 0.05, W * 0.7);
+                    ctx.fill();
+                } else if (tailStyle === "veil") {
+                    // Betta: long trailing anal skirt.
+                    ctx.beginPath();
+                    ctx.moveTo(-L * 0.05, W * 0.45);
+                    ctx.quadraticCurveTo(-L * 0.2, W * (1.55 + wig * 0.15), -L * 0.85, W * (1.35 + wig * 0.2));
+                    ctx.quadraticCurveTo(-L * 0.45, W * 0.75, -L * 0.05, W * 0.45);
                     ctx.fill();
                 } else {
                     ctx.beginPath();
@@ -10886,26 +13053,40 @@ class Fish {
                 ctx.quadraticCurveTo(L * 0.1, W * 0.28, L * 0.2, W * 0.15);
                 ctx.fill();
             } else {
-                // Pectoral fan.
+                // Pectoral fan (labriform species beat harder).
+                const pec = pose.pecFlap || 0;
+                const pecSpread = 1 + pec * 0.22;
                 ctx.beginPath();
                 ctx.moveTo(L * 0.08, W * 0.22);
-                ctx.bezierCurveTo(L * 0.22, W * 0.55, L * 0.12, W * 0.95, -L * 0.02, W * 0.88);
+                ctx.bezierCurveTo(
+                    L * 0.22 * pecSpread, W * 0.55 * pecSpread,
+                    L * 0.12, W * 0.95 * pecSpread,
+                    -L * 0.02, W * 0.88 * pecSpread
+                );
                 ctx.quadraticCurveTo(-L * 0.06, W * 0.48, L * 0.08, W * 0.22);
                 ctx.fill();
                 // Matching upper pectoral hint (subtle).
                 ctx.globalAlpha *= 0.55;
                 ctx.beginPath();
                 ctx.moveTo(L * 0.06, -W * 0.15);
-                ctx.quadraticCurveTo(L * 0.16, -W * 0.55, L * 0.02, -W * 0.72);
+                ctx.quadraticCurveTo(L * 0.16, -W * 0.55 * pecSpread, L * 0.02, -W * 0.72 * pecSpread);
                 ctx.quadraticCurveTo(-L * 0.02, -W * 0.35, L * 0.06, -W * 0.15);
                 ctx.fill();
                 ctx.globalAlpha /= 0.55;
-                // Pelvic pair.
-                ctx.beginPath();
-                ctx.moveTo(-L * 0.02, W * 0.38);
-                ctx.quadraticCurveTo(L * 0.02, W * 0.82, -L * 0.18, W * 0.92);
-                ctx.quadraticCurveTo(-L * 0.14, W * 0.52, -L * 0.02, W * 0.38);
-                ctx.fill();
+                // Pelvic pair (long filaments on veil / lyre ornamental fish).
+                if (tailStyle === "veil" || tailStyle === "lyre") {
+                    ctx.beginPath();
+                    ctx.moveTo(L * 0.02, W * 0.35);
+                    ctx.quadraticCurveTo(L * 0.05, W * 1.15, -L * 0.35, W * (1.45 + wig * 0.1));
+                    ctx.quadraticCurveTo(-L * 0.12, W * 0.7, L * 0.02, W * 0.35);
+                    ctx.fill();
+                } else {
+                    ctx.beginPath();
+                    ctx.moveTo(-L * 0.02, W * 0.38);
+                    ctx.quadraticCurveTo(L * 0.02, W * 0.82, -L * 0.18, W * 0.92);
+                    ctx.quadraticCurveTo(-L * 0.14, W * 0.52, -L * 0.02, W * 0.38);
+                    ctx.fill();
+                }
             }
             ctx.globalAlpha /= 0.58;
         });
@@ -11148,6 +13329,13 @@ class Fish {
                     ctx.arc(ex2 - eyeR * 0.28, ey2 - eyeR * 0.3, eyeR * 0.24, 0, Math.PI * 2);
                     ctx.fill();
                 }
+            }
+
+            // Species tells: raspberry wen, flowerhorn hump, lantern lure.
+            if (!this.golden && !this.isRainbow && !this.isPlatinum) {
+                if (this.type.wen) drawFancyWen(ctx, L, W, body, belly);
+                if (this.type.hump) drawNuchalHump(ctx, L, W, body, belly);
+                if (this.type.lantern) drawLanternLure(ctx, L, W, this.age);
             }
 
             // Inherited swordfish bill + speared trophies (pierced through midsection).
@@ -11498,8 +13686,15 @@ function mixFishTypes(ta, tb) {
     if (ta.ghost != null || tb.ghost != null) {
         type.ghost = ((ta.ghost != null ? ta.ghost : 1) + (tb.ghost != null ? tb.ghost : 1)) * 0.5;
     }
+    if (ta.wen || tb.wen) type.wen = Math.random() < 0.5;
+    if (ta.noDorsal || tb.noDorsal) type.noDorsal = Math.random() < 0.45;
+    if (ta.hump || tb.hump) type.hump = Math.random() < 0.5;
+    if (ta.lantern || tb.lantern) type.lantern = Math.random() < 0.4;
+    if (ta.tail || tb.tail) type.tail = pickParentField(ta.tail || null, tb.tail || null);
+    if (ta.labriform || tb.labriform) type.labriform = Math.random() < 0.4;
     // Drop null odd so habits stay clean.
     if (!type.odd) delete type.odd;
+    if (!type.tail) delete type.tail;
     if (!type.pattern) type.patternColor = null;
     return type;
 }
@@ -11711,6 +13906,8 @@ function spawnApexHybrid(a, b) {
     const cd = CONFIG.apexBreedCooldown || CONFIG.breedCooldown;
     a.breedCooldown = cd;
     b.breedCooldown = cd;
+    a.isPink = false;
+    b.isPink = false;
     ensureApexBreedFields(a);
     ensureApexBreedFields(b);
 
@@ -11878,6 +14075,9 @@ function spawnBreedOffspring(a, b) {
     fishes.push(baby);
     a.breedCooldown = CONFIG.breedCooldown;
     b.breedCooldown = CONFIG.breedCooldown;
+    // One litter per blush: need fresh pink food to breed again.
+    a.isPink = false;
+    b.isPink = false;
     const pan = Math.max(-1, Math.min(1, (baby.x / viewW) * 2 - 1));
     Audio.fishNote({
         freq: 480 * (type.register || 1),
@@ -11893,11 +14093,120 @@ function spawnBreedOffspring(a, b) {
     return baby;
 }
 
+// Blushed befriended frog + blushed fish → frog-fish hybrid fry.
+// Frog + frog does not breed (no existing path; hybrids need a fish parent).
+function spawnFrogFishHybrid(frog, fish) {
+    if (!canBreedFrog(frog) || !canBreedFish(fish)) return null;
+    const living = fishes.filter((f) => !f.dead).length;
+    if (living >= CONFIG.maxBreedPop) return null;
+    const livingHybrids = fishes.filter((f) => !f.dead && f.frogHybrid).length;
+    if (livingHybrids >= (CONFIG.maxFrogHybrids || 8)) return null;
+
+    const frogBody = frogToneBodyHex(frog.tone);
+    const frogBelly = frogToneBellyHex(frog.tone);
+    const fishType = fish.type || FISH_TYPES[0];
+    const mixT = 0.38 + Math.random() * 0.28;
+    const body = mixHexColors(frogBody, fishType.body, mixT);
+    const belly = mixHexColors(frogBelly, fishType.belly, mixT);
+    const sizeLo = Math.max(9, Math.min(frog.size, fish.size) * 0.28);
+    const sizeHi = Math.max(14, Math.min(frog.size, fish.size) * 0.48);
+    const type = {
+        name: "frogfish",
+        frogHybrid: true,
+        shape: fishType.shape || "oval",
+        body,
+        belly,
+        pattern: fishType.pattern || "spots",
+        patternColor: mixHexColors(frogBody, fishType.patternColor || fishType.body, 0.5),
+        size: [sizeLo, sizeHi],
+        speed: [
+            Math.max(16, ((fishType.speed && fishType.speed[0]) || 22) * 0.85),
+            Math.max(26, ((fishType.speed && fishType.speed[1]) || 34) * 0.95),
+        ],
+        wave: fishType.wave || "triangle",
+        register: ((fishType.register || 1) + 1.05) * 0.5,
+        bite: 4,
+        dur: 0.36,
+        turn: 3.2,
+        wiggle: 1.22,
+        scale: fishType.scale || PENTATONIC,
+        petWave: "sine",
+        petFreq: 340,
+        petDur: 0.38,
+        bitePartial: 0.28,
+        biteBright: 1.15,
+        tail: fishType.tail || "crescent",
+        slim: 0.78,
+    };
+    const baby = new Fish(type);
+    baby.frogHybrid = {
+        frogTone: frog.tone == null ? 0.5 : frog.tone,
+        fishName: fishType.name || "fish",
+        shape: type.shape,
+    };
+    baby.isHero = !!(frog.isHero || fish.isHero || fish.redeemed);
+    baby.isPredator = false;
+    baby.isPink = false;
+    baby.isRainbow = false;
+    baby.isMonster = false;
+    baby.redeemed = !!baby.isHero;
+    baby.heroBlood = baby.isHero ? 0.75 : 0;
+    baby.size = Math.max(sizeLo, Math.min(sizeHi, (frog.size + fish.size) * 0.22));
+    baby.baseSpeed = 24 + Math.random() * 10;
+    baby.x = (frog.x + fish.x) * 0.5 + (Math.random() - 0.5) * 12;
+    baby.y = (frog.y + fish.y) * 0.5 + (Math.random() - 0.5) * 12;
+    baby.dir = Math.atan2(fish.y - frog.y, fish.x - frog.x) + (Math.random() - 0.5) * 0.6;
+    baby.lineageHue = typeof mixLineageHue === "function"
+        ? mixLineageHue({ lineageHue: 110, isPink: true }, fish)
+        : 140;
+    baby.lineageGen = 1;
+    baby.lineageShape = type.shape;
+    fishes.push(baby);
+
+    const cd = CONFIG.breedCooldown;
+    frog.breedCooldown = cd;
+    fish.breedCooldown = cd;
+    frog.isPink = false;
+    fish.isPink = false;
+
+    const pan = Math.max(-1, Math.min(1, (baby.x / viewW) * 2 - 1));
+    Audio.fishNote({
+        freq: 400,
+        wave: "triangle",
+        pan,
+        dur: 0.4,
+        level: 0.11,
+        partialAmt: 0.32,
+        bright: 1.3,
+    });
+    water.disturb(baby.x, baby.y, baby.size * 1.0, 140);
+    spawnSplash(baby.x, baby.y, baby.size * 0.45, 0.4);
+    return baby;
+}
+
 function updateBreeding(dt) {
     updateApexBreeding(dt || 0);
+    if (fishes.filter((f) => !f.dead).length >= CONFIG.maxBreedPop) return;
+
+    // Frog + pink fish pairs (mutual seek also happens in update loops).
+    const pinkFrogs = [];
+    for (const g of frogGroups) {
+        if (canBreedFrog(g.frog)) pinkFrogs.push(g.frog);
+    }
+    if (pinkFrogs.length) {
+        const pinkFish = fishes.filter(canBreedFish);
+        for (const frog of pinkFrogs) {
+            for (const fish of pinkFish) {
+                if (Math.hypot(frog.x - fish.x, frog.y - fish.y) <= pinkBreedRange(frog, fish)) {
+                    spawnFrogFishHybrid(frog, fish);
+                    return;
+                }
+            }
+        }
+    }
+
     const pinks = fishes.filter(canBreedFish);
     if (pinks.length < 2) return;
-    if (fishes.filter((f) => !f.dead).length >= CONFIG.maxBreedPop) return;
     for (let i = 0; i < pinks.length; i++) {
         for (let j = i + 1; j < pinks.length; j++) {
             const a = pinks[i];
@@ -11915,8 +14224,8 @@ function updateBreeding(dt) {
 // Rare crocodiles/alligators arrive on a long timer. They eat smaller fish.
 // A fish that outgrows and eats one becomes a monster, which later eats the
 // shark and then swims into the camera (POV) to "eat the user" and reset.
-// Heroes / redeemed (and grower-fed giants) that fill ~half the screen get a
-// separate farewell ending, then resetPond.
+// Heroes / redeemed (and grower-fed giants) that fill ~three quarters of the shorter
+// screen side get a separate farewell ending, then resetPond.
 // After a whale eats a fish, a large enough hero can hunt it for a one-shot
 // remorse explosion into a full hero school (every common + exotic type).
 // ===========================================================================
@@ -11935,7 +14244,7 @@ let heroRemorseEnding = null; // { fish, t, burst }
 let orcaFeastEnding = null; // night coronation after eating the orca
 let swordfishSpearEnding = null; // { sf, t, approach, fade, liveAlpha } POV tip thrust finale
 let rainbowNinjaEnding = null; // multi-rainbow ninja fight when only rainbows remain
-let crystalApexEnding = null; // { kind: "prism"|"serpent"|"mantle", t, phase, ... }
+let crystalApexEnding = null; // { kind, t, phase: approach|bloom|shatter|fade, ... }
 let whaleRemorseDone = false; // one-shot: remorse finale already fired this session
 let apexDuel = null; // croc/alligator vs shark when the pond is emptied
 let apexDuelPlayed = false; // blocks shark respawn loops after a croc finale
@@ -11947,7 +14256,7 @@ function findEdiblePacifistHelper(hunter, rangeMult) {
     let best = null;
     let bd = range;
     for (const p of pacifistVisitors || []) {
-        if (!p || p.dead || p.leaving) continue;
+        if (!p || p.dead || p.leaving || p.golden) continue;
         if ((p.size || 0) >= (hunter.size || 0) * 0.98) continue;
         const d = Math.hypot(p.x - hunter.x, p.y - hunter.y);
         if (d < bd) {
@@ -12025,13 +14334,13 @@ function pondFinaleActive() {
     const octopusReturn = octopusWhaleFight && octopusWhaleFight.restocked;
     const crystalReturn = crystalApexEnding && crystalApexEnding.restocked;
     if (giantReturn || octopusReturn || crystalReturn) {
-        return !!(povAttack || heroRemorseEnding || frogFinale
+        return !!(povAttack || heroRemorseEnding || frogFinale || bullfrogFinale
             || orcaFeastEnding || swordfishSpearEnding || rainbowNinjaEnding
             || (giantEnding && !giantReturn)
             || (octopusWhaleFight && !octopusReturn)
             || (crystalApexEnding && !crystalReturn));
     }
-    return !!(povAttack || giantEnding || heroRemorseEnding || frogFinale
+    return !!(povAttack || giantEnding || heroRemorseEnding || frogFinale || bullfrogFinale
         || octopusWhaleFight || orcaFeastEnding || swordfishSpearEnding || rainbowNinjaEnding
         || crystalApexEnding);
 }
@@ -12083,6 +14392,11 @@ function probeFinaleState() {
             doneT: rainbowNinjaEnding.doneT || 0,
         } : null,
         frog: frogFinale ? { t: frogFinale.t } : null,
+        bullfrog: bullfrogFinale ? {
+            kind: bullfrogFinale.kind,
+            t: bullfrogFinale.t,
+            clock: bullfrogFinale.clock || 0,
+        } : null,
         octopusFight: octopusWhaleFight ? {
             phase: octopusWhaleFight.phase,
             t: octopusWhaleFight.t,
@@ -12119,7 +14433,7 @@ async function runFinaleAudit(opts) {
             const seconds = (performance.now() - t0) / 1000;
             // Count soft-return fades too: restocked finales still occupy the pond until null.
             const busy = !!(p.pov || p.giant || p.remorse || p.orcaFeast || p.spear
-                || p.ninja || p.frog || p.octopusFight || p.crystal || p.apexDuel
+                || p.ninja || p.frog || p.bullfrog || p.octopusFight || p.crystal || p.apexDuel
                 || p.rainbowExit || p.rainbowCroc
                 || (shark && shark.glowSwallow));
             if (!busy) return { ok: true, seconds, probe: p };
@@ -12216,6 +14530,31 @@ async function runFinaleAudit(opts) {
         frog.isHero = true;
         frog.size = Math.max(frog.size, CONFIG.sharkSize * 1.02);
         beginFrogFinale(frog);
+    });
+    await run("bullfrogFeast", () => {
+        scenery.frogs = true;
+        if (!frogGroups.length) spawnFrogGroup();
+        spawnBullfrog();
+        if (!bullfrog) throw new Error("no bullfrog");
+        bullfrog.x = viewW * 0.5;
+        bullfrog.y = viewH * 0.55;
+        bullfrog.size = CONFIG.sharkSize * 0.95;
+        bullfrog.meals = CONFIG.bullfrogMealsForFinale;
+        beginBullfrogFinale("feast", bullfrog, null);
+    });
+    await run("bullfrogDefeat", () => {
+        scenery.frogs = true;
+        if (!frogGroups.length) spawnFrogGroup();
+        const frog = frogGroups[frogGroups.length - 1].frog;
+        befriendFrog(frog);
+        frog.size = 50;
+        spawnBullfrog();
+        if (!bullfrog) throw new Error("no bullfrog");
+        bullfrog.x = viewW * 0.5;
+        bullfrog.y = viewH * 0.55;
+        bullfrog.size = 32;
+        beginBullfrogFinale("defeat", bullfrog, frog);
+        bullfrog = null;
     });
     await run("octopusWhale", () => {
         if (typeof setNightMode === "function") { nightUnlocked = true; setNightMode(true); }
@@ -12473,6 +14812,8 @@ function updateRainbowReptileFinale(r, dt) {
             return;
         }
     }
+    r.tailPhase = (r.tailPhase || 0) + dt * 4.2;
+    if (typeof r.updateLimbSwim === "function") r.updateLimbSwim(dt);
     updateFinaleWake(fin.wake, dt, 22);
 }
 
@@ -12502,6 +14843,10 @@ class Reptile {
         this.kind = kind || (Math.random() < 0.5 ? "crocodile" : "alligator");
         this.size = rand(CONFIG.reptileSize[0], CONFIG.reptileSize[1]);
         this.tailPhase = Math.random() * Math.PI * 2;
+        // Local-space foot tips; eased toward streaming swim goals (not teleported).
+        this.limbTips = null;
+        this._prevDir = null;
+        this._turnRate = 0;
         this.dead = false;
         this.leaving = false;
         this.eatPulse = 0;
@@ -12656,7 +15001,8 @@ class Reptile {
         if (!this.foodTarget) return false;
         // Untamed crocs only chase transform pellets; friendly crocs eat any food.
         const food = this.foodTarget;
-        if (!this.tamed && !this.isHero && !(food.rainbow || food.golden || food.green || food.hero)) {
+        if (!this.tamed && !this.isHero
+            && !(food.rainbow || food.golden || food.green || food.grower || food.platinum || food.hero)) {
             this.foodTarget = null;
             return false;
         }
@@ -12674,6 +15020,15 @@ class Reptile {
         if (!food || food.eaten) return;
         const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
 
+        if (food.platinum) {
+            // Crocs cannot become platinum fish; snack and grow a little.
+            food.eaten = true;
+            this.foodTarget = null;
+            this.grow(8);
+            if (Audio.goldChime) Audio.goldChime(pan);
+            water.disturb(this.x, this.y, this.size * 0.7, 200);
+            return;
+        }
         if (food.rainbow) {
             food.eaten = true;
             this.foodTarget = null;
@@ -12917,10 +15272,16 @@ class Reptile {
     update(dt) {
         if (this.octopusWrap) {
             this.tailPhase += dt * 1.8;
+            this.updateLimbSwim(dt);
+            return;
+        }
+        if (this.pickerThrow) {
+            updatePickerThrow(this, dt);
             return;
         }
         if (this.pickerHeld) {
-            this.tailPhase += dt * 4;
+            this.tailPhase += dt * (this.pickerLiftZ > 4 ? 12 : 4);
+            this.updateLimbSwim(dt);
             return;
         }
         this.eatPulse -= dt;
@@ -12968,6 +15329,9 @@ class Reptile {
             const spd = this.speed * 2.2;
             this.x += Math.cos(this.dir) * spd * dt;
             this.y += Math.sin(this.dir) * spd * dt;
+            this._prevDir = this.dir;
+            this._turnRate = 0;
+            this.updateLimbSwim(dt);
             if (Math.random() < 0.55) {
                 water.disturb(this.x - Math.cos(this.dir) * this.size * 0.35,
                               this.y - Math.sin(this.dir) * this.size * 0.35, 12, 70);
@@ -13130,17 +15494,75 @@ class Reptile {
             water.disturb(this.x - Math.cos(this.dir) * this.size * 0.4,
                           this.y - Math.sin(this.dir) * this.size * 0.4, 10, 45);
         }
+
+        const turn = normAngle(this.dir - (this._prevDir != null ? this._prevDir : this.dir))
+            / Math.max(dt, 1e-4);
+        this._prevDir = this.dir;
+        this._turnRate = turn;
+        this.updateLimbSwim(dt);
+    }
+
+    // Steady swim: limbs adducted and streaming aft (Manter / Fish & Adams kinematics).
+    // Hind legs longer than fore; tips ease toward drag goals with phase lag. No teleports.
+    updateLimbSwim(dt) {
+        const L = this.size;
+        const isGator = this.kind === "alligator";
+        const W = L * (isGator ? 0.36 : 0.28);
+        // [hip/shoulder along, side, isHind]
+        const specs = [
+            [0.1, 1, false],
+            [-0.14, 1, true],
+            [0.1, -1, false],
+            [-0.14, -1, true],
+        ];
+        const foreLen = isGator ? 0.34 : 0.22;
+        const hindLen = isGator ? 0.56 : 0.36;
+        if (!this.limbTips || this.limbTips.length !== 4) {
+            this.limbTips = specs.map(([along, side, isHind]) => {
+                const len = isHind ? hindLen : foreLen;
+                return {
+                    x: L * (along - len),
+                    y: side * W * (isHind ? 0.62 : 0.48),
+                };
+            });
+        }
+        if (this.golden) return;
+
+        const steer = Math.max(-1, Math.min(1, (this._turnRate || 0) / 2.8));
+        const phase = this.tailPhase || 0;
+        for (let i = 0; i < 4; i++) {
+            const [along, side, isHind] = specs[i];
+            const len = isHind ? hindLen : foreLen;
+            const station = isHind ? 0.42 : 0.18;
+            // Passive drag lag behind the travelling body/tail wave.
+            const drag = Math.sin(phase - station * 2.35 - (isHind ? 0.4 : 0.12))
+                * (isHind ? 0.11 : 0.07);
+            const tuck = Math.abs(steer) * (isHind ? 0.03 : 0.02);
+            const goalX = L * (along - len + tuck);
+            const goalY = side * W * (isHind ? (isGator ? 0.68 : 0.55) : (isGator ? 0.5 : 0.42))
+                + drag * W * (isHind ? 0.42 : 0.28)
+                - steer * side * W * (isHind ? 0.1 : 0.06);
+            const tip = this.limbTips[i];
+            const rate = isHind ? 4.8 : 6.2;
+            const k = 1 - Math.exp(-rate * dt);
+            tip.x += (goalX - tip.x) * k;
+            tip.y += (goalY - tip.y) * k;
+        }
     }
 
     draw(ctx) {
         const L = this.size;
         const isGator = this.kind === "alligator";
         const W = this.size * (isGator ? 0.36 : 0.28);
-        const wig = this.golden ? 0 : Math.sin(this.tailPhase) * (this.tamed ? 0.18 : 0.3);
+        // Travelling caudal wave: amplitude grows toward the tip (real alligator sculling).
+        const amp = this.golden ? 0 : (this.tamed ? 0.16 : 0.28);
+        const phase = this.tailPhase || 0;
+        const waveAt = (u) => this.golden ? 0 : Math.sin(phase - u * 2.4) * amp * (0.25 + 0.75 * u);
         const sink = this.golden ? (this.sinkDepth || 0) : 0;
+        const liftZ = this.pickerLiftZ || 0;
         if (this.plantMorph) drawPlantMorphAura(ctx, this);
         ctx.save();
-        ctx.translate(this.x, this.y + sink * 6);
+        ctx.translate(this.x, this.y + sink * 6 - liftZ);
         ctx.rotate(this.dir);
         const morphA = this.plantMorph && this._morphAlpha != null ? this._morphAlpha : 1;
         ctx.globalAlpha = 0.9 * (1 - sink * 0.25) * morphA;
@@ -13167,28 +15589,35 @@ class Reptile {
         const rainbowing = (this.isRainbow || this.friendlyBoost > 0) && !this.golden;
         const hue = rainbowing ? (performance.now() * 0.12) % 360 : 0;
 
-        // Solid tapering tail (no center notch that reads as a detached claw).
+        // Solid tapering tail with a travelling lateral wave (amp grows toward tip).
         let tailCol = this.isHero ? "#4a7a88" : (this.tamed ? "#6a8f68" : "#3d5a38");
         if (this.golden) tailCol = "#c9a24b";
         else if (rainbowing) tailCol = `hsl(${(hue + 40) % 360}, 55%, 42%)`;
+        const w0 = waveAt(0.2);
+        const w1 = waveAt(0.45);
+        const w2 = waveAt(0.7);
+        const w3 = waveAt(1.0);
         ctx.fillStyle = tailCol;
         ctx.beginPath();
-        ctx.moveTo(-L * 0.28, -W * 0.35);
+        ctx.moveTo(-L * 0.28, -W * 0.35 + w0 * W * 0.08);
         ctx.bezierCurveTo(
-            -L * 0.5, -W * (0.55 + wig * 0.15),
-            -L * 0.72, -W * (0.35 + wig * 0.25),
-            -L * 0.92, -W * (0.08 + wig * 0.2)
+            -L * 0.5, -W * (0.55 + w1 * 0.2) + w1 * W * 0.35,
+            -L * 0.72, -W * (0.35 + w2 * 0.28) + w2 * W * 0.55,
+            -L * 0.92, -W * (0.08 + w3 * 0.18) + w3 * W * 0.75
         );
-        ctx.quadraticCurveTo(-L * 0.98, 0, -L * 0.92, W * (0.08 + wig * 0.2));
+        ctx.quadraticCurveTo(
+            -L * 0.98 + w3 * W * 0.12, w3 * W * 0.85,
+            -L * 0.92, W * (0.08 + w3 * 0.18) + w3 * W * 0.75
+        );
         ctx.bezierCurveTo(
-            -L * 0.72, W * (0.35 + wig * 0.25),
-            -L * 0.5, W * (0.55 + wig * 0.15),
-            -L * 0.28, W * 0.35
+            -L * 0.72, W * (0.35 + w2 * 0.28) + w2 * W * 0.55,
+            -L * 0.5, W * (0.55 + w1 * 0.2) + w1 * W * 0.35,
+            -L * 0.28, W * 0.35 + w0 * W * 0.08
         );
         ctx.closePath();
         ctx.fill();
 
-        // Low armored body.
+        // Body fill used by limbs and torso.
         const g = ctx.createLinearGradient(0, -W, 0, W);
         if (this.golden) {
             g.addColorStop(0, "#fff3b0");
@@ -13207,6 +15636,60 @@ class Reptile {
             g.addColorStop(0.45, "#2f4630");
             g.addColorStop(1, "#6f8a5a");
         }
+
+        // Streaming swim limbs under the flanks (drawn before body so hips tuck in).
+        if (!this.limbTips) this.updateLimbSwim(1 / 60);
+        const limbSpecs = [
+            [0.1, 1, false],
+            [-0.14, 1, true],
+            [0.1, -1, false],
+            [-0.14, -1, true],
+        ];
+        const drawSwimLimb = (i) => {
+            const [along, side, isHind] = limbSpecs[i];
+            const tip = (this.limbTips && this.limbTips[i]) || {
+                x: L * (along - (isHind ? (isGator ? 0.56 : 0.36) : (isGator ? 0.34 : 0.22))),
+                y: side * W * (isHind ? 0.62 : 0.48),
+            };
+            const bx = L * along;
+            const by = side * W * (isHind ? 0.4 : 0.34);
+            const tx = tip.x;
+            const ty = tip.y;
+            const midX = bx * 0.4 + tx * 0.6;
+            const midY = (by + ty) * 0.5 + side * W * (isHind ? 0.06 : 0.04);
+            const rootW = L * (isHind ? (isGator ? 0.085 : 0.065) : (isGator ? 0.06 : 0.045));
+            const tipW = L * (isHind ? (isGator ? 0.038 : 0.028) : (isGator ? 0.028 : 0.02));
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.moveTo(bx, by - side * rootW * 0.15);
+            ctx.quadraticCurveTo(midX, midY - side * rootW * 0.55, tx, ty - side * tipW * 0.2);
+            ctx.lineTo(tx, ty + side * tipW * 0.85);
+            ctx.quadraticCurveTo(midX, midY + side * rootW * 0.35, bx - L * 0.02, by + side * rootW * 0.35);
+            ctx.closePath();
+            ctx.fill();
+            // Webbed foot: plantar face streams medially/aft (steady swim posture).
+            if (!this.golden) {
+                ctx.strokeStyle = "rgba(20,30,18,0.72)";
+                ctx.lineWidth = Math.max(1, L * (isHind ? 0.022 : 0.016));
+                ctx.lineCap = "round";
+                const aft = L * (isHind ? (isGator ? 0.08 : 0.055) : (isGator ? 0.05 : 0.035));
+                for (let d = -1; d <= 1; d++) {
+                    ctx.beginPath();
+                    ctx.moveTo(tx, ty * 0.92);
+                    ctx.lineTo(
+                        tx - aft,
+                        ty - side * L * 0.01 + d * side * L * (isHind ? 0.045 : 0.03)
+                    );
+                    ctx.stroke();
+                }
+            }
+        };
+        drawSwimLimb(1);
+        drawSwimLimb(3);
+        drawSwimLimb(0);
+        drawSwimLimb(2);
+
+        // Low armored body.
         ctx.fillStyle = g;
         ctx.beginPath();
         ctx.moveTo(L * 0.18, 0);
@@ -13214,36 +15697,6 @@ class Reptile {
         ctx.quadraticCurveTo(-L * 0.42, 0, -L * 0.36, W * 0.42);
         ctx.bezierCurveTo(-L * 0.2, W * 1.0, L * 0.02, W * 1.0, L * 0.18, 0);
         ctx.fill();
-
-        // Limbs tucked under the flanks (full opacity, rooted into the body).
-        const limbBeat = this.golden ? 0 : (0.5 + 0.5 * Math.sin(this.tailPhase * 0.85));
-        const limbBeatB = this.golden ? 0 : (0.5 + 0.5 * Math.sin(this.tailPhase * 0.85 + Math.PI));
-        const drawLimb = (along, side, beat, scale) => {
-            const lx = L * (along - beat * 0.06);
-            const ly = side * W * (0.52 + beat * 0.08);
-            const ang = side * (0.55 + beat * 0.18);
-            ctx.fillStyle = g;
-            ctx.beginPath();
-            ctx.ellipse(lx, ly, L * (0.12 + beat * 0.03) * scale, W * (0.28 + beat * 0.06) * scale, ang, 0, Math.PI * 2);
-            ctx.fill();
-            if (!this.golden) {
-                ctx.fillStyle = "rgba(20,30,18,0.7)";
-                for (let c = -1; c <= 1; c++) {
-                    const cx = lx + Math.cos(ang) * L * 0.09 * scale + c * L * 0.02;
-                    const cy = ly + Math.sin(ang) * W * 0.18 * scale + side * c * W * 0.05;
-                    ctx.beginPath();
-                    ctx.moveTo(cx, cy);
-                    ctx.lineTo(cx + Math.cos(ang) * L * 0.035, cy + Math.sin(ang) * L * 0.028 * side);
-                    ctx.lineTo(cx - side * L * 0.01, cy + side * L * 0.012);
-                    ctx.closePath();
-                    ctx.fill();
-                }
-            }
-        };
-        drawLimb(0.06, 1, limbBeat, 1.0);
-        drawLimb(-0.12, 1, limbBeatB, 0.85);
-        drawLimb(0.06, -1, limbBeatB, 0.95);
-        drawLimb(-0.12, -1, limbBeat, 0.8);
 
         // Head plate fused to the body, then a compact snout (not a needle).
         ctx.fillStyle = g;
@@ -13917,8 +16370,12 @@ class Swordfish {
             this.tailPhase += dt * 2.2;
             return;
         }
+        if (this.pickerThrow) {
+            updatePickerThrow(this, dt);
+            return;
+        }
         if (this.pickerHeld) {
-            this.tailPhase += dt * 5;
+            this.tailPhase += dt * (this.pickerLiftZ > 4 ? 14 : 5);
             return;
         }
         this.spearCooldown = Math.max(0, this.spearCooldown - dt);
@@ -14166,12 +16623,13 @@ class Swordfish {
         const W = this.size * 0.22;
         const wig = this.golden ? 0 : Math.sin(this.tailPhase) * 0.25;
         const sink = this.golden ? (this.sinkDepth || 0) : 0;
+        const liftZ = this.pickerLiftZ || 0;
         const morphA = this.plantMorph && this._morphAlpha != null ? this._morphAlpha : 1;
         const finaleA = (swordfishSpearEnding && swordfishSpearEnding.sf === this)
             ? (swordfishSpearEnding.liveAlpha || 0)
             : 1;
         ctx.save();
-        ctx.translate(this.x, this.y + sink * 6);
+        ctx.translate(this.x, this.y + sink * 6 - liftZ);
         ctx.rotate(this.dir);
         ctx.globalAlpha = 0.92 * (1 - sink * 0.25) * morphA * finaleA;
         if (this.isRainbow) {
@@ -14646,6 +17104,10 @@ class Octopus {
     update(dt) {
         if (this.dead) return;
         if (octopusWhaleFight && !this.isCrystal) return;
+        if (this.pickerThrow) {
+            updatePickerThrow(this, dt);
+            return;
+        }
         if (this.pickerHeld) {
             this.phase += dt * 2.1;
             this.pulse += dt * 2.8;
@@ -15058,7 +17520,8 @@ class Octopus {
         const breath = this.golden ? 1 : 1 + Math.sin(this.pulse) * 0.05;
         const sink = this.golden ? (this.sinkDepth || 0) : 0;
         const morphA = this.plantMorph && this._morphAlpha != null ? this._morphAlpha : 1;
-        const drawY = this.y + sink * 6;
+        const liftZ = this.pickerLiftZ || 0;
+        const drawY = this.y + sink * 6 - liftZ;
         const hx = Math.cos(this.dir);
         const hy = Math.sin(this.dir);
         const rearX = this.x - hx * S * 0.34;
@@ -15409,20 +17872,30 @@ function drawFinaleVignette(ctx, alpha, tint) {
     ctx.fillRect(0, 0, viewW, viewH);
 }
 
+// Pirate silhouette scale; keel sits at shipY + PIRATE_SHIP_KEEL * scale.
+const PIRATE_SHIP_DRAW_SCALE = 1.55;
+const PIRATE_SHIP_KEEL = 58;
+
+function pirateShipKeelY(shipY) {
+    return shipY + PIRATE_SHIP_KEEL * PIRATE_SHIP_DRAW_SCALE;
+}
+
 function beginOctopusWhaleFight() {
     if (octopusWhaleFight || !octopus || octopus.dead) return;
     const cx = viewW * 0.5;
     const cy = viewH * 0.48;
     if (!whale || whale.dead) {
         whale = new Whale();
-        // Swim in from a side instead of appearing mid-pond.
+        // Swim in from a nearer flank so contact lands before the beat times out.
         whale.fromLeft = octopus.x < cx;
-        whale.x = whale.fromLeft ? -whale.size * 0.8 : viewW + whale.size * 0.8;
-        whale.y = cy + (Math.random() - 0.5) * 30;
+        whale.x = whale.fromLeft ? -whale.size * 0.35 : viewW + whale.size * 0.35;
+        whale.y = cy + (Math.random() - 0.5) * 24;
         whale.dir = whale.fromLeft ? 0 : Math.PI;
         whale.isHero = false;
     }
     whale.ateFish = true;
+    // Cap fight whale so wrap contact reads clearly in a pond-sized frame.
+    whale.size = Math.min(whale.size, Math.min(viewW, viewH) * 0.22);
     octopusWhaleFight = {
         t: 0,
         clock: 0,
@@ -15436,6 +17909,8 @@ function beginOctopusWhaleFight() {
         whaleStartSize: whale.size,
         ateSound: false,
         shipSound: false,
+        shipLatched: false,
+        contactSplash: false,
         restocked: false,
         whaleStruggle: 0,
     };
@@ -15478,169 +17953,250 @@ function updateOctopusWhaleFight(dt) {
     fight.breath = (fight.breath || 0) + dt;
 
     if (fight.phase === "approach") {
+        // Meet at one shared point so bodies actually intersect (not side lanes).
+        const meetX = cx;
+        const meetY = cy + 4;
         if (octopus && !octopus.dead) {
-            easeToward(octopus, cx - 36, cy + 18, dt, 42, 1.1);
-            octopus.pulse = (octopus.pulse || 0) + dt * 2;
+            easeToward(octopus, meetX - (whale ? whale.size * 0.18 : 24), meetY + 10, dt, 70, 1.35);
+            bankToward(octopus, whale
+                ? Math.atan2(whale.y - octopus.y, whale.x - octopus.x)
+                : 0, dt, 1.6);
+            octopus.pulse = (octopus.pulse || 0) + dt * 2.2;
             for (let i = 0; i < octopus.legs.length; i++) {
                 const leg = octopus.legs[i];
                 leg.grab = null;
-                leg.phase += dt * 1.4;
-                const reach = 0.35 + Math.min(0.55, fight.t * 0.12);
-                const ang = octopus.dir + Math.PI * 0.15
-                    + (i / 7 - 0.5) * 1.4
-                    + Math.sin(leg.phase * 0.8) * 0.2;
-                const rad = (whale ? whale.size * reach : 70)
-                    + Math.sin(leg.phase + i) * 10;
-                const gx = (whale ? whale.x : cx) + Math.cos(ang) * rad * 0.55
-                    + Math.cos(octopus.dir) * octopus.size * 0.3;
-                const gy = (whale ? whale.y : cy) + Math.sin(ang) * rad * 0.4
-                    + Math.sin(octopus.dir) * octopus.size * 0.2;
-                easeTipToward(leg, gx, gy, dt, 1.6);
+                leg.phase += dt * 1.6;
+                const wx = whale ? whale.x : meetX;
+                const wy = whale ? whale.y : meetY;
+                const bodyDist = Math.hypot(wx - octopus.x, wy - octopus.y);
+                const armLen = octopus.size * 1.55;
+                // Keep arms local until the whale is inside reach (no pond-wide stretch).
+                if (!whale || bodyDist > armLen * 1.35) {
+                    const ang = octopus.dir + Math.PI + (i / 7 - 0.5) * 1.5
+                        + Math.sin(leg.phase) * 0.35;
+                    const rad = octopus.size * (0.95 + 0.2 * Math.sin(leg.phase * 0.8 + i));
+                    easeTipToward(
+                        leg,
+                        octopus.x + Math.cos(ang) * rad,
+                        octopus.y + Math.sin(ang) * rad * 0.85,
+                        dt,
+                        2.2
+                    );
+                } else {
+                    const ang = fight.t * 0.9 + i * (Math.PI * 2 / 8)
+                        + Math.sin(leg.phase * 0.9) * 0.25;
+                    const reach = Math.min(1, 0.45 + (armLen / Math.max(40, bodyDist)) * 0.4);
+                    const rad = whale.size * (0.4 * reach)
+                        + Math.sin(leg.phase + i) * 8;
+                    easeTipToward(
+                        leg,
+                        wx + Math.cos(ang) * rad,
+                        wy + Math.sin(ang) * rad * 0.7,
+                        dt,
+                        2.6
+                    );
+                }
             }
         }
         if (whale && !whale.dead) {
-            easeToward(whale, cx + 28, cy - 6, dt, 38, 0.7);
-            whale.tailPhase = (whale.tailPhase || 0) + dt * 2.4;
+            // Fast enough to cross half a pond before the phase timeout.
+            easeToward(whale, meetX + 12, meetY - 4, dt, 260, 1.35);
+            whale.tailPhase = (whale.tailPhase || 0) + dt * 3.2;
         }
+        const contactR = octopus && whale
+            ? octopus.size * 0.55 + whale.size * 0.32
+            : 40;
         const near = octopus && whale
-            && Math.hypot(octopus.x - whale.x, octopus.y - whale.y) < (octopus.size + whale.size) * 0.55;
-        if (fight.t >= 2.6 || near || !octopus || octopus.dead) {
+            && Math.hypot(octopus.x - whale.x, octopus.y - whale.y) < contactR;
+        if ((fight.t >= 0.85 && near) || fight.t >= 2.15 || !octopus || octopus.dead) {
             fight.phase = "wrap";
             fight.t = 0;
+            fight.contactSplash = false;
             Audio.predatorEat(0);
-            water.disturb(cx, cy, 50, 220);
+            if (octopus && whale) {
+                water.disturb((octopus.x + whale.x) * 0.5, (octopus.y + whale.y) * 0.5, 60, 260);
+                spawnSplash((octopus.x + whale.x) * 0.5, (octopus.y + whale.y) * 0.5, 18, 0.75);
+            } else {
+                water.disturb(cx, cy, 50, 220);
+            }
         }
     } else if (fight.phase === "wrap") {
+        // Cling to the whale body; thrash stays local so wrap never breaks contact.
+        const wx = whale && !whale.dead ? whale.x : cx;
+        const wy = whale && !whale.dead ? whale.y : cy;
         if (octopus && !octopus.dead) {
-            easeToward(octopus, cx - 10, cy + 8, dt, 28, 0.9);
+            easeToward(octopus, wx - (whale ? whale.size * 0.12 : 10), wy + 6, dt, 95, 1.4);
+            bankToward(octopus, whale
+                ? Math.atan2(wy - octopus.y, wx - octopus.x)
+                : octopus.dir, dt, 2.0);
             for (let i = 0; i < octopus.legs.length; i++) {
                 const leg = octopus.legs[i];
                 leg.grab = null;
-                leg.phase += dt * 1.8;
-                // Coil gradually tighter around the whale.
-                const coil = Math.min(1, fight.t / 3.2);
-                const ang = fight.t * 0.55 + i * (Math.PI * 2 / 8) + Math.sin(leg.phase) * 0.15;
-                const rad = (whale ? whale.size * (0.55 - coil * 0.22) : 70)
-                    + Math.sin(leg.phase * 1.2 + i) * (12 - coil * 6);
-                const gx = (whale ? whale.x : cx) + Math.cos(ang) * rad;
-                const gy = (whale ? whale.y : cy) + Math.sin(ang) * rad * 0.72;
-                easeTipToward(leg, gx, gy, dt, 2.0 + coil);
-            }
-        }
-        if (whale && !whale.dead) {
-            // Struggle against the wrap: thrash, resist the center pull, splash hard.
-            fight.whaleStruggle = (fight.whaleStruggle || 0) + dt;
-            const s = fight.whaleStruggle;
-            const thrash = Math.sin(s * 7.2) * 22 + Math.sin(s * 3.1) * 10;
-            const resist = 0.55 + 0.45 * Math.abs(Math.sin(s * 2.4));
-            const pullX = cx + 8 + Math.cos(s * 2.8) * thrash * 0.55;
-            const pullY = cy - 2 + Math.sin(s * 3.6) * thrash * 0.4;
-            easeToward(whale, pullX, pullY, dt, 8 + resist * 20, 0.2);
-            // Occasional surge against the tentacles before being reeled back.
-            if (Math.sin(s * 1.7) > 0.92) {
-                whale.x += Math.cos(whale.dir) * 28 * dt;
-                whale.y += Math.sin(whale.dir) * 18 * dt;
-            }
-            whale.dir += dt * (0.9 + Math.sin(s * 5.5) * 1.6);
-            whale.tailPhase = (whale.tailPhase || 0) + dt * (5.5 + Math.abs(Math.sin(s * 6)) * 7);
-            if (Math.random() < 0.22) {
-                water.disturb(whale.x, whale.y, whale.size * 0.38, 70 + resist * 40);
-            }
-            if (Math.random() < 0.1) {
-                spawnSplash(
-                    whale.x + (Math.random() - 0.5) * whale.size * 0.4,
-                    whale.y + (Math.random() - 0.5) * whale.size * 0.25,
-                    10 + resist * 8,
-                    0.55 + resist * 0.25
+                leg.phase += dt * 2.1;
+                const coil = Math.min(1, fight.t / 1.6);
+                const ang = fight.t * 0.85 + i * (Math.PI * 2 / 8) + Math.sin(leg.phase) * 0.12;
+                const rad = (whale ? whale.size * (0.38 - coil * 0.16) : 55)
+                    + Math.sin(leg.phase * 1.3 + i) * (10 - coil * 5);
+                easeTipToward(
+                    leg,
+                    wx + Math.cos(ang) * rad,
+                    wy + Math.sin(ang) * rad * 0.68,
+                    dt,
+                    2.8 + coil
                 );
             }
         }
-        if (fight.t >= 3.0) {
+        if (whale && !whale.dead) {
+            fight.whaleStruggle = (fight.whaleStruggle || 0) + dt;
+            const s = fight.whaleStruggle;
+            const thrash = Math.sin(s * 7.2) * 14 + Math.sin(s * 3.1) * 6;
+            const clingX = cx + Math.cos(s * 2.8) * thrash * 0.45;
+            const clingY = cy + Math.sin(s * 3.6) * thrash * 0.35;
+            easeToward(whale, clingX, clingY, dt, 55, 0.55);
+            // Reel back toward the octopus so surges cannot open an air gap.
+            if (octopus && !octopus.dead) {
+                const dx = octopus.x - whale.x;
+                const dy = octopus.y - whale.y;
+                const d = Math.hypot(dx, dy);
+                const maxGap = whale.size * 0.28 + octopus.size * 0.35;
+                if (d > maxGap) {
+                    const pull = Math.min(d - maxGap, 70 * dt);
+                    whale.x += (dx / d) * pull;
+                    whale.y += (dy / d) * pull;
+                }
+            }
+            whale.dir += dt * (1.1 + Math.sin(s * 5.5) * 1.8);
+            whale.tailPhase = (whale.tailPhase || 0) + dt * (5.8 + Math.abs(Math.sin(s * 6)) * 7);
+            if (!fight.contactSplash && octopus
+                && Math.hypot(octopus.x - whale.x, octopus.y - whale.y)
+                    < octopus.size * 0.5 + whale.size * 0.3) {
+                fight.contactSplash = true;
+                spawnSplash((octopus.x + whale.x) * 0.5, (octopus.y + whale.y) * 0.5, 20, 0.8);
+                water.disturb(whale.x, whale.y, whale.size * 0.45, 180);
+            }
+            if (Math.random() < 0.24) {
+                water.disturb(whale.x, whale.y, whale.size * 0.35, 75);
+            }
+            if (Math.random() < 0.12) {
+                spawnSplash(
+                    whale.x + (Math.random() - 0.5) * whale.size * 0.35,
+                    whale.y + (Math.random() - 0.5) * whale.size * 0.2,
+                    10 + Math.random() * 6,
+                    0.55
+                );
+            }
+        }
+        if (fight.t >= 2.2) {
             fight.phase = "eat";
             fight.t = 0;
             if (!fight.ateSound) {
                 fight.ateSound = true;
                 Audio.predatorEat(0);
-                water.disturb(cx, cy, 70, 320);
+                water.disturb(wx, wy, 70, 320);
+                spawnSplash(wx, wy, 16, 0.7);
             }
         }
     } else if (fight.phase === "eat") {
+        const wx = whale && !whale.dead ? whale.x : cx;
+        const wy = whale && !whale.dead ? whale.y : cy;
         if (octopus && !octopus.dead) {
-            easeToward(octopus, cx, cy + 6, dt, 18, 0.6);
-            // Soft growth while feeding, not a size pop.
+            // Stay locked on the meal while growing.
+            easeToward(octopus, wx, wy + 4, dt, 70, 1.0);
             const growTo = Math.min(
                 fight.octStartSize + 34,
                 Math.min(viewW, viewH) * 0.38
             );
-            octopus.size += (growTo - octopus.size) * ease(0.7);
+            octopus.size += (growTo - octopus.size) * ease(0.85);
             for (let i = 0; i < octopus.legs.length; i++) {
                 const leg = octopus.legs[i];
-                leg.phase += dt * 1.5;
-                const ang = fight.t * 0.4 + i * (Math.PI * 2 / 8);
-                const rad = 28 + Math.sin(leg.phase + i) * 8
-                    + (whale ? whale.size * 0.25 : 20);
+                leg.phase += dt * 1.7;
+                const ang = fight.t * 0.55 + i * (Math.PI * 2 / 8);
+                const rad = Math.max(14, (whale ? whale.size * 0.34 : 22)
+                    + Math.sin(leg.phase + i) * 6);
                 easeTipToward(
                     leg,
-                    cx + Math.cos(ang) * rad,
-                    cy + Math.sin(ang) * rad * 0.65,
-                    dt, 2.4
+                    wx + Math.cos(ang) * rad,
+                    wy + Math.sin(ang) * rad * 0.65,
+                    dt,
+                    3.0
                 );
             }
         }
         if (whale && !whale.dead) {
             fight.whaleStruggle = (fight.whaleStruggle || 0) + dt;
             const s = fight.whaleStruggle;
-            const thrash = Math.sin(s * 8.5) * (16 * Math.max(0.15, 1 - fight.t * 0.2));
-            easeToward(
-                whale,
-                cx + 4 + Math.cos(s * 4) * thrash,
-                cy + Math.sin(s * 5) * thrash * 0.6,
-                dt, 6 + Math.abs(thrash) * 0.4, 0.18
-            );
-            whale.dir += dt * (1.1 + Math.sin(s * 6) * 1.4);
-            whale.tailPhase = (whale.tailPhase || 0) + dt * (6 + Math.abs(Math.sin(s * 7)) * 5);
-            // Shrink smoothly toward vanishing.
-            const shrink = Math.max(0.08, 1 - fight.t * 0.22);
+            const thrash = Math.sin(s * 8.5) * (10 * Math.max(0.12, 1 - fight.t * 0.28));
+            const holdX = (octopus ? octopus.x : cx) + Math.cos(s * 4) * thrash;
+            const holdY = (octopus ? octopus.y : cy) + Math.sin(s * 5) * thrash * 0.55;
+            easeToward(whale, holdX, holdY, dt, 40, 0.35);
+            whale.dir += dt * (1.2 + Math.sin(s * 6) * 1.5);
+            whale.tailPhase = (whale.tailPhase || 0) + dt * (6.2 + Math.abs(Math.sin(s * 7)) * 5);
+            const shrink = Math.max(0.08, 1 - fight.t * 0.32);
             whale.size = fight.whaleStartSize * shrink;
-            if (Math.random() < 0.16) {
+            if (Math.random() < 0.18) {
                 water.disturb(whale.x, whale.y, Math.max(12, whale.size * 0.3), 55);
             }
-            if (whale.size < fight.whaleStartSize * 0.12 || fight.t > 2.6) {
+            if (whale.size < fight.whaleStartSize * 0.12 || fight.t > 1.85) {
+                const sx = whale.x;
+                const sy = whale.y;
                 whale.dead = true;
                 whale = null;
-                spawnSplash(cx, cy, 22, 0.7);
+                spawnSplash(sx, sy, 22, 0.75);
             }
         }
-        if (fight.t >= 2.8) {
+        if (fight.t >= 2.05) {
             fight.phase = "ship";
             fight.t = 0;
+            fight.shipLatched = false;
             if (!fight.shipSound) {
                 fight.shipSound = true;
                 Audio.sharkStrike(0);
             }
         }
     } else if (fight.phase === "ship") {
-        // Ship drifts down; arms reach up without snapping. Keep the scene dark.
-        fight.shipAlpha = Math.min(1, fight.shipAlpha + dt * 0.35);
-        const shipTargetY = cy - 64;
-        fight.shipY += (shipTargetY - fight.shipY) * ease(0.85);
+        // Ship drops to octopus reach; tips latch the keel, then tug the hull down.
+        fight.shipAlpha = Math.min(1, fight.shipAlpha + dt * 0.55);
+        const octX = octopus && !octopus.dead ? octopus.x : cx;
+        const octY = octopus && !octopus.dead ? octopus.y : cy + 20;
+        const reachKeelY = octY - Math.min(octopus ? octopus.size * 1.15 : 90, 110);
+        const approachY = Math.min(cy - 40, reachKeelY - PIRATE_SHIP_KEEL * PIRATE_SHIP_DRAW_SCALE);
+        if (!fight.shipLatched) {
+            fight.shipY += (approachY - fight.shipY) * ease(1.55);
+        } else {
+            // Tug: keel eases down onto the mantle.
+            const tugKeel = octY - (octopus ? octopus.size * 0.35 : 28);
+            const tugShipY = tugKeel - PIRATE_SHIP_KEEL * PIRATE_SHIP_DRAW_SCALE;
+            fight.shipY += (tugShipY - fight.shipY) * ease(1.35);
+        }
+        const keelY = pirateShipKeelY(fight.shipY);
         if (octopus && !octopus.dead) {
-            easeToward(octopus, cx, cy + 28, dt, 20, 0.5);
+            easeToward(octopus, cx, cy + 22, dt, 36, 0.7);
+            let tipsOnKeel = 0;
             for (let i = 0; i < octopus.legs.length; i++) {
                 const leg = octopus.legs[i];
-                leg.phase += dt * 1.3;
-                const ang = -Math.PI * 0.5 + (i / 7 - 0.5) * 1.15;
-                const stretch = 0.6 + Math.min(0.5, fight.t * 0.15);
-                const gx = cx + Math.cos(ang) * (48 + i * 6) * stretch
-                    + Math.sin(leg.phase * 0.7 + i) * 7;
-                const gy = fight.shipY + 48 + Math.sin(leg.phase + i) * 5;
-                easeTipToward(leg, gx, gy, dt, 1.8);
+                leg.phase += dt * 1.55;
+                const along = (i / 7 - 0.5) * 96;
+                const gx = cx + along + Math.sin(leg.phase * 0.7 + i) * 6;
+                const gy = keelY + Math.sin(leg.phase + i) * 3
+                    + (fight.shipLatched ? 2 : 0);
+                easeTipToward(leg, gx, gy, dt, fight.shipLatched ? 5.2 : 3.0);
+                if (Math.abs(leg.tipY - keelY) < 22 && Math.abs(leg.tipX - gx) < 36) {
+                    tipsOnKeel++;
+                }
+            }
+            const keelInReach = Math.abs(keelY - octY) < (octopus.size * 1.35 + 36);
+            if (!fight.shipLatched && fight.t > 0.4
+                && (tipsOnKeel >= 2 || (keelInReach && tipsOnKeel >= 1))) {
+                fight.shipLatched = true;
+                Audio.predatorEat(0);
+                spawnSplash(cx, keelY, 16, 0.7);
+                water.disturb(cx, keelY, 40, 180);
             }
         }
-        if (fight.t > 1.5 && Math.random() < 0.15) {
-            water.disturb(cx + (Math.random() - 0.5) * 90, fight.shipY + 48, 18, 55);
+        if (fight.shipLatched && Math.random() < 0.2) {
+            water.disturb(cx + (Math.random() - 0.5) * 80, keelY, 16, 50);
         }
-        if (fight.t >= 3.2) {
+        if (fight.t >= 2.55) {
             fight.phase = "fade";
             fight.t = 0;
             spawnSplash(cx, cy, 28, 0.85);
@@ -15650,14 +18206,16 @@ function updateOctopusWhaleFight(dt) {
     } else if (fight.phase === "fade") {
         // Soft curtain in, restock under cover, then ease back into the pond.
         if (!fight.restocked) {
-            fight.fade = Math.min(1, fight.fade + dt * 0.55);
+            fight.fade = Math.min(1, fight.fade + dt * 0.7);
             if (octopus && !octopus.dead) {
-                easeToward(octopus, cx, cy + 10, dt, 12, 0.3);
+                easeToward(octopus, cx, cy + 10, dt, 18, 0.4);
+                const keelY = pirateShipKeelY(fight.shipY);
                 for (const leg of octopus.legs) {
-                    easeTipToward(leg, cx + (leg.tipX - cx) * 0.98, cy + 20, dt, 1.2);
+                    easeTipToward(leg, cx + (leg.tipX - cx) * 0.96, keelY + 8, dt, 1.6);
                 }
             }
-            if (fight.fade >= 0.9 && fight.t >= 1.15) {
+            fight.shipAlpha = Math.max(0, fight.shipAlpha - dt * 0.4);
+            if (fight.fade >= 0.88 && fight.t >= 0.85) {
                 fight.restocked = true;
                 if (octopus) octopus.dead = true;
                 octopus = null;
@@ -15669,8 +18227,8 @@ function updateOctopusWhaleFight(dt) {
                 fight.fade = Math.max(fight.fade, 0.95);
             }
         } else {
-            fight.fade = Math.max(0, fight.fade - dt * 0.55);
-            if (fight.fade <= 0.02 && fight.t >= 2.4) {
+            fight.fade = Math.max(0, fight.fade - dt * 0.7);
+            if (fight.fade <= 0.02 && fight.t >= 1.85) {
                 octopusWhaleFight = null;
             }
         }
@@ -15680,16 +18238,16 @@ function updateOctopusWhaleFight(dt) {
 function drawPirateShipSilhouette(ctx, cx, y, alpha) {
     ctx.save();
     ctx.globalAlpha = Math.min(1, alpha);
-    const s = 1.55; // larger readable silhouette
-    // Hull
+    const s = PIRATE_SHIP_DRAW_SCALE;
+    // Hull (keel at y + PIRATE_SHIP_KEEL * s; tentacles latch there)
     ctx.fillStyle = "#2e211a";
     ctx.beginPath();
     ctx.moveTo(cx - 108 * s, y + 36 * s);
     ctx.lineTo(cx - 88 * s, y + 4 * s);
     ctx.lineTo(cx + 86 * s, y + 4 * s);
     ctx.lineTo(cx + 112 * s, y + 36 * s);
-    ctx.lineTo(cx + 72 * s, y + 58 * s);
-    ctx.lineTo(cx - 72 * s, y + 58 * s);
+    ctx.lineTo(cx + 72 * s, y + PIRATE_SHIP_KEEL * s);
+    ctx.lineTo(cx - 72 * s, y + PIRATE_SHIP_KEEL * s);
     ctx.closePath();
     ctx.fill();
     // Plank lines
@@ -15887,40 +18445,54 @@ function drawPovAttack(ctx) {
     ctx.scale(scale, scale);
     ctx.globalAlpha = 0.86 + loom * 0.12;
 
-    const g = ctx.createRadialGradient(0, 0, 10, 0, 0, 95);
-    g.addColorStop(0, "#4a1828");
-    g.addColorStop(0.6, "#1a0810");
-    g.addColorStop(1, "#050308");
-    ctx.fillStyle = g;
+    // First-person face: brows + staring eyes above a jaw that opens toward the lens.
+    const face = ctx.createRadialGradient(0, -8, 8, 0, 10, 110);
+    face.addColorStop(0, "#5a2030");
+    face.addColorStop(0.55, "#1c0810");
+    face.addColorStop(1, "#050308");
+    ctx.fillStyle = face;
     ctx.beginPath();
-    ctx.ellipse(0, 0, 70, 55, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, -6, 78, 62, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = "#ff3030";
-    ctx.shadowColor = "rgba(255,40,40,0.8)";
-    ctx.shadowBlur = 12 + choke * 18 + loom * 8;
+    // Brow ridges so the stare reads as a face, not a floating mouth.
+    ctx.fillStyle = "#12060a";
     ctx.beginPath();
-    ctx.ellipse(-22, -12, 8, 5, -0.2, 0, Math.PI * 2);
-    ctx.ellipse(22, -12, 8, 5, 0.2, 0, Math.PI * 2);
+    ctx.ellipse(-30, -38, 22, 8, -0.25, 0, Math.PI * 2);
+    ctx.ellipse(30, -38, 22, 8, 0.25, 0, Math.PI * 2);
+    ctx.fill();
+
+    // White sclera, red iris, dark pupil.
+    ctx.fillStyle = "#fff4ec";
+    ctx.shadowColor = "rgba(255,50,40,0.95)";
+    ctx.shadowBlur = 14 + choke * 22 + loom * 10;
+    ctx.beginPath();
+    ctx.ellipse(-30, -26, 16, 12, -0.12, 0, Math.PI * 2);
+    ctx.ellipse(30, -26, 16, 12, 0.12, 0, Math.PI * 2);
     ctx.fill();
     ctx.shadowBlur = 0;
-    ctx.fillStyle = "#120008";
+    ctx.fillStyle = "#ff2424";
     ctx.beginPath();
-    ctx.ellipse(-22, -12, 3, 4, 0, 0, Math.PI * 2);
-    ctx.ellipse(22, -12, 3, 4, 0, 0, Math.PI * 2);
+    ctx.ellipse(-30, -26, 8.5, 7.5, 0, 0, Math.PI * 2);
+    ctx.ellipse(30, -26, 8.5, 7.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#0a0004";
+    ctx.beginPath();
+    ctx.ellipse(-30 + loom * 1.5, -26, 3.6, 4.4, 0, 0, Math.PI * 2);
+    ctx.ellipse(30 + loom * 1.5, -26, 3.6, 4.4, 0, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.fillStyle = "#2a0508";
     ctx.beginPath();
-    ctx.ellipse(0, 18, 40, 10 + mouthOpen * 50, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 28, 44, 12 + mouthOpen * 52, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = "#e8e0d0";
     for (let i = -4; i <= 4; i++) {
-        const tx = i * 7;
+        const tx = i * 7.5;
         ctx.beginPath();
-        ctx.moveTo(tx - 2.2, 18 - mouthOpen * 20);
-        ctx.lineTo(tx, 18 - mouthOpen * 34);
-        ctx.lineTo(tx + 2.2, 18 - mouthOpen * 20);
+        ctx.moveTo(tx - 2.4, 28 - mouthOpen * 18);
+        ctx.lineTo(tx, 28 - mouthOpen * 36);
+        ctx.lineTo(tx + 2.4, 28 - mouthOpen * 18);
         ctx.closePath();
         ctx.fill();
     }
@@ -16322,9 +18894,12 @@ function beginSwordfishSpearEnding(sf, opts) {
         giantEnding = null;
         heroRemorseEnding = null;
         frogFinale = null;
+        bullfrogFinale = null;
+        bullfrog = null;
         octopusWhaleFight = null;
         crystalApexEnding = null;
-    } else if (povAttack || giantEnding || heroRemorseEnding || frogFinale || octopusWhaleFight || crystalApexEnding) {
+    } else if (povAttack || giantEnding || heroRemorseEnding || frogFinale || bullfrogFinale
+        || octopusWhaleFight || crystalApexEnding) {
         return;
     }
     // POV tip thrust: approach/fade ease toward the camera (no body snap to center).
@@ -16541,18 +19116,135 @@ function drawSwordfishSpearEnding(ctx) {
 }
 
 function createGiantBodyParts(size) {
+    // Spread far enough that pieces read as separate anatomy, not one silhouette.
     const s = Math.max(48, size);
     const mk = (gx, gy, ga, spin) => ({
-        x: 0, y: 0, a: 0, alpha: 1,
+        x: 0, y: 0, a: 0, alpha: 1, scale: 1,
         gx, gy, ga, spin: spin || 0,
     });
     return {
-        head: mk(s * 0.78, -s * 0.06, 0.7, 1.35),
-        body: mk(-s * 0.04, s * 0.14, -0.28, -0.55),
-        dorsal: mk(s * 0.12, -s * 0.92, -1.05, -1.8),
-        pectoral: mk(s * 0.18, s * 0.82, 1.15, 1.9),
-        tail: mk(-s * 1.12, s * 0.24, -1.35, -1.25),
+        head: mk(s * 1.35, -s * 0.08, 0.45, 0.55),
+        body: mk(0, s * 0.06, -0.12, -0.2),
+        dorsal: mk(s * 0.08, -s * 1.25, -0.7, -0.65),
+        pectoral: mk(s * 0.1, s * 1.2, 0.75, 0.7),
+        tail: mk(-s * 1.55, s * 0.05, -0.55, -0.5),
     };
+}
+
+// Discrete head / trunk / fins / tail so the giant farewell cannot read as a hand.
+function drawGiantSeparatedAnatomy(ctx, fish, parts, L, W, body, belly, split) {
+    if (!parts) return;
+    // Shrink the local drawing size so gaps between pieces stay visible.
+    const S = L * Math.max(0.3, 0.58 - split * 0.22);
+    const H = W * (S / L);
+    const warm = giantEnding && giantEnding.kind === "peace";
+    const piece = (key, drawFn) => {
+        const p = parts[key];
+        if (!p || (p.alpha != null && p.alpha < 0.02)) return;
+        ctx.save();
+        ctx.translate(p.x || 0, p.y || 0);
+        ctx.rotate(p.a || 0);
+        const sc = p.scale != null ? p.scale : Math.max(0.55, 1 - split * 0.35);
+        ctx.scale(sc, sc);
+        ctx.globalAlpha *= p.alpha != null ? p.alpha : 1;
+        if (warm) {
+            ctx.shadowColor = "rgba(255,170,70,0.75)";
+            ctx.shadowBlur = 18 + split * 10;
+        } else {
+            ctx.shadowColor = "rgba(20,0,8,0.7)";
+            ctx.shadowBlur = 14 + split * 12;
+        }
+        drawFn();
+        ctx.shadowBlur = 0;
+        ctx.restore();
+    };
+
+    piece("tail", () => {
+        ctx.fillStyle = belly;
+        ctx.beginPath();
+        ctx.moveTo(S * 0.08, 0);
+        ctx.quadraticCurveTo(-S * 0.15, -H * 1.15, -S * 0.55, -H * 1.55);
+        ctx.quadraticCurveTo(-S * 0.2, -H * 0.2, -S * 0.05, 0);
+        ctx.quadraticCurveTo(-S * 0.2, H * 0.2, -S * 0.55, H * 1.55);
+        ctx.quadraticCurveTo(-S * 0.15, H * 1.15, S * 0.08, 0);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(20,30,40,0.35)";
+        ctx.lineWidth = Math.max(1, S * 0.02);
+        ctx.stroke();
+    });
+
+    piece("body", () => {
+        const g = ctx.createLinearGradient(0, -H, 0, H);
+        g.addColorStop(0, body);
+        g.addColorStop(0.55, body);
+        g.addColorStop(1, belly);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, S * 0.42, H * 0.92, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(20,30,40,0.28)";
+        ctx.lineWidth = Math.max(1, S * 0.018);
+        ctx.stroke();
+    });
+
+    piece("dorsal", () => {
+        ctx.fillStyle = body;
+        ctx.beginPath();
+        ctx.moveTo(-S * 0.12, H * 0.05);
+        ctx.quadraticCurveTo(0, -H * 1.35, S * 0.28, -H * 0.15);
+        ctx.quadraticCurveTo(S * 0.05, H * 0.1, -S * 0.12, H * 0.05);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(20,30,40,0.3)";
+        ctx.lineWidth = Math.max(0.8, S * 0.016);
+        ctx.stroke();
+    });
+
+    piece("pectoral", () => {
+        ctx.fillStyle = belly;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, S * 0.28, H * 0.55, 0.35, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(20,30,40,0.28)";
+        ctx.lineWidth = Math.max(0.8, S * 0.016);
+        ctx.stroke();
+    });
+
+    piece("head", () => {
+        const g = ctx.createLinearGradient(-S * 0.1, -H, S * 0.45, H);
+        g.addColorStop(0, belly);
+        g.addColorStop(0.55, body);
+        g.addColorStop(1, body);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(-S * 0.18, -H * 0.55);
+        ctx.quadraticCurveTo(S * 0.35, -H * 0.7, S * 0.55, 0);
+        ctx.quadraticCurveTo(S * 0.35, H * 0.7, -S * 0.18, H * 0.55);
+        ctx.quadraticCurveTo(-S * 0.28, 0, -S * 0.18, -H * 0.55);
+        ctx.fill();
+        // Eye so the head piece reads as a head, not a pebble.
+        const closed = (fish.petTimer || 0) > 0;
+        ctx.fillStyle = closed ? "rgba(20,30,40,0.85)" : "#f4f8fc";
+        ctx.beginPath();
+        if (closed) {
+            ctx.ellipse(S * 0.18, -H * 0.18, S * 0.08, S * 0.025, -0.2, 0, Math.PI * 2);
+        } else {
+            ctx.ellipse(S * 0.18, -H * 0.18, S * 0.09, S * 0.07, -0.15, 0, Math.PI * 2);
+        }
+        ctx.fill();
+        if (!closed) {
+            ctx.fillStyle = "#142028";
+            ctx.beginPath();
+            ctx.ellipse(S * 0.2, -H * 0.18, S * 0.035, S * 0.04, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.strokeStyle = "rgba(20,30,40,0.3)";
+        ctx.lineWidth = Math.max(0.8, S * 0.016);
+        ctx.beginPath();
+        ctx.moveTo(-S * 0.18, -H * 0.55);
+        ctx.quadraticCurveTo(S * 0.35, -H * 0.7, S * 0.55, 0);
+        ctx.quadraticCurveTo(S * 0.35, H * 0.7, -S * 0.18, H * 0.55);
+        ctx.stroke();
+    });
 }
 
 function spawnGiantDebris(ending, f, n) {
@@ -16579,8 +19271,9 @@ function spawnGiantDebris(ending, f, n) {
 
 function updateGiantBodyParts(ending, dt, split) {
     if (!ending.parts || split <= 0) return;
-    const ease = 1 - Math.exp(-(1.3 + split * 2.4) * dt);
-    const maxStep = (70 + split * 180) * dt;
+    // Faster drift so gaps open while pieces are still opaque.
+    const ease = 1 - Math.exp(-(2.2 + split * 3.2) * dt);
+    const maxStep = (140 + split * 260) * dt;
     for (const key of Object.keys(ending.parts)) {
         const p = ending.parts[key];
         const tx = p.gx * split;
@@ -16595,9 +19288,10 @@ function updateGiantBodyParts(ending, dt, split) {
         p.x += dx;
         p.y += dy;
         p.a += (p.ga * split - p.a) * ease;
-        p.a += p.spin * split * dt * 0.85;
+        p.a += p.spin * split * dt * 0.55;
+        p.scale = Math.max(0.52, 1 - split * 0.38);
         // Pieces stay solid while separating, then ease out near the end.
-        const fade = split > 0.72 ? 1 - (split - 0.72) / 0.28 : 1;
+        const fade = split > 0.78 ? 1 - (split - 0.78) / 0.22 : 1;
         p.alpha = Math.max(0, fade);
     }
 }
@@ -16675,7 +19369,7 @@ function beginHeroRemorseEnding(fish) {
     if (heroRemorseEnding || whaleRemorseDone || povAttack || giantEnding
         || !fish || fish.dead) return;
     whaleRemorseDone = true;
-    fish.giantEnded = true; // block the normal half-screen farewell
+    fish.giantEnded = true; // block the normal giant farewell
     fish.target = null;
     fish.prey = null;
     fish.isPredator = false;
@@ -17138,13 +19832,13 @@ function updateGiantEnding(dt) {
             e.orbitRad += ((t < 1.4 ? 36 : 12) - e.orbitRad) * ease(0.9);
             easeOrbitToward(f, cx, cy - 6, e.orbitRad, e.orbitAng, dt, 40, 0.85, 0.7);
             bankToward(f, e.orbitAng + Math.PI * 0.5, dt, 1.0);
-            const split = clamp01((t - 1.35) / 2.8);
+            const split = clamp01((t - 1.15) / 2.6);
             f.dir += dt * (0.2 + (split > 0 && split < 0.55 ? Math.sin(t * 12) * 0.3 : 0));
             f.tailPhase += dt * (3.2 + split * 5);
             if (t < 1.5) f.petTimer = Math.max(f.petTimer, 0.8);
             e.wash += ((t < 1.2 ? t / 1.2 * 0.35 : 0.55 + split * 0.25) - (e.wash || 0)) * ease(1.8);
 
-            if (split > 0.08 && !e.cracked) {
+            if (split > 0.06 && !e.cracked) {
                 e.cracked = true;
                 spawnGiantDebris(e, f, 18);
                 Audio.predatorEat(Math.max(-1, Math.min(1, (f.x / viewW) * 2 - 1)) * 0.4);
@@ -17197,11 +19891,11 @@ function updateGiantEnding(dt) {
             e.orbitAng += dt * (1.1 + Math.min(1.2, t * 0.4));
             e.orbitRad += ((t < 0.9 ? 40 : 8) - e.orbitRad) * ease(1.2);
             easeOrbitToward(f, cx, cy, e.orbitRad, e.orbitAng, dt, 56, 1.25, 0.75);
-            const split = clamp01((t - 0.85) / 2.1);
+            const split = clamp01((t - 0.7) / 2.0);
             f.dir += dt * (1.0 + split * 2.0);
             f.tailPhase += dt * (6.5 + split * 6);
             e.wash += ((0.3 + split * 0.55) - (e.wash || 0)) * ease(2.2);
-            if (split > 0.06 && !e.cracked) {
+            if (split > 0.05 && !e.cracked) {
                 e.cracked = true;
                 spawnGiantDebris(e, f, 22);
                 Audio.sharkStrike(0);
@@ -17375,7 +20069,10 @@ function resetPond(opts) {
     frogGroups.length = 0;
     hungryTadpoles.length = 0;
     frogFinale = null;
+    bullfrog = null;
+    bullfrogFinale = null;
     frogCheckTimer = 0;
+    bullfrogCheckTimer = 0;
     fishes.length = 0;
     for (const f of keepPlatinum) fishes.push(f);
     foods.length = 0;
@@ -17463,8 +20160,12 @@ class Shark {
             this.tailPhase += dt * 2.4;
             return;
         }
+        if (this.pickerThrow) {
+            updatePickerThrow(this, dt);
+            return;
+        }
         if (this.pickerHeld) {
-            this.tailPhase += dt * 4.2;
+            this.tailPhase += dt * (this.pickerLiftZ > 4 ? 12 : 4.2);
             return;
         }
         // Slow, gliding hunt: more pond visitor than chase cutscene.
@@ -17555,9 +20256,15 @@ class Shark {
             }
         } else if (!this.target || this.target.dead || this.target.insideShark
             || this.target.isPlatinum) {
-            // Apex hunters ignore platinum entirely (invulnerable).
+            // Apex hunters ignore platinum while chasing ordinary prey.
             this.target = nearestFish(this.x, this.y);
             if (!this.target) {
+                // Only glow fish left: swallow gag (carry while glowing, center, release).
+                const glow = (fishes || []).find((f) => f && !f.dead && f.isPlatinum && !f.insideShark);
+                if (glow && !this.isOrca && !this.isHero && !this.duelMode) {
+                    this.beginGlowSwallow(glow);
+                    return;
+                }
                 if (this.isCrystal && countableSwimmers().length === 0 && !pondFinaleActive()
                     && typeof beginCrystalApexEnding === "function"
                     && beginCrystalApexEnding("prism", this)) {
@@ -17605,7 +20312,7 @@ class Shark {
         fish.prey = null;
         this.target = null;
         this.leaving = false;
-        this.glowSwallow = { fish, t: 0, phase: "hold" };
+        this.glowSwallow = stampFinaleWall({ fish, t: 0, phase: "hold", clock: 0 });
         const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
         Audio.sharkStrike(pan);
         water.disturb(this.x, this.y, this.size * 0.7, 500);
@@ -17622,11 +20329,13 @@ class Shark {
         tickFinaleClock(gs, dt);
         const fish = gs.fish;
         fish.insideShark = true;
-        fish.x = this.x;
-        fish.y = this.y;
+        // Ease the glow fish into the belly (no hard snap on first frames).
+        const gulp = Math.min(1, gs.t * 3.2);
+        fish.x += (this.x - fish.x) * Math.min(1, (0.35 + gulp * 2.4) * dt * 4);
+        fish.y += (this.y - fish.y) * Math.min(1, (0.35 + gulp * 2.4) * dt * 4);
 
         // Softlock guard: never hold a platinum fish forever.
-        if ((gs.clock || 0) > 8) {
+        if (finaleOvertime(gs) || (gs.clock || 0) > 8) {
             const cx = viewW * 0.5;
             const cy = viewH * 0.5;
             fish.insideShark = false;
@@ -17681,7 +20390,11 @@ class Shark {
 
     eat(fish) {
         if (this.isHero || !fish || fish.dead) return;
-        if (fish.isRainbow || fish.isMonster || fish.isPlatinum) return;
+        if (fish.isRainbow || fish.isMonster) return;
+        if (fish.isPlatinum) {
+            // Invulnerable: never kill. Glow swallow is started from the empty-prey path.
+            return;
+        }
         // Larger heroes (or any larger fish) shrug the bite off.
         if (fish.size > this.size) return;
         const mealSize = fish.size;
@@ -17726,7 +20439,7 @@ class Shark {
         const roll = rollT * Math.PI * 2;
         const flatten = Math.max(0.18, Math.abs(Math.cos(roll)));
         ctx.save();
-        ctx.translate(this.x, this.y);
+        ctx.translate(this.x, this.y - (this.pickerLiftZ || 0));
         ctx.rotate(this.dir);
         ctx.scale(1, flatten);
         ctx.globalAlpha = 0.88;
@@ -17880,7 +20593,7 @@ class Shark {
         const roll = rollT * Math.PI * 2;
         const flatten = Math.max(0.18, Math.abs(Math.cos(roll)));
         ctx.save();
-        ctx.translate(this.x, this.y);
+        ctx.translate(this.x, this.y - (this.pickerLiftZ || 0));
         ctx.rotate(this.dir);
         ctx.scale(1, flatten);
         ctx.globalAlpha = 0.9;
@@ -17974,7 +20687,7 @@ class Shark {
         const roll = rollT * Math.PI * 2;
         const flatten = Math.max(0.22, Math.abs(Math.cos(roll)));
         ctx.save();
-        ctx.translate(this.x, this.y);
+        ctx.translate(this.x, this.y - (this.pickerLiftZ || 0));
         ctx.rotate(this.dir);
         ctx.scale(1, flatten);
         ctx.globalAlpha = 0.93;
@@ -18491,7 +21204,7 @@ function pacifistAt(x, y) {
     let best = null;
     let bestD = Infinity;
     for (const p of pacifistVisitors) {
-        if (!p || p.dead) continue;
+        if (!p || p.dead || p.golden) continue;
         const hitR = (p.kind === "garden" || p.kind === "lumen") ? p.size * 0.75 : p.size * 0.55;
         const d = Math.hypot(x - p.x, y - p.y);
         if (d < hitR && d < bestD) { bestD = d; best = p; }
@@ -18510,6 +21223,10 @@ class PacifistVisitor {
         this.tamed = false;
         this.isHero = false; // after tame: soft hero ally (never hunts fish)
         this.isPacifist = true;
+        this.golden = false;
+        this.sinkTimer = 0;
+        this.sinkDepth = 0;
+        this.lifting = false;
         this.petCount = 0;
         this.petProgress = 0;
         this.petTimer = 0;
@@ -18651,7 +21368,25 @@ class PacifistVisitor {
         }
     }
 
+    turnToGold() {
+        if (this.dead || this.golden) return;
+        this.golden = true;
+        this.leaving = false;
+        this.foodTarget = null;
+        this.rainbowMood = 0;
+        this.isPink = false;
+        this.sinkTimer = 0;
+        this.sinkDepth = 0;
+        this.lifting = false;
+        const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+        if (Audio.goldChime) Audio.goldChime(pan);
+        water.disturb(this.x, this.y, this.size * 1.15, 280);
+        spawnSplash(this.x, this.y, this.size * 0.45, 0.5);
+        if (typeof noteRegistryEncounter === "function") noteRegistryEncounter("form:gold");
+    }
+
     dropGift(strong) {
+        if (this.golden || this.dead || this.leaving) return;
         if (foods.filter((f) => f && !f.eaten).length >= CONFIG.maxFoods) return;
         const n = strong ? 2 + Math.floor(Math.random() * 2) : 1;
         for (let i = 0; i < n; i++) {
@@ -18671,7 +21406,9 @@ class PacifistVisitor {
                 // Avoid rainbow gift spam that helpers immediately re-eat.
                 flags = roll < 0.45 ? { pink: true } : roll < 0.8 ? { grower: true } : {};
             } else if (this.kind === "axolotl") {
-                flags = roll < 0.6 ? { pink: true } : { hero: true };
+                flags = roll < 0.6
+                    ? { pink: true, fromAxolotlGift: true }
+                    : { hero: true, fromAxolotlGift: true };
             } else if (this.kind === "ribbon") {
                 flags = roll < 0.35 ? { rainbow: true } : { grower: true };
             } else if (this.kind === "shard" || this.kind === "prism") {
@@ -18691,7 +21428,7 @@ class PacifistVisitor {
 
     // Rainbow food wakes a short role-specific mood instead of a predator finale.
     triggerRainbowMood() {
-        if (this.dead || this.leaving) return;
+        if (this.dead || this.leaving || this.golden) return;
         // Already glowing: refresh the mood only. Do not burst more food (avoids gift loops).
         if (this.rainbowMood > 0) {
             this.rainbowMood = Math.max(this.rainbowMood, 6);
@@ -18776,8 +21513,8 @@ class PacifistVisitor {
                 }
             }
         } else if (this.kind === "axolotl") {
-            drop({ pink: true }, 2);
-            drop({ hero: true }, 1);
+            drop({ pink: true, fromAxolotlGift: true }, 2);
+            drop({ hero: true, fromAxolotlGift: true }, 1);
             for (const f of fishes) {
                 if (f.dead || f.golden || f.isPredator || f.isMonster || f.isRainbow) continue;
                 if (Math.hypot(f.x - this.x, f.y - this.y) > this.size * 2.4) continue;
@@ -18826,6 +21563,16 @@ class PacifistVisitor {
 
     update(dt) {
         if (this.dead) return;
+        // Golden helpers freeze and settle like gold pond fish.
+        if (this.golden) {
+            if (this.lifting) return;
+            this.sinkTimer += dt;
+            this.sinkDepth = Math.min(1, this.sinkTimer / CONFIG.goldSinkTime);
+            if (this.sinkDepth < 1 && Math.random() < 0.08) {
+                water.disturb(this.x, this.y, this.size * (1 - this.sinkDepth * 0.5), 40);
+            }
+            return;
+        }
         this.age += dt;
         this.phase += dt * 1.4;
         this.tailPhase += dt * (3.2 + (this.tamed ? 0.8 : 0));
@@ -18905,15 +21652,19 @@ class PacifistVisitor {
                 this.dead = true;
                 return;
             }
-        } else if (!this.foodTarget || this.foodTarget.eaten) {
+        } else if (!this.foodTarget || this.foodTarget.eaten
+            || (this.kind === "axolotl" && this.foodTarget.fromAxolotlGift)) {
             // Prefer rainbow only when not already glowing (avoids gift → eat → burst loops).
             let best = null;
             let bd = CONFIG.perception * 1.4;
             for (const food of foods) {
                 if (food.eaten) continue;
+                // Axolotl never chases the gifts it dropped; user-thrown food stays fair game.
+                if (this.kind === "axolotl" && food.fromAxolotlGift) continue;
                 const d = Math.hypot(food.x - this.x, food.y - this.y);
                 let prefer = 1;
-                if (food.rainbow && this.rainbowMood <= 0) prefer = 0.55;
+                if (food.golden) prefer = 0.5;
+                else if (food.rainbow && this.rainbowMood <= 0) prefer = 0.55;
                 else if (food.rainbow && this.rainbowMood > 0) prefer = 2.6;
                 if (d * prefer < bd) { bd = d * prefer; best = food; }
             }
@@ -18929,29 +21680,38 @@ class PacifistVisitor {
             this.foodTarget = null;
         } else if (!this.leaving && this.foodTarget && !this.foodTarget.eaten) {
             const f = this.foodTarget;
-            desired = Math.atan2(f.y - this.y, f.x - this.x);
-            spd = this.speed * (f.rainbow ? 1.35 : 1.15) * moodBoost;
-            if (Math.hypot(f.x - this.x, f.y - this.y) < this.size * 0.4 + f.radius() + 6) {
-                const wasPink = !!f.pink;
-                const wasRainbow = !!f.rainbow;
-                f.eaten = true;
+            if (this.kind === "axolotl" && f.fromAxolotlGift) {
                 this.foodTarget = null;
-                this.size = Math.min(this.size + (wasRainbow ? 2.2 : 1.2), this.meta.size[1] * 1.2);
-                if (wasRainbow) {
-                    this.triggerRainbowMood();
-                } else if (wasPink && this.tamed) {
-                    apexTurnPink(this);
-                } else {
-                    const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
-                    Audio.fishNote({
-                        freq: 260 * (0.9 + Math.random() * 0.2),
-                        wave: "triangle",
-                        pan,
-                        dur: 0.28,
-                        level: 0.05,
-                        partialAmt: 0.2,
-                        bright: 1.05,
-                    });
+            } else {
+                desired = Math.atan2(f.y - this.y, f.x - this.x);
+                spd = this.speed * (f.golden ? 1.3 : f.rainbow ? 1.35 : 1.15) * moodBoost;
+                if (Math.hypot(f.x - this.x, f.y - this.y) < this.size * 0.4 + f.radius() + 6) {
+                    const wasPink = !!f.pink;
+                    const wasRainbow = !!f.rainbow;
+                    const wasGolden = !!f.golden;
+                    f.eaten = true;
+                    this.foodTarget = null;
+                    if (wasGolden) {
+                        this.turnToGold();
+                    } else {
+                        this.size = Math.min(this.size + (wasRainbow ? 2.2 : 1.2), this.meta.size[1] * 1.2);
+                        if (wasRainbow) {
+                            this.triggerRainbowMood();
+                        } else if (wasPink && this.tamed) {
+                            apexTurnPink(this);
+                        } else {
+                            const pan = Math.max(-1, Math.min(1, (this.x / viewW) * 2 - 1));
+                            Audio.fishNote({
+                                freq: 260 * (0.9 + Math.random() * 0.2),
+                                wave: "triangle",
+                                pan,
+                                dur: 0.28,
+                                level: 0.05,
+                                partialAmt: 0.2,
+                                bright: 1.05,
+                            });
+                        }
+                    }
                 }
             }
         } else if (!this.leaving) {
@@ -19230,15 +21990,21 @@ class PacifistVisitor {
 
     draw(ctx) {
         if (this.dead) return;
-        const a = this.leaving ? 0.55 : 0.94;
-        if (this.kind === "axolotl") { drawPacifistAxolotlModel(ctx, this, a); return; }
-        if (this.kind === "garden" || this.kind === "lumen") { drawPacifistOctopusHelper(ctx, this, a); return; }
-        if (this.kind === "beluga") { drawPacifistBelugaHelper(ctx, this, a); return; }
-        if (this.kind === "singer") { drawPacifistWhaleHelper(ctx, this, a); return; }
-        if (this.kind === "lotus" || this.kind === "prism") { drawPacifistTurtleHelper(ctx, this, a); return; }
-        if (this.kind === "nurse" || this.kind === "shard") { drawPacifistNurseHelper(ctx, this, a); return; }
-        if (this.kind === "ribbon") { drawPacifistSailHelper(ctx, this, a); return; }
-        drawPacifistNurseHelper(ctx, this, a);
+        const sink = this.golden ? (this.sinkDepth || 0) : 0;
+        const a = this.golden
+            ? (0.85 - sink * 0.23)
+            : (this.leaving ? 0.55 : 0.94);
+        const ySave = this.y;
+        if (this.golden) this.y = ySave + sink * 6;
+        if (this.kind === "axolotl") drawPacifistAxolotlModel(ctx, this, a);
+        else if (this.kind === "garden" || this.kind === "lumen") drawPacifistOctopusHelper(ctx, this, a);
+        else if (this.kind === "beluga") drawPacifistBelugaHelper(ctx, this, a);
+        else if (this.kind === "singer") drawPacifistWhaleHelper(ctx, this, a);
+        else if (this.kind === "lotus" || this.kind === "prism") drawPacifistTurtleHelper(ctx, this, a);
+        else if (this.kind === "nurse" || this.kind === "shard") drawPacifistNurseHelper(ctx, this, a);
+        else if (this.kind === "ribbon") drawPacifistSailHelper(ctx, this, a);
+        else drawPacifistNurseHelper(ctx, this, a);
+        if (this.golden) this.y = ySave;
     }
 }
 
@@ -19784,6 +22550,9 @@ class CrystalSerpent {
         this.petProgress = 0;
         this.isPink = false;
         this.breedCooldown = 0;
+        this.pickerHeld = false;
+        this.pickerLiftZ = 0;
+        this.pickerThrow = null;
         this.segments = 11;
         const side = Math.floor(Math.random() * 4);
         if (side === 0) { this.x = -this.size; this.y = Math.random() * viewH; }
@@ -19871,6 +22640,15 @@ class CrystalSerpent {
         if (this.dead) return;
         if (this.octopusWrap) {
             this.tailPhase += dt * 2.4;
+            this.phase += dt * 1.1;
+            return;
+        }
+        if (this.pickerThrow) {
+            updatePickerThrow(this, dt);
+            return;
+        }
+        if (this.pickerHeld) {
+            this.tailPhase += dt * (this.pickerLiftZ > 4 ? 10 : 3.6);
             this.phase += dt * 1.1;
             return;
         }
@@ -19996,7 +22774,7 @@ class CrystalSerpent {
         const W = this.size * 0.24;
         const segs = Math.max(8, this.segments | 0);
         ctx.save();
-        ctx.translate(this.x, this.y);
+        ctx.translate(this.x, this.y - (this.pickerLiftZ || 0));
         ctx.rotate(this.dir);
         ctx.globalAlpha = this.leaving ? 0.5 : 0.94;
         if (this.isPink) {
@@ -20253,7 +23031,8 @@ function beginCrystalApexEnding(kind, actor) {
         t: 0,
         clock: 0,
         wall0: performance.now(),
-        phase: "rise",
+        // approach → bloom → shatter → fade (spectacle waits until centered)
+        phase: "approach",
         overlay: 0.06,
         fade: 0,
         bloom: 0,
@@ -20332,9 +23111,9 @@ function updateCrystalApexEnding(dt) {
         : e.phase === "fade" ? Math.max(0, 1 - e.t * 0.5) : 0;
     e.bloom += (bloomWant - e.bloom) * ease(2.0);
 
-    const ringWant = e.phase === "bloom" ? Math.min(1, e.t / 0.9)
-        : e.phase === "shatter" ? Math.max(0, 1 - e.t * 0.7)
-        : e.phase === "rise" ? Math.min(0.35, e.t * 0.12) : 0;
+    const ringWant = e.phase === "bloom" ? Math.min(1, e.t / 0.85)
+        : e.phase === "shatter" ? Math.max(0, 1 - e.t * 0.85)
+        : e.phase === "approach" ? Math.min(0.28, e.t * 0.1) : 0;
     e.rings += (ringWant - (e.rings || 0)) * ease(2.4);
 
     if (actor) {
@@ -20342,16 +23121,14 @@ function updateCrystalApexEnding(dt) {
         if (actor.phase != null) actor.phase += dt * 2.1;
         if (actor.pulse != null) actor.pulse += dt * (2.6 + e.bloom);
 
-        if (e.phase === "rise") {
-            // Spiral inward: bank and swim, never snap to center.
-            e.orbitAng += dt * (e.kind === "serpent" ? 1.35 : e.kind === "mantle" ? 0.85 : 1.1);
-            e.orbitRad += (42 - e.orbitRad) * ease(0.85);
-            const tx = cx + Math.cos(e.orbitAng) * e.orbitRad
-                + (e.kind === "serpent" ? -12 : e.kind === "mantle" ? 8 : 0);
-            const ty = cy + Math.sin(e.orbitAng) * e.orbitRad * 0.68
-                + (e.kind === "prism" ? 8 : 0);
-            easeToward(actor, tx, ty, dt, e.kind === "mantle" ? 36 : 48, 1.25);
-            bankToward(actor, e.orbitAng + Math.PI * 0.5, dt, 1.5);
+        if (e.phase === "approach") {
+            // Swim to screen center first; later spectacle waits until close enough.
+            const maxSpd = e.kind === "mantle" ? 125 : e.kind === "serpent" ? 155 : 140;
+            easeToward(actor, cx, cy, dt, maxSpd, 2.1);
+            bankToward(actor, Math.atan2(cy - actor.y, cx - actor.x), dt, 2.0);
+            const dist = Math.hypot(actor.x - cx, actor.y - cy);
+            e.orbitRad = dist;
+            e.orbitAng = Math.atan2(actor.y - cy, actor.x - cx);
             if (e.kind === "mantle" && actor.legs) {
                 for (let i = 0; i < actor.legs.length; i++) {
                     const leg = actor.legs[i];
@@ -20369,7 +23146,7 @@ function updateCrystalApexEnding(dt) {
                     );
                 }
             }
-            if (Math.random() < 0.2) {
+            if (Math.random() < 0.22) {
                 pushFinaleWake(e.wake, actor.x, actor.y, 1, {
                     ang: actor.dir + Math.PI,
                     hue: e.kind === "prism" ? 195 : e.kind === "mantle" ? 290 : 275,
@@ -20377,19 +23154,24 @@ function updateCrystalApexEnding(dt) {
                     lift: 4,
                 });
             }
-            if (e.t >= 2.2 || e.orbitRad < 48) {
+            // Gate bloom on center reach. Failsafe only after a long swim (25s budget).
+            const closeEnough = dist < 42;
+            const approachFailsafe = e.t >= 7.5;
+            if (closeEnough || approachFailsafe) {
                 e.phase = "bloom";
                 e.t = 0;
+                e.orbitAng = Math.atan2(actor.y - cy, actor.x - cx);
+                e.orbitRad = Math.hypot(actor.x - cx, actor.y - cy);
                 pushCrystalFinaleMote(e, actor.x, actor.y, 26);
                 Audio.predatorEat(0);
             }
         } else if (e.phase === "bloom") {
             // Slow circle while swelling: reaching, not a cutscene pose.
-            const swell = e.startSize * (1 + Math.min(0.55, e.t * 0.16));
+            const swell = e.startSize * (1 + Math.min(0.5, e.t * 0.18));
             softSizeToward(actor, swell, dt, 1.55);
             e.orbitAng += dt * 0.95;
-            const br = 26 + Math.sin(e.t * 1.6) * 8;
-            easeOrbitToward(actor, cx, cy, br, e.orbitAng, dt, 30, 1.05, 0.7);
+            const br = 22 + Math.sin(e.t * 1.6) * 7;
+            easeOrbitToward(actor, cx, cy, br, e.orbitAng, dt, 32, 1.05, 0.7);
             if (Math.random() < 0.4) pushCrystalFinaleMote(e, actor.x, actor.y, 2);
             if (Math.random() < 0.25) {
                 pushFinaleWake(e.wake, actor.x, actor.y, 2, {
@@ -20413,7 +23195,7 @@ function updateCrystalApexEnding(dt) {
                     );
                 }
             }
-            if (e.t >= 2.1) {
+            if (e.t >= 1.65) {
                 e.phase = "shatter";
                 e.t = 0;
                 pushCrystalFinaleShard(e, actor.x, actor.y, e.kind === "serpent" ? 32 : 24);
@@ -20431,19 +23213,19 @@ function updateCrystalApexEnding(dt) {
             }
         } else if (e.phase === "shatter") {
             // Drift outward while shrinking (capped ease), then dissolve.
-            const shrink = Math.max(10, e.startSize * (1 - Math.min(0.92, e.t / 1.7)));
-            softSizeToward(actor, shrink, dt, 2.2);
+            const shrink = Math.max(10, e.startSize * (1 - Math.min(0.92, e.t / 1.35)));
+            softSizeToward(actor, shrink, dt, 2.4);
             const outAng = e.orbitAng + Math.PI * 0.35 + e.t * 0.8;
-            const outR = 18 + e.t * 55;
+            const outR = 18 + e.t * 58;
             easeToward(
                 actor,
                 cx + Math.cos(outAng) * outR,
                 cy + Math.sin(outAng) * outR * 0.65,
                 dt,
-                62,
+                66,
                 1.6
             );
-            e.actorAlpha = Math.max(0, 1 - e.t / 1.65);
+            e.actorAlpha = Math.max(0, 1 - e.t / 1.25);
             if (e.kind === "mantle" && actor.legs) {
                 for (let i = 0; i < actor.legs.length; i++) {
                     const leg = actor.legs[i];
@@ -20453,7 +23235,7 @@ function updateCrystalApexEnding(dt) {
                 }
             }
             if (Math.random() < 0.5) pushCrystalFinaleShard(e, actor.x, actor.y, 1);
-            if (e.t >= 1.4) {
+            if (e.t >= 1.1) {
                 e.phase = "fade";
                 e.t = 0;
                 actor.dead = true;
@@ -20472,15 +23254,15 @@ function updateCrystalApexEnding(dt) {
     }
 
     if (e.phase === "fade") {
-        e.fade = Math.min(1, e.fade + dt * 0.62);
-        if (!e.restocked && e.fade >= 0.82 && e.t >= 1.05) {
+        e.fade = Math.min(1, e.fade + dt * 0.72);
+        if (!e.restocked && e.fade >= 0.78 && e.t >= 0.85) {
             e.restocked = true;
             const keep = e;
             resetPond({ keepCrystalEnding: true, skipRepop: false });
             crystalApexEnding = keep;
             if (Audio.goldChime) Audio.goldChime(0);
         }
-        if (e.restocked && e.t >= 2.5) {
+        if (e.restocked && e.t >= 2.0) {
             crystalApexEnding = null;
             return;
         }
@@ -20796,6 +23578,17 @@ function manageEcosystem(dt) {
     }
     updateFrogGroups(dt);
 
+    // Rare bullfrog rolls only while frogs are on and a school is present.
+    bullfrogCheckTimer += dt;
+    if (bullfrogCheckTimer >= CONFIG.bullfrogInterval) {
+        bullfrogCheckTimer = 0;
+        if (scenery.frogs && !pondFinaleActive() && !bullfrog && !bullfrogFinale
+            && frogGroups.length > 0
+            && Math.random() < CONFIG.bullfrogChance) {
+            spawnBullfrog();
+        }
+    }
+
     for (const r of reptiles) r.update(dt);
     for (let i = reptiles.length - 1; i >= 0; i--) {
         if (reptiles[i].dead) reptiles.splice(i, 1);
@@ -21070,6 +23863,9 @@ let netMode = false;
 let netSweeping = false;
 const NET_RADIUS = 44;
 
+// Fish food creation: left-click drops pellets when on; toggle with the food button.
+let foodCreationEnabled = true;
+
 // Pellets scooped by the net are saved here for later redeploy.
 // Normal food also accrues a bank (can exceed visible slot cap) for market trades.
 const FOOD_STASH_KEY = "ripple-food-stash";
@@ -21190,6 +23986,7 @@ function placeStashedFood(x, y, variant) {
     const fx = Math.max(20, Math.min(viewW - 20, x + ox));
     const fy = Math.max(20, Math.min(viewH - 20, y + oy));
     foods.push(new Food(fx, fy, size, flags));
+    resetPetRainbowStreak();
     water.disturb(fx, fy, size * 0.8, 90);
     spawnSplash(fx, fy, size * 0.35, 0.35);
     if (typeof Audio !== "undefined" && Audio.ensure) {
@@ -21351,6 +24148,14 @@ function drawNetCursor(ctx) {
 }
 let firstInteractionDone = false;
 
+(function initStartHint() {
+    const hint = document.getElementById("hint");
+    if (!hint) return;
+    const coarse = typeof window.matchMedia === "function"
+        && window.matchMedia("(pointer: coarse)").matches;
+    hint.textContent = coarse ? "tap anywhere" : "click anywhere";
+})();
+
 // Normalized size in [0,1] from how long the button has been held.
 function chargeFromHold(heldSec, ev) {
     let v = CONFIG.minCharge + heldSec / CONFIG.holdGrowTime;
@@ -21364,6 +24169,7 @@ function goldenFishAt(x, y) {
     let best = null, bd = 42;
     let isReptile = false;
     let isNightPredator = false;
+    let isPacifist = false;
     for (const f of fishes) {
         if (!f.golden || f.dead || f.lifting) continue;
         // Only settled gold can be lifted out of the pond.
@@ -21371,7 +24177,7 @@ function goldenFishAt(x, y) {
         const d = Math.hypot(x - f.x, y - f.y);
         const reach = Math.max(26, f.size * 0.75);
         if (d < reach && d < bd) {
-            bd = d; best = f; isReptile = false; isNightPredator = false;
+            bd = d; best = f; isReptile = false; isNightPredator = false; isPacifist = false;
         }
     }
     for (const r of reptiles) {
@@ -21380,7 +24186,7 @@ function goldenFishAt(x, y) {
         const d = Math.hypot(x - r.x, y - r.y);
         const reach = Math.max(30, r.size * 0.55);
         if (d < reach && d < bd) {
-            bd = d; best = r; isReptile = true; isNightPredator = false;
+            bd = d; best = r; isReptile = true; isNightPredator = false; isPacifist = false;
         }
     }
     for (const np of [swordfish, octopus, crystalMantle]) {
@@ -21389,12 +24195,22 @@ function goldenFishAt(x, y) {
         const d = Math.hypot(x - np.x, y - np.y);
         const reach = Math.max(32, np.size * 0.55);
         if (d < reach && d < bd) {
-            bd = d; best = np; isReptile = false; isNightPredator = true;
+            bd = d; best = np; isReptile = false; isNightPredator = true; isPacifist = false;
+        }
+    }
+    for (const p of pacifistVisitors || []) {
+        if (!p || !p.golden || p.dead || p.lifting) continue;
+        if ((p.sinkDepth || 0) < 0.85) continue;
+        const d = Math.hypot(x - p.x, y - p.y);
+        const reach = Math.max(30, p.size * 0.6);
+        if (d < reach && d < bd) {
+            bd = d; best = p; isReptile = false; isNightPredator = false; isPacifist = true;
         }
     }
     if (!best) return null;
     best._goldLiftIsReptile = isReptile;
     best._goldLiftIsNightPredator = isNightPredator;
+    best._goldLiftIsPacifist = isPacifist;
     return best;
 }
 
@@ -21464,6 +24280,9 @@ function collectGoldFish(fish) {
     const isReptile = !!(liftState && liftState.isReptile) || !!fish._goldLiftIsReptile;
     const isNightPredator = !!(liftState && liftState.isNightPredator)
         || !!fish._goldLiftIsNightPredator;
+    const isPacifist = !!(liftState && liftState.isPacifist)
+        || !!fish._goldLiftIsPacifist
+        || !!fish.isPacifist;
     liftState = null;
     if (isNightPredator) {
         goldCollected += GOLD_NIGHT_PREDATOR_AWARD;
@@ -21472,6 +24291,10 @@ function collectGoldFish(fish) {
         if (fish === crystalMantle) crystalMantle = null;
     } else if (isReptile) {
         goldCollected += GOLD_CROCODILE_AWARD;
+    } else if (isPacifist) {
+        goldCollected += Math.round(
+            goldAwardForSize(fish.size || GOLD_AWARD_SIZE_MIN) * GOLD_HELPER_MULT
+        );
     } else {
         goldCollected += goldAwardForSize(fish.size || GOLD_AWARD_SIZE_MIN);
     }
@@ -21512,7 +24335,10 @@ function updateGoldHold(dt) {
 function onPointerDown(ev) {
     Audio.ensure();
     pointerNow = { x: ev.clientX, y: ev.clientY };
-    if (ev.target === canvas) noteCanvasPointer(ev.clientX, ev.clientY);
+    if (ev.target === canvas) {
+        noteCanvasPointer(ev.clientX, ev.clientY);
+        closeOverlayPanels();
+    }
     // Dev kill tool: click or right-click any pond creature to remove it instantly.
     if (devKillTool && mode === "pond" && (ev.button === 0 || ev.button === 2)) {
         pointerNow = { x: ev.clientX, y: ev.clientY };
@@ -21583,6 +24409,7 @@ function onPointerDown(ev) {
                 holding: true,
                 isReptile: !!gold._goldLiftIsReptile,
                 isNightPredator: !!gold._goldLiftIsNightPredator,
+                isPacifist: !!gold._goldLiftIsPacifist || !!gold.isPacifist,
             };
             water.disturb(gold.x, gold.y, gold.size * 0.5, 70);
             updateGoldCountUI();
@@ -21625,7 +24452,11 @@ function onPointerDown(ev) {
         petPondLifeAt(ev.clientX, ev.clientY);
         return;
     }
-    pointerDownAt = { x: ev.clientX, y: ev.clientY, t: performance.now() };
+    if (mode !== "pond" || foodCreationEnabled) {
+        pointerDownAt = { x: ev.clientX, y: ev.clientY, t: performance.now() };
+    } else {
+        pointerDownAt = null;
+    }
     pointerNow = { x: ev.clientX, y: ev.clientY };
 }
 function onPointerMove(ev) {
@@ -21643,7 +24474,7 @@ function onPointerMove(ev) {
         return;
     }
     // Long left-drag while charging food carves a temporary current lane.
-    if (mode === "pond" && pointerDownAt && (ev.buttons & 1)
+    if (mode === "pond" && foodCreationEnabled && pointerDownAt && (ev.buttons & 1)
         && !catcherDrag && typeof addCurrentLanePoint === "function") {
         const last = chargeLaneTrail.length
             ? chargeLaneTrail[chargeLaneTrail.length - 1]
@@ -21725,12 +24556,19 @@ function onPointerUp(ev) {
     const v = chargeFromHold(held, ev);
 
     if (mode === "pond") {
+        if (!foodCreationEnabled) {
+            pointerDownAt = null;
+            return;
+        }
         // Drag = sling the food across the water from where you started.
         let sx = x, sy = y;
         const dx = x - pointerDownAt.x;
         const dy = y - pointerDownAt.y;
         if (Math.hypot(dx, dy) > 8) { sx = pointerDownAt.x; sy = pointerDownAt.y; }
-        if (rocks.length < CONFIG.maxRocks) rocks.push(new Rock(sx, sy, x, y, v));
+        if (rocks.length < CONFIG.maxRocks) {
+            rocks.push(new Rock(sx, sy, x, y, v));
+            resetPetRainbowStreak();
+        }
     } else {
         spawnWindowRipple(x, y, v);
         if (typeof rhythmCaptureTone === "function") rhythmCaptureTone(x, y, v);
@@ -21774,6 +24612,13 @@ function tryScareReptileAt(x, y) {
 }
 
 // Right-click pets: whale and shark first, then reptiles, frogs, then ordinary fish.
+function applyDoublePetIfOwned(target, quiet, petFn) {
+    const run = petFn || ((q) => target.pet(q));
+    run(quiet);
+    // Double petter: one discrete click counts as two pets (tame / redeem progress).
+    if (doublePetterOwned && !quiet) run(false);
+}
+
 function petPondLifeAt(x, y, quiet) {
     if (crystalMantle && !crystalMantle.dead && !crystalMantle.golden && !crystalMantle.plantMorph) {
         const d = Math.hypot(x - crystalMantle.x, y - crystalMantle.y);
@@ -21782,7 +24627,8 @@ function petPondLifeAt(x, y, quiet) {
                 crystalMantle.petTimer = 1.4;
                 return;
             }
-            crystalMantle.pet(quiet);
+            applyDoublePetIfOwned(crystalMantle, quiet);
+            notePetForRainbowStreak(quiet);
             markFirstInteraction();
             return;
         }
@@ -21794,7 +24640,8 @@ function petPondLifeAt(x, y, quiet) {
                 crystalSerpent.petTimer = 1.4;
                 return;
             }
-            crystalSerpent.pet(quiet);
+            applyDoublePetIfOwned(crystalSerpent, quiet);
+            notePetForRainbowStreak(quiet);
             markFirstInteraction();
             return;
         }
@@ -21805,7 +24652,8 @@ function petPondLifeAt(x, y, quiet) {
             guard.petTimer = 1.5;
             return;
         }
-        guard.pet(quiet);
+        applyDoublePetIfOwned(guard, quiet);
+        notePetForRainbowStreak(quiet);
         markFirstInteraction();
         return;
     }
@@ -21815,7 +24663,8 @@ function petPondLifeAt(x, y, quiet) {
             pac.petTimer = 1.4;
             return;
         }
-        pac.pet();
+        applyDoublePetIfOwned(pac, quiet, () => pac.pet());
+        notePetForRainbowStreak(quiet);
         markFirstInteraction();
         return;
     }
@@ -21827,7 +24676,8 @@ function petPondLifeAt(x, y, quiet) {
                 whale.petTimer = whale.petDur;
                 return;
             }
-            whale.pet(quiet);
+            applyDoublePetIfOwned(whale, quiet);
+            notePetForRainbowStreak(quiet);
             markFirstInteraction();
             return;
         }
@@ -21836,7 +24686,8 @@ function petPondLifeAt(x, y, quiet) {
         const d = Math.hypot(x - shark.x, y - shark.y);
         if (d < shark.size * 0.55) {
             if (quiet && shark.rollTimer > 0) return;
-            shark.pet();
+            applyDoublePetIfOwned(shark, quiet, () => shark.pet());
+            notePetForRainbowStreak(quiet);
             markFirstInteraction();
             return;
         }
@@ -21848,7 +24699,8 @@ function petPondLifeAt(x, y, quiet) {
                 swordfish.petTimer = 1.4;
                 return;
             }
-            swordfish.pet();
+            applyDoublePetIfOwned(swordfish, quiet, () => swordfish.pet());
+            notePetForRainbowStreak(quiet);
             markFirstInteraction();
             return;
         }
@@ -21860,7 +24712,8 @@ function petPondLifeAt(x, y, quiet) {
                 octopus.petTimer = 1.4;
                 return;
             }
-            octopus.pet();
+            applyDoublePetIfOwned(octopus, quiet, () => octopus.pet());
+            notePetForRainbowStreak(quiet);
             markFirstInteraction();
             return;
         }
@@ -21879,7 +24732,8 @@ function petPondLifeAt(x, y, quiet) {
             bestR.petTimer = 1.4;
             return;
         }
-        bestR.pet();
+        applyDoublePetIfOwned(bestR, quiet, () => bestR.pet());
+        notePetForRainbowStreak(quiet);
         markFirstInteraction();
         return;
     }
@@ -21894,7 +24748,8 @@ function petPondLifeAt(x, y, quiet) {
         if (d < reach && d < bestFrogD) { bestFrogD = d; bestFrog = frog; }
     }
     if (bestFrog) {
-        petFrog(bestFrog, quiet);
+        applyDoublePetIfOwned(bestFrog, quiet, (q) => petFrog(bestFrog, q));
+        notePetForRainbowStreak(quiet);
         markFirstInteraction();
         return;
     }
@@ -21912,9 +24767,8 @@ function petPondLifeAt(x, y, quiet) {
         best.petTimer = 1.4;
         return;
     }
-    best.pet();
-    // Double petter: one click counts as two pets (blobfish progress, soothe, etc.).
-    if (doublePetterOwned && !quiet) best.pet();
+    applyDoublePetIfOwned(best, quiet, () => best.pet());
+    notePetForRainbowStreak(quiet);
     markFirstInteraction();
 }
 
@@ -21923,6 +24777,7 @@ canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 // Preview of the growing ball while the button is held.
 function drawCharge(ctx) {
     if (!pointerDownAt || !pointerNow) return;
+    if (mode === "pond" && !foodCreationEnabled) return;
     const held = (performance.now() - pointerDownAt.t) / 1000;
     const v = chargeFromHold(held, null);
     const rad = 7 + v * 24;
@@ -21982,6 +24837,7 @@ window.addEventListener("keydown", (e) => {
             setDevMenuOpen(false);
             return;
         }
+        if (closeOverlayPanels()) return;
         setUiHidden(!document.body.classList.contains("ui-hidden"));
         return;
     }
@@ -22222,6 +25078,33 @@ function dropStylePreviewFreq(style) {
 }
 
 const netBtn = document.getElementById("net-btn");
+
+function updateFoodButtonUI() {
+    const btn = document.getElementById("food-btn");
+    if (!btn) return;
+    btn.classList.toggle("on", foodCreationEnabled);
+    btn.setAttribute("aria-pressed", foodCreationEnabled ? "true" : "false");
+    btn.title = foodCreationEnabled
+        ? "Fish food on: click the pond to drop"
+        : "Fish food off: click to turn on";
+    btn.setAttribute("aria-label", foodCreationEnabled ? "Fish food on" : "Fish food off");
+}
+
+const foodBtn = document.getElementById("food-btn");
+if (foodBtn) {
+    foodBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        foodCreationEnabled = !foodCreationEnabled;
+        if (!foodCreationEnabled) {
+            pointerDownAt = null;
+            chargeLaneTrail.length = 0;
+        }
+        updateFoodButtonUI();
+        markFirstInteraction();
+    });
+    updateFoodButtonUI();
+}
+
 netBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     netMode = !netMode;
@@ -22235,6 +25118,7 @@ netBtn.addEventListener("click", (e) => {
     netBtn.title = netMode
         ? "Net on: right click sweeps food"
         : "Net: scoop food with right click";
+    netBtn.setAttribute("aria-label", netMode ? "Net on" : "Net tool");
 });
 
 const hatsBtn = document.getElementById("hats-btn");
@@ -22267,6 +25151,7 @@ function resetMarketUnlocks() {
     catcherOwned = true; // always available; upgrades still come from the market
     doublePetterOwned = false;
     pickerOwned = false;
+    strongerCurrentsOwned = false;
     catcherLevel = 0;
     rainbowCaughtCount = 0;
     platinumUnlocked = false;
@@ -22290,6 +25175,7 @@ function applyMarketData(data) {
     catcherOwned = true;
     doublePetterOwned = !!data.doublePetter;
     pickerOwned = !!data.picker;
+    strongerCurrentsOwned = !!data.strongerCurrents;
     catcherLevel = Math.max(0, Math.min(CATCHER_LEVEL_MAX, Math.floor(data.catcherLevel || 0)));
     rainbowCaughtCount = Math.max(0, Math.floor(data.rainbowCaught || 0));
     platinumUnlocked = !!data.platinum || rainbowCaughtCount >= RAINBOWS_FOR_PLATINUM;
@@ -22342,6 +25228,12 @@ function serializeFishType(type) {
         odd: type.odd || null,
         dart: !!type.dart,
         ghost: type.ghost,
+        wen: !!type.wen,
+        noDorsal: !!type.noDorsal,
+        hump: !!type.hump,
+        lantern: !!type.lantern,
+        tail: type.tail || null,
+        labriform: !!type.labriform,
     };
 }
 
@@ -22380,6 +25272,12 @@ function reviveFishType(data) {
     if (data.odd) type.odd = data.odd;
     if (data.dart) type.dart = true;
     if (data.ghost != null) type.ghost = data.ghost;
+    if (data.wen) type.wen = true;
+    if (data.noDorsal) type.noDorsal = true;
+    if (data.hump) type.hump = true;
+    if (data.lantern) type.lantern = true;
+    if (data.tail) type.tail = data.tail;
+    if (data.labriform) type.labriform = true;
     return type;
 }
 
@@ -22401,6 +25299,7 @@ const REGISTRY_TABS = [
     { id: "apex", label: "Apex" },
     { id: "helpers", label: "Helpers" },
     { id: "rare", label: "Rare" },
+    { id: "elements", label: "Elements" },
 ];
 
 const REGISTRY_GROUP_BLURB = {
@@ -22411,6 +25310,7 @@ const REGISTRY_GROUP_BLURB = {
     apex: "Large hunters and guests that can empty or reshape the pond. Pet carefully, or let them leave on their own.",
     helpers: "Pacifist counterparts and rare biome guardians. Helpers gift and soothe. Guardians hunt aggressive fish, then leave unless you pet them enough to stay. Later biomes take more pets.",
     rare: "Special forms a fish can enter. Gold rests on the bed, rainbow hunts hard, monster rises from eating reptiles, and platinum cannot be eaten.",
+    elements: "Pond scenery, lake debris, and ornaments grown from green food. Entries stay dark until that piece appears in the water.",
 };
 
 const REGISTRY_ODD_TIP = {
@@ -22459,6 +25359,38 @@ const REGISTRY_GUARDIAN_TIP = {
     vigil: "Moon vigil. Rare night guardian. Harder to befriend than day helpers, stays only if tamed.",
     aegis: "Prism aegis. Rare Crystal Depths guardian. Needs the most pets, then stays on watch if tamed.",
 };
+
+const REGISTRY_ELEMENT_META = [
+    { id: "elem:stones", source: "scenery", kind: "stones", label: "Shore stones", color: "#8a8880", tip: "Smooth rocks along the bank. They sit still and catch a little wake." },
+    { id: "elem:sticks", source: "scenery", kind: "sticks", label: "Fallen sticks", color: "#8a6a40", tip: "Twigs that drifted in. Some still hold a leaf or two." },
+    { id: "elem:reeds", source: "scenery", kind: "reeds", label: "Bank reeds", color: "#4a7a48", tip: "Tall green stems along the shore. They sway when the water moves." },
+    { id: "elem:cattails", source: "scenery", kind: "cattails", label: "Cattails", color: "#6a5a38", tip: "Bank plants with brown seed heads. They lean with the reeds." },
+    { id: "elem:lilies", source: "scenery", kind: "lilies", label: "Lily pads", color: "#5a8a48", tip: "Round floating pads with a small notch. They bob on wakes and can be nudged." },
+    { id: "elem:duckweed", source: "scenery", kind: "duckweed", label: "Duckweed", color: "#5a8a50", tip: "Tiny surface greens in loose clusters. They share a Looks toggle with floating leaves." },
+    { id: "elem:leaves", source: "scenery", kind: "leaves", label: "Floating leaves", color: "#7a6a38", tip: "Loose leaves on the surface. They drift with duckweed when surface greens are on." },
+    { id: "elem:boulder", source: "obstacle", kind: "boulder", label: "Boulder", color: "#6a6860", tip: "A heavy lake stone. Fish swim around it. Right click drag to haul it through the water." },
+    { id: "elem:mossrock", source: "obstacle", kind: "mossrock", label: "Mossy rock", color: "#5a6a50", tip: "A lake stone with moss patches. Same drag as other debris." },
+    { id: "elem:log", source: "obstacle", kind: "log", label: "Log", color: "#6a4a28", tip: "A thick fallen log. Long debris yaws slowly while you drag it." },
+    { id: "elem:driftwood", source: "obstacle", kind: "driftwood", label: "Driftwood", color: "#7a5a38", tip: "A forked, weathered branch. Lighter than a full log." },
+    { id: "elem:plank", source: "obstacle", kind: "plank", label: "Plank", color: "#8a6a42", tip: "A worn board from somewhere upstream. Thin, long, and easy to spin." },
+    { id: "elem:stump", source: "obstacle", kind: "stump", label: "Stump", color: "#5a4030", tip: "A cut trunk with a ringed face. Sits low in the water." },
+    { id: "elem:crate", source: "obstacle", kind: "crate", label: "Crate", color: "#8a6a48", tip: "A warped wooden crate. Human leftover, now lake clutter." },
+    { id: "elem:barrel", source: "obstacle", kind: "barrel", label: "Barrel", color: "#7a5a34", tip: "A bulged wooden barrel with hoops. Heavy to drag." },
+    { id: "elem:pot", source: "obstacle", kind: "pot", label: "Clay pot", color: "#8a6048", tip: "A chipped pot on the bed. Smaller debris with a hollow rim." },
+    { id: "elem:reedraft", source: "obstacle", kind: "reedraft", label: "Reed raft", color: "#6a8a48", tip: "Bundled reed stems tied into a floating raft. The cut butts sit at the water line." },
+    { id: "elem:lantern", source: "plant", kind: "lantern", label: "Paper lantern", color: "#e0a858", tip: "A warm paper lantern grown from green food. It stays until the pond restocks." },
+    { id: "elem:buoy", source: "plant", kind: "buoy", label: "Marker buoy", color: "#c4583a", tip: "A round marker buoy. Green food left it as a lasting ornament." },
+    { id: "elem:bottle", source: "plant", kind: "bottle", label: "Glass bottle", color: "#78b4aa", tip: "A clear bottle on the bed. One of the uncommon green-food ornaments." },
+    { id: "elem:shell", source: "plant", kind: "shell", label: "Shell", color: "#e0b898", tip: "A fan shell settled on the bed after green food." },
+    { id: "elem:mushroom", source: "plant", kind: "mushroom", label: "Mushroom", color: "#d86858", tip: "A small cluster of capped mushrooms. Grows from green food." },
+    { id: "elem:bamboo", source: "plant", kind: "bamboo", label: "Bamboo", color: "#4a8a50", tip: "Jointed bamboo stalks. They sway more than the bank reeds." },
+    { id: "elem:shipwheel", source: "plant", kind: "shipwheel", label: "Ship wheel", color: "#a07040", tip: "A wooden ship wheel ornament. Green food left it on the bed." },
+    { id: "elem:teapot", source: "plant", kind: "teapot", label: "Teapot", color: "#c8b498", tip: "A small teapot ornament. Another uncommon green-food piece." },
+    { id: "elem:coral", source: "plant", kind: "coral", label: "Coral", color: "#d87898", tip: "Branching coral on the bed. A fantasy ornament from green food." },
+    { id: "elem:woodenfish", source: "plant", kind: "woodenfish", label: "Wooden fish", color: "#b88850", tip: "A carved wooden fish. A rare green-food roll, and it stays until restock." },
+    { id: "elem:lotus", source: "plant", kind: "lotus", label: "Lotus", color: "#e0b4a0", tip: "A flowering pad with a pale bloom. Grown from green food, not the usual lily pads." },
+    { id: "elem:weed", source: "plant", kind: "weed", label: "Weed tuft", color: "#3a8250", tip: "A tuft of underwater weed. Soft fronds that sway on the bed." },
+];
 
 function registryPrettyName(name) {
     return String(name || "")
@@ -22568,6 +25500,17 @@ function getRegistryCatalog() {
             previewForm: r.id.replace(/^form:/, ""),
         });
     }
+    for (const el of REGISTRY_ELEMENT_META) {
+        list.push({
+            id: el.id,
+            group: "elements",
+            label: el.label,
+            color: el.color,
+            tip: el.tip,
+            previewElem: el.kind,
+            elemSource: el.source,
+        });
+    }
     _registryCatalog = list;
     return list;
 }
@@ -22619,6 +25562,40 @@ function scanLivingForRegistry() {
     for (const g of biomeGuardians) {
         if (g && !g.dead) noteRegistryEncounter("guard:" + (g.kind || "warden"));
     }
+    noteDrawnPondElements();
+}
+
+function noteDrawnPondElements() {
+    if (registryPreviewQuiet) return;
+    if (scenery.stones && sceneryItems.stones && sceneryItems.stones.length) {
+        noteRegistryEncounter("elem:stones");
+    }
+    if (scenery.sticks && sceneryItems.sticks && sceneryItems.sticks.length) {
+        noteRegistryEncounter("elem:sticks");
+    }
+    if (scenery.reeds && sceneryItems.reeds && sceneryItems.reeds.length) {
+        noteRegistryEncounter("elem:reeds");
+    }
+    if (scenery.cattails && sceneryItems.cattails && sceneryItems.cattails.length) {
+        noteRegistryEncounter("elem:cattails");
+    }
+    if (scenery.lilies && sceneryItems.lilies && sceneryItems.lilies.length) {
+        noteRegistryEncounter("elem:lilies");
+    }
+    if (scenery.duckweed && sceneryItems.duckweed && sceneryItems.duckweed.length) {
+        noteRegistryEncounter("elem:duckweed");
+    }
+    if (scenery.duckweed && sceneryItems.leaves && sceneryItems.leaves.length) {
+        noteRegistryEncounter("elem:leaves");
+    }
+    if (scenery.debris) {
+        for (const o of obstacles) {
+            if (o && o.kind) noteRegistryEncounter("elem:" + o.kind);
+        }
+    }
+    for (const p of pondPlants) {
+        if (p && p.kind) noteRegistryEncounter("elem:" + p.kind);
+    }
 }
 
 function registryCounts() {
@@ -22636,7 +25613,7 @@ function updateRegistryButtonUI() {
     btn.classList.toggle("on", registryOpen);
     btn.setAttribute("aria-pressed", registryOpen ? "true" : "false");
     btn.setAttribute("aria-expanded", registryOpen ? "true" : "false");
-    btn.title = registryOpen ? "Close fish registry" : "Fish registry";
+    btn.title = registryOpen ? "Close registry" : "Registry";
 }
 
 function setRegistryOpen(open) {
@@ -22688,6 +25665,187 @@ function registryFixLimbTips(ent) {
         leg.tipX = ent.x + Math.cos(ang) * len * 0.85;
         leg.tipY = ent.y + Math.sin(ang) * len * 0.7;
     }
+}
+
+function makeRegistryObstaclePreview(kind) {
+    const i = 4;
+    const base = {
+        kind, x: 0, y: 0, rot: -0.35,
+        tone: 0.48, moss: 0.4, vx: 0, vy: 0, spin: 0,
+        profile: makeObstacleDetail(i, 10, 1),
+        knobs: makeObstacleDetail(i, 5, 2),
+    };
+    if (kind === "boulder" || kind === "mossrock") {
+        return { ...base, r: 22, facets: 8 };
+    }
+    if (kind === "log") return { ...base, len: 54, thick: 14, broken: true };
+    if (kind === "driftwood") return { ...base, len: 50, thick: 11, fork: 0.5 };
+    if (kind === "plank") return { ...base, len: 52, thick: 8 };
+    if (kind === "crate") return { ...base, r: 18, rot: -0.2 };
+    if (kind === "barrel") return { ...base, r: 20 };
+    if (kind === "pot") return { ...base, r: 16 };
+    if (kind === "reedraft") return { ...base, r: 18, stems: 6, rot: 0 };
+    return { ...base, kind: "stump", r: 18 };
+}
+
+function makeRegistryPlantPreview(kind) {
+    const size = kind === "bamboo" ? 34 : kind === "woodenfish" ? 40 : kind === "weed" ? 36 : 38;
+    return {
+        soft: "plant",
+        kind,
+        x: 0,
+        y: 0,
+        size,
+        r: typeof greenOrnamentRadius === "function" ? greenOrnamentRadius(kind, size) : size * 0.45,
+        rot: -0.28,
+        sway: 0.35,
+        bob: 0.4,
+        green: 0.62,
+        age: 2,
+        vx: 0,
+        vy: 0,
+        spin: 0,
+        tone: 0.42,
+        bobLift: 0,
+        tipBob: 0,
+        refrX: 0,
+        refrY: 0,
+        settleT: 0,
+    };
+}
+
+function withTempProp(obj, key, value, fn) {
+    const prev = obj[key];
+    obj[key] = value;
+    try { return fn(); }
+    finally { obj[key] = prev; }
+}
+
+function paintSceneryElementPreview(ctx, kind) {
+    if (kind === "stones") {
+        ctx.scale(1.2, 1.2);
+        withTempProp(scenery, "stones", true, () => {
+            const prev = sceneryItems.stones;
+            sceneryItems.stones = [{
+                x: 0, y: 0, rx: 15, ry: 10, rot: -0.3, tone: 0.52, facets: 7,
+                profile: makeObstacleDetail(2, 9, 5),
+            }];
+            try { drawShoreStones(ctx, 0); }
+            finally { sceneryItems.stones = prev; }
+        });
+        return;
+    }
+    if (kind === "sticks") {
+        ctx.scale(1.05, 1.05);
+        withTempProp(scenery, "sticks", true, () => {
+            const prev = sceneryItems.sticks;
+            sceneryItems.sticks = [{
+                x: 0, y: 0, len: 30, rot: -0.45, thick: 2.1, wet: true, tipBob: 0,
+            }];
+            try { drawSticks(ctx, 0); }
+            finally { sceneryItems.sticks = prev; }
+        });
+        return;
+    }
+    if (kind === "reeds") {
+        ctx.scale(0.95, 0.95);
+        withTempProp(scenery, "reeds", true, () => {
+            const prev = sceneryItems.reeds;
+            sceneryItems.reeds = [{ x: 0, y: 0, ang: 0, h: 34, sway: 0.4, green: 0.7 }];
+            try { drawReeds(ctx, 0.4, 0); }
+            finally { sceneryItems.reeds = prev; }
+        });
+        return;
+    }
+    if (kind === "cattails") {
+        ctx.scale(0.9, 0.9);
+        withTempProp(scenery, "cattails", true, () => {
+            const prev = sceneryItems.cattails;
+            sceneryItems.cattails = [{ x: 0, y: 0, ang: 0, h: 36, sway: 0.35, green: 0.62 }];
+            try { drawCattails(ctx, 0.4, 0); }
+            finally { sceneryItems.cattails = prev; }
+        });
+        return;
+    }
+    if (kind === "lilies") {
+        ctx.scale(1.15, 1.15);
+        withTempProp(scenery, "lilies", true, () => {
+            const prev = sceneryItems.lilies;
+            sceneryItems.lilies = [{
+                soft: "lily", x: 0, y: 0, r: 16, rot: -0.2, bob: 0.3, vx: 0, vy: 0, spin: 0, tipBob: 0,
+            }];
+            try { drawLilies(ctx, 0.4, 0); }
+            finally { sceneryItems.lilies = prev; }
+        });
+        return;
+    }
+    if (kind === "duckweed") {
+        ctx.scale(1.05, 1.05);
+        withTempProp(scenery, "duckweed", true, () => {
+            const prev = sceneryItems.duckweed;
+            sceneryItems.duckweed = [{ x: 0, y: 0, r: 16, rot: 0.2, bob: 0.4, density: 7 }];
+            try { drawDuckweed(ctx, 0.4, 0); }
+            finally { sceneryItems.duckweed = prev; }
+        });
+        return;
+    }
+    if (kind === "leaves") {
+        ctx.scale(1.35, 1.35);
+        withTempProp(scenery, "duckweed", true, () => {
+            const prev = sceneryItems.leaves;
+            sceneryItems.leaves = [{ x: 0, y: 0, len: 11, rot: -0.4, bob: 0.3, tone: 0.5 }];
+            try { drawLeaves(ctx, 0.4, 0); }
+            finally { sceneryItems.leaves = prev; }
+        });
+    }
+}
+
+function paintElementRegistryPreview(ctx, entry, seen, cssW, cssH) {
+    const kind = entry.previewElem;
+    const source = entry.elemSource;
+    const tall = kind === "reeds" || kind === "cattails" || kind === "reedraft"
+        || kind === "bamboo" || kind === "lantern" || kind === "weed"
+        || kind === "reed" || kind === "cattail" || kind === "mushroom"
+        || kind === "coral" || kind === "lotus";
+    const oy = tall ? cssH * 0.84 : cssH * 0.56;
+    ctx.save();
+    if (!seen) {
+        ctx.filter = "brightness(0)";
+        ctx.globalAlpha = 0.55;
+    }
+    ctx.translate(cssW * 0.5, oy);
+    try {
+        if (source === "obstacle") {
+            const o = makeRegistryObstaclePreview(kind);
+            const native = isLongObstacle(o) ? o.len * 0.62 : Math.max(28, obstacleRadius(o) * 2.15);
+            const scale = (Math.min(cssW, cssH) * 0.82) / native;
+            ctx.scale(scale, scale);
+            withTempProp(scenery, "debris", true, () => {
+                const prev = obstacles;
+                obstacles = [o];
+                try { drawObstacles(ctx, 0); }
+                finally { obstacles = prev; }
+            });
+        } else if (source === "plant") {
+            const p = makeRegistryPlantPreview(kind);
+            const native = Math.max(26, p.size * (tall ? 1.05 : 0.85));
+            const scale = (Math.min(cssW, cssH) * 0.78) / native;
+            ctx.scale(scale, scale);
+            const prev = pondPlants.slice();
+            pondPlants.length = 0;
+            pondPlants.push(p);
+            try { drawPondPlants(ctx, 0.4, 0); }
+            finally {
+                pondPlants.length = 0;
+                for (const row of prev) pondPlants.push(row);
+            }
+        } else {
+            paintSceneryElementPreview(ctx, kind);
+        }
+    } catch (err) {
+        // Preview should never break the registry panel.
+    }
+    ctx.restore();
 }
 
 function createRegistryPreviewEntity(entry) {
@@ -22784,6 +25942,13 @@ function paintRegistryPreview(canvas, entry, seen) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cssW, cssH);
 
+    if (entry.previewElem) {
+        withRegistryPreviewQuiet(() => {
+            paintElementRegistryPreview(ctx, entry, seen, cssW, cssH);
+        });
+        return;
+    }
+
     const preview = createRegistryPreviewEntity(entry);
     if (!preview || !preview.ent || typeof preview.ent.draw !== "function") return;
     const ent = preview.ent;
@@ -22815,6 +25980,15 @@ function renderRegistryUI() {
     const counts = registryCounts();
     const countEl = document.getElementById("registry-count");
     if (countEl) countEl.textContent = counts.seen + " / " + counts.total;
+
+    const titleEl = document.getElementById("registry-title");
+    if (titleEl) {
+        titleEl.textContent = registryTab === "elements" ? "Pond elements" : "Fish registry";
+    }
+    const panel = document.getElementById("registry-panel");
+    if (panel) {
+        panel.setAttribute("aria-label", registryTab === "elements" ? "Pond elements" : "Fish registry");
+    }
 
     const blurbEl = document.getElementById("registry-blurb");
     if (blurbEl) {
@@ -22857,7 +26031,9 @@ function renderRegistryUI() {
             + (registrySelectedId === entry.id ? " selected" : "");
         card.setAttribute("role", "listitem");
         card.style.setProperty("--reg-color", entry.color || "#7aa89a");
-        card.title = seen ? entry.label : "Not yet met";
+    card.title = seen
+        ? entry.label
+        : (entry.group === "elements" ? "Not yet seen" : "Not yet met");
         const preview = document.createElement("canvas");
         preview.className = "registry-preview";
         preview.setAttribute("aria-hidden", "true");
@@ -22882,6 +26058,8 @@ function renderRegistryUI() {
     if (detail) {
         if (selected) {
             detail.textContent = selected.label + ". " + (selected.tip || "");
+        } else if (registryTab === "elements") {
+            detail.textContent = "Pond pieces stay dark until they appear in the water. Select a revealed entry for notes.";
         } else {
             detail.textContent = "Meet a new fish in the pond to reveal its silhouette. Select a revealed entry for notes.";
         }
@@ -22912,6 +26090,7 @@ function serializeFish(f) {
         hasTentacles: !!f.hasTentacles,
         redeemed: !!f.redeemed,
         apexHybrid: f.apexHybrid || null,
+        frogHybrid: f.frogHybrid || null,
         sinkDepth: f.sinkDepth || 0,
         sinkTimer: f.sinkTimer || 0,
         hatSeed: f.hatSeed || 0,
@@ -22943,6 +26122,7 @@ function restoreFishFromSave(data) {
     f.hasTentacles = !!data.hasTentacles;
     f.redeemed = !!data.redeemed;
     f.apexHybrid = data.apexHybrid || null;
+    f.frogHybrid = data.frogHybrid || null;
     f.sinkDepth = Math.max(0, Math.min(1, Number(data.sinkDepth) || 0));
     f.sinkTimer = Math.max(0, Number(data.sinkTimer) || 0);
     f.hatSeed = Number(data.hatSeed) || Math.random();
@@ -22996,6 +26176,7 @@ function buildProgressSnapshot() {
             catcher: catcherOwned,
             doublePetter: doublePetterOwned,
             picker: pickerOwned,
+            strongerCurrents: strongerCurrentsOwned,
             catcherLevel,
             rainbowCaught: rainbowCaughtCount,
             platinum: platinumUnlocked,
@@ -23043,6 +26224,8 @@ function clearPondEntitiesForLoad() {
     crystalApexEnding = null;
     apexDuel = null;
     frogFinale = null;
+    bullfrogFinale = null;
+    bullfrog = null;
     pacifistVisitors.length = 0;
     biomeGuardians.length = 0;
 }
@@ -23183,7 +26366,7 @@ function startNewPond() {
     setMarketOpen(false);
     setProgressOpen(false);
     setRegistryOpen(false);
-    // Keep fish registry discoveries across fresh ponds.
+    // Keep fish and element registry discoveries across fresh ponds.
     scanLivingForRegistry();
     updateHatsButtonUI();
     updateGoldCountUI();
@@ -23214,6 +26397,7 @@ function updateProgressUI() {
     if (btn) {
         btn.classList.toggle("on", progressOpen);
         btn.setAttribute("aria-pressed", progressOpen ? "true" : "false");
+        btn.setAttribute("aria-expanded", progressOpen ? "true" : "false");
         btn.title = progressOpen ? "Close save menu" : "Save progress";
     }
     setProgressStatus(progressStatusText);
@@ -23234,6 +26418,35 @@ function setProgressOpen(open) {
     updateProgressUI();
 }
 
+function closeOverlayPanels() {
+    let closed = false;
+    if (looksPanelOpen) {
+        setLooksPanelOpen(false);
+        closed = true;
+    }
+    if (marketOpen) {
+        setMarketOpen(false);
+        closed = true;
+    }
+    if (registryOpen) {
+        setRegistryOpen(false);
+        closed = true;
+    }
+    if (progressOpen) {
+        setProgressOpen(false);
+        closed = true;
+    }
+    if (typeof setTunesPanelOpen === "function" && typeof tunesPanelOpen !== "undefined" && tunesPanelOpen) {
+        setTunesPanelOpen(false);
+        closed = true;
+    }
+    if (typeof setRhythmPanelOpen === "function" && typeof rhythmPanelOpen !== "undefined" && rhythmPanelOpen) {
+        setRhythmPanelOpen(false);
+        closed = true;
+    }
+    return closed;
+}
+
 // Clear legacy silent restores so catcher / stash cannot appear maxed on a fresh visit.
 try {
     localStorage.removeItem(MARKET_KEY);
@@ -23241,7 +26454,7 @@ try {
 } catch (err) { /* ignore */ }
 
 // ---------------------------------------------------------------------------
-// Fish picker: lift small/medium fish out of water, or drag heavier ones.
+// Fish picker: lift commons/exotics/mid-apex out of water, or drag heavier bodies.
 // ---------------------------------------------------------------------------
 function pickerCanHandle(ent, kind) {
     if (!ent || ent.dead) return false;
@@ -23250,25 +26463,39 @@ function pickerCanHandle(ent, kind) {
         if (ent.isRainbow) return false; // only the rainbow catcher stops them
         if (ent.isPlatinum) return false; // invulnerable: leave unpickable
         if (ent.isMonster) return false;
-        // Wild evil fish cannot be handled until redeemed / heroic.
-        if (ent.isPredator && !ent.redeemed && !ent.isHero) return false;
+        // Exotic visitors stay pickable even when wild evil; commons still need redeem / hero.
+        const exotic = !!(ent.type && ent.type.exotic);
+        if (ent.isPredator && !ent.redeemed && !ent.isHero && !exotic) return false;
         return true;
     }
-    // Apex: only tamed or heroic friends can be dragged (never lifted).
-    if (kind === "swordfish" || kind === "octopus" || kind === "reptile") {
+    // Apex (wild or tamed/hero): pickable. Rainbow night apex still need the catcher.
+    if (kind === "swordfish" || kind === "octopus" || kind === "reptile"
+        || kind === "shark" || kind === "serpent" || kind === "mantle") {
         if (ent.golden || ent.plantMorph || ent.leaving) return false;
-        return !!(ent.tamed || ent.isHero);
-    }
-    if (kind === "shark") {
-        if (ent.leaving) return false;
-        return !!ent.isHero;
+        if (ent.isRainbow) return false;
+        return true;
     }
     return false;
 }
 
+function pickerLiftCap(ent, kind) {
+    if (kind === "fish") {
+        return (ent.type && ent.type.exotic) ? PICKER_EXOTIC_LIFT_SIZE : PICKER_LIFT_SIZE;
+    }
+    return PICKER_APEX_LIFT_SIZE;
+}
+
 function pickerModeFor(ent, kind) {
-    if (kind !== "fish") return "drag";
-    return ent.size < PICKER_LIFT_SIZE ? "lift" : "drag";
+    return ent.size < pickerLiftCap(ent, kind) ? "lift" : "drag";
+}
+
+function pickerShiftLimbTips(ent, dx, dy) {
+    if (!ent || !ent.legs || (!dx && !dy)) return;
+    for (const leg of ent.legs) {
+        if (!leg) continue;
+        leg.tipX += dx;
+        leg.tipY += dy;
+    }
 }
 
 function pickerTargetAt(x, y) {
@@ -23297,6 +26524,22 @@ function pickerTargetAt(x, y) {
         if (d < reach && d < bestD) {
             bestD = d;
             best = { ent: octopus, kind: "octopus" };
+        }
+    }
+    if (crystalMantle && pickerCanHandle(crystalMantle, "mantle")) {
+        const d = Math.hypot(x - crystalMantle.x, y - crystalMantle.y);
+        const reach = crystalMantle.size * 0.7;
+        if (d < reach && d < bestD) {
+            bestD = d;
+            best = { ent: crystalMantle, kind: "mantle" };
+        }
+    }
+    if (crystalSerpent && pickerCanHandle(crystalSerpent, "serpent")) {
+        const d = Math.hypot(x - crystalSerpent.x, y - crystalSerpent.y);
+        const reach = crystalSerpent.size * 0.55;
+        if (d < reach && d < bestD) {
+            bestD = d;
+            best = { ent: crystalSerpent, kind: "serpent" };
         }
     }
     if (shark && pickerCanHandle(shark, "shark")) {
@@ -23358,14 +26601,17 @@ function updatePickerHold(dt) {
     hold.thrashT += dt;
 
     // Ease through water / air instead of snapping to the cursor.
-    const pull = hold.mode === "lift" ? 7.5 : 3.2;
+    const pull = hold.mode === "lift" ? PICKER_LIFT_PULL : PICKER_DRAG_PULL;
     const ease = 1 - Math.exp(-pull * dt);
+    const prevX = ent.x;
+    const prevY = ent.y;
     ent.x += (aimX - ent.x) * ease;
     ent.y += (aimY - ent.y) * ease;
+    pickerShiftLimbTips(ent, ent.x - prevX, ent.y - prevY);
 
     if (hold.mode === "lift") {
-        const targetZ = 46 + Math.min(18, ent.size * 0.35);
-        hold.liftZ += (targetZ - hold.liftZ) * (1 - Math.exp(-5.5 * dt));
+        const targetZ = 52 + Math.min(28, ent.size * 0.42);
+        hold.liftZ += (targetZ - hold.liftZ) * (1 - Math.exp(-PICKER_LIFT_RISE * dt));
         ent.pickerLiftZ = hold.liftZ;
         // Thrash: small heading wobble while above water.
         ent.dir += Math.sin(hold.thrashT * 18) * 0.08;
@@ -23381,26 +26627,30 @@ function updatePickerHold(dt) {
     }
 }
 
-function updatePickerThrow(fish, dt) {
-    const thr = fish.pickerThrow;
+function updatePickerThrow(ent, dt) {
+    const thr = ent.pickerThrow;
     if (!thr) return;
     thr.age += dt;
     const t = Math.min(1, thr.age / thr.dur);
-    fish.x = thr.sx + (thr.tx - thr.sx) * t;
-    fish.y = thr.sy + (thr.ty - thr.sy) * t;
+    const prevX = ent.x;
+    const prevY = ent.y;
+    ent.x = thr.sx + (thr.tx - thr.sx) * t;
+    ent.y = thr.sy + (thr.ty - thr.sy) * t;
+    pickerShiftLimbTips(ent, ent.x - prevX, ent.y - prevY);
     const z = thr.thrown
         ? thr.arc * Math.sin(Math.PI * t)
         : thr.startZ * (1 - t * t);
-    fish.pickerLiftZ = Math.max(0, z);
-    fish.dir += dt * (thr.thrown ? 3.2 : 1.4);
-    fish.tailPhase += dt * 12;
+    ent.pickerLiftZ = Math.max(0, z);
+    ent.dir += dt * (thr.thrown ? 3.2 : 1.4);
+    if (ent.tailPhase != null) ent.tailPhase += dt * 12;
+    else if (ent.phase != null) ent.phase += dt * 8;
     if (t >= 1) {
-        fish.pickerThrow = null;
-        fish.pickerLiftZ = 0;
-        fish.pickerHeld = false;
-        water.disturb(fish.x, fish.y, fish.size * 0.8, 180);
-        spawnSplash(fish.x, fish.y, Math.max(8, fish.size * 0.35), 0.55);
-        const pan = Math.max(-1, Math.min(1, (fish.x / viewW) * 2 - 1));
+        ent.pickerThrow = null;
+        ent.pickerLiftZ = 0;
+        ent.pickerHeld = false;
+        water.disturb(ent.x, ent.y, ent.size * 0.8, 180);
+        spawnSplash(ent.x, ent.y, Math.max(8, ent.size * 0.35), 0.55);
+        const pan = Math.max(-1, Math.min(1, (ent.x / viewW) * 2 - 1));
         if (Audio.tick) Audio.tick(pan, 280);
     }
 }
@@ -23418,7 +26668,7 @@ function releasePickerHold() {
     const startZ = hold.liftZ || 0;
     pickerHold = null;
 
-    if (mode === "lift" && hold.kind === "fish" && !ent.dead) {
+    if (mode === "lift" && !ent.dead) {
         // Drop / throw back into the water with the same arc feel as food pellets.
         const tx = pointerNow ? pointerNow.x : sx;
         const ty = pointerNow ? pointerNow.y : sy;
@@ -23723,8 +26973,8 @@ function updatePickerButtonUI() {
     btn.classList.toggle("on", pickerMode);
     btn.setAttribute("aria-pressed", pickerMode ? "true" : "false");
     btn.title = pickerMode
-        ? "Picker on: right drag lifts small fish or drags large ones"
-        : "Fish picker: right drag to lift or drag fish";
+        ? "Picker on: right drag lifts or drags fish and apex"
+        : "Fish picker: right drag to lift or drag fish and apex";
 }
 
 function updateMarketButtonUI() {
@@ -23736,6 +26986,7 @@ function updateMarketButtonUI() {
         btn.classList.toggle("on", marketOpen);
         btn.setAttribute("aria-disabled", "false");
         btn.setAttribute("aria-pressed", marketOpen ? "true" : "false");
+        btn.setAttribute("aria-expanded", marketOpen ? "true" : "false");
         btn.title = marketOpen ? "Close market" : "Open market";
         cost.textContent = "";
     } else {
@@ -23745,6 +26996,7 @@ function updateMarketButtonUI() {
         btn.classList.remove("on");
         btn.setAttribute("aria-disabled", left === 0 ? "false" : "true");
         btn.setAttribute("aria-pressed", "false");
+        btn.setAttribute("aria-expanded", "false");
         cost.textContent = String(left === 0 ? MARKET_GOLD_COST : left);
         btn.title = left === 0
             ? "Unlock market"
@@ -23782,6 +27034,20 @@ function setMarketOpen(open) {
     updateMarketUI();
 }
 
+function setMarketTile(btn, opts) {
+    if (!btn) return;
+    const o = opts || {};
+    if (o.hidden !== undefined) btn.hidden = !!o.hidden;
+    btn.disabled = !!o.disabled;
+    if (o.title !== undefined) btn.title = o.title;
+    btn.classList.toggle("owned", !!o.owned);
+    btn.classList.toggle("can-buy", !o.disabled && !o.owned && !o.hidden);
+    const label = btn.querySelector(".market-tile-label");
+    const cost = btn.querySelector(".market-tile-cost");
+    if (label && o.label !== undefined) label.textContent = o.label;
+    if (cost && o.cost !== undefined) cost.textContent = o.cost;
+}
+
 function updateMarketUI() {
     updateMarketButtonUI();
     updateCatcherButtonUI();
@@ -23798,6 +27064,7 @@ function updateMarketUI() {
         catcherUp: document.getElementById("market-buy-catcher-up"),
         picker: document.getElementById("market-buy-picker"),
         doublePetter: document.getElementById("market-buy-double-petter"),
+        strongerCurrents: document.getElementById("market-buy-stronger-currents"),
         rainbow: document.getElementById("market-buy-rainbow"),
         goldfood: document.getElementById("market-buy-goldfood"),
         recipeMirror: document.getElementById("market-buy-recipe-mirror"),
@@ -23806,106 +27073,158 @@ function updateMarketUI() {
         platinum: document.getElementById("market-buy-platinum"),
     };
     if (rows.magnet) {
-        rows.magnet.disabled = !marketUnlocked || magnetOwned || goldCollected < MAGNET_GOLD_COST;
-        rows.magnet.textContent = magnetOwned
-            ? "Magnet owned (faster gold pickup)"
-            : "Magnet · " + MAGNET_GOLD_COST + " gold";
-        rows.magnet.title = magnetOwned
-            ? "Already owned: gold fish lift much faster"
-            : "Lift settled gold fish much faster";
+        setMarketTile(rows.magnet, {
+            disabled: !marketUnlocked || magnetOwned || goldCollected < MAGNET_GOLD_COST,
+            owned: magnetOwned,
+            label: "Magnet",
+            cost: magnetOwned ? "Owned" : MAGNET_GOLD_COST + " gold",
+            title: magnetOwned
+                ? "Already owned: gold fish lift much faster"
+                : "Lift settled gold fish much faster",
+        });
     }
     if (rows.catcher) {
-        rows.catcher.disabled = true;
-        rows.catcher.textContent = "Rainbow catcher owned";
-        rows.catcher.title = "Starter tool: use the catcher button, then drag a small circle";
+        setMarketTile(rows.catcher, {
+            disabled: true,
+            owned: true,
+            label: "Catcher",
+            cost: "Owned",
+            title: "Starter tool: use the catcher button, then drag a small circle",
+        });
     }
     if (rows.catcherUp) {
         const rainbowFood = availableRainbowFood();
         const maxed = catcherLevel >= CATCHER_LEVEL_MAX;
-        rows.catcherUp.hidden = !catcherOwned;
-        rows.catcherUp.disabled = !marketUnlocked || !catcherOwned || maxed
-            || rainbowFood < CATCHER_RAINBOW_FOOD_COST;
-        rows.catcherUp.textContent = maxed
-            ? "Catcher size maxed"
-            : "Wider catcher · " + CATCHER_RAINBOW_FOOD_COST + " rainbow food";
-        rows.catcherUp.title = maxed
-            ? "Catcher is as wide as it can get"
-            : "Radius " + Math.round(catcherMaxRadius()) + " · " + rainbowFood + " rainbow food saved";
+        setMarketTile(rows.catcherUp, {
+            hidden: !catcherOwned,
+            disabled: !marketUnlocked || !catcherOwned || maxed
+                || rainbowFood < CATCHER_RAINBOW_FOOD_COST,
+            owned: maxed,
+            label: "Wider",
+            cost: maxed ? "Maxed" : CATCHER_RAINBOW_FOOD_COST + " rainbow",
+            title: maxed
+                ? "Catcher is as wide as it can get"
+                : "Radius " + Math.round(catcherMaxRadius()) + ". " + rainbowFood + " rainbow food saved",
+        });
     }
     if (rows.picker) {
         const rainbowFood = availableRainbowFood();
-        rows.picker.disabled = !marketUnlocked || pickerOwned
-            || rainbowFood < PICKER_RAINBOW_FOOD_COST;
-        rows.picker.textContent = pickerOwned
-            ? "Fish picker owned"
-            : "Fish picker · " + PICKER_RAINBOW_FOOD_COST + " rainbow food";
-        rows.picker.title = pickerOwned
-            ? "Use the picker button, then right drag a fish"
-            : "Lift small fish or drag larger ones with right click";
+        setMarketTile(rows.picker, {
+            disabled: !marketUnlocked || pickerOwned
+                || rainbowFood < PICKER_RAINBOW_FOOD_COST,
+            owned: pickerOwned,
+            label: "Picker",
+            cost: pickerOwned ? "Owned" : PICKER_RAINBOW_FOOD_COST + " rainbow",
+            title: pickerOwned
+                ? "Use the picker button, then right drag a fish"
+                : "Lift small fish or drag larger ones with right click",
+        });
     }
     if (rows.doublePetter) {
         const rainbowFood = availableRainbowFood();
-        rows.doublePetter.hidden = !nightUnlocked;
-        rows.doublePetter.disabled = !marketUnlocked || !nightUnlocked || doublePetterOwned
-            || rainbowFood < DOUBLE_PETTER_RAINBOW_COST;
-        rows.doublePetter.textContent = doublePetterOwned
-            ? "Double petter owned"
-            : "Double petter · " + DOUBLE_PETTER_RAINBOW_COST + " rainbow food";
-        rows.doublePetter.title = doublePetterOwned
-            ? "Each pet click counts twice"
-            : "One click pets a fish twice";
+        setMarketTile(rows.doublePetter, {
+            hidden: !nightUnlocked,
+            disabled: !marketUnlocked || !nightUnlocked || doublePetterOwned
+                || rainbowFood < DOUBLE_PETTER_RAINBOW_COST,
+            owned: doublePetterOwned,
+            label: "Double pet",
+            cost: doublePetterOwned ? "Owned" : DOUBLE_PETTER_RAINBOW_COST + " rainbow",
+            title: doublePetterOwned
+                ? "Each pet click counts twice"
+                : "One click pets a fish twice",
+        });
+    }
+    if (rows.strongerCurrents) {
+        const rainbowFood = availableRainbowFood();
+        setMarketTile(rows.strongerCurrents, {
+            disabled: !marketUnlocked || strongerCurrentsOwned
+                || rainbowFood < STRONGER_CURRENTS_RAINBOW_COST,
+            owned: strongerCurrentsOwned,
+            label: "Currents",
+            cost: strongerCurrentsOwned ? "Owned" : STRONGER_CURRENTS_RAINBOW_COST + " rainbow",
+            title: strongerCurrentsOwned
+                ? "Carved pond currents pull harder and farther"
+                : "Make carved pond currents pull harder",
+        });
     }
     if (rows.rainbow) {
-        rows.rainbow.disabled = !marketUnlocked || goldCollected < RAINBOW_FOOD_GOLD_COST;
-        rows.rainbow.textContent = "Rainbow food · " + RAINBOW_FOOD_GOLD_COST + " gold";
-        rows.rainbow.title = "Adds one rainbow food to your stash";
+        setMarketTile(rows.rainbow, {
+            disabled: !marketUnlocked || goldCollected < RAINBOW_FOOD_GOLD_COST,
+            owned: false,
+            label: "Rainbow",
+            cost: RAINBOW_FOOD_GOLD_COST + " gold",
+            title: "Adds one rainbow food to your stash",
+        });
     }
     if (rows.goldfood) {
         const food = availableNormalFood();
-        rows.goldfood.disabled = !marketUnlocked || food < GOLD_FOOD_NORMAL_COST;
-        rows.goldfood.textContent = "Gold food · " + GOLD_FOOD_NORMAL_COST + " fish food";
-        rows.goldfood.title = food + " fish food saved";
+        setMarketTile(rows.goldfood, {
+            disabled: !marketUnlocked || food < GOLD_FOOD_NORMAL_COST,
+            owned: false,
+            label: "Gold food",
+            cost: GOLD_FOOD_NORMAL_COST + " food",
+            title: food + " fish food saved",
+        });
     }
     if (rows.recipeMirror) {
         const ok = countStashVariant("golden") >= RECIPE_MIRROR_COST.golden
             && countStashVariant("pink") >= RECIPE_MIRROR_COST.pink;
-        rows.recipeMirror.disabled = !marketUnlocked || !ok;
-        rows.recipeMirror.textContent = "Mirror craft · gold + breed food";
-        rows.recipeMirror.title = "Spend gold food and breed food to summon a mirror twin";
+        setMarketTile(rows.recipeMirror, {
+            disabled: !marketUnlocked || !ok,
+            owned: false,
+            label: "Mirror",
+            cost: "Gold + breed",
+            title: "Spend gold food and breed food to summon a mirror twin",
+        });
     }
     if (rows.recipeStorm) {
         const ok = countStashVariant("rainbow") >= RECIPE_STORM_COST.rainbow
             && countStashVariant("grower") >= RECIPE_STORM_COST.grower;
-        rows.recipeStorm.disabled = !marketUnlocked || !ok;
-        rows.recipeStorm.textContent = "Storm craft · rainbow + grower";
-        rows.recipeStorm.title = "Spend rainbow and grower food to start a weather mood";
+        setMarketTile(rows.recipeStorm, {
+            disabled: !marketUnlocked || !ok,
+            owned: false,
+            label: "Storm",
+            cost: "Rainbow + grow",
+            title: "Spend rainbow and grower food to start a weather mood",
+        });
     }
     if (rows.recipeNight) {
         const rainbowFood = availableRainbowFood();
         if (!nightUnlocked) {
-            rows.recipeNight.hidden = false;
-            rows.recipeNight.disabled = !marketUnlocked
-                || rainbowFood < NIGHT_UNLOCK_RAINBOW_COST;
-            rows.recipeNight.textContent = "Moon pond · "
-                + NIGHT_UNLOCK_RAINBOW_COST + " rainbow food";
-            rows.recipeNight.title = rainbowFood + " rainbow food saved. Unlocks moonlight in Looks.";
+            setMarketTile(rows.recipeNight, {
+                hidden: false,
+                disabled: !marketUnlocked
+                    || rainbowFood < NIGHT_UNLOCK_RAINBOW_COST,
+                owned: false,
+                label: "Moon pond",
+                cost: NIGHT_UNLOCK_RAINBOW_COST + " rainbow",
+                title: rainbowFood + " rainbow food saved. Unlocks moonlight in Looks.",
+            });
         } else {
             const ok = countStashVariant("platinum") >= 1 && countStashVariant("rainbow") >= 1;
-            rows.recipeNight.hidden = false;
-            rows.recipeNight.disabled = !marketUnlocked || !ok;
-            rows.recipeNight.textContent = "Night bloom · platinum + rainbow";
-            rows.recipeNight.title = "Spend platinum and rainbow food for fireflies and ice skims";
+            setMarketTile(rows.recipeNight, {
+                hidden: false,
+                disabled: !marketUnlocked || !ok,
+                owned: false,
+                label: "Night bloom",
+                cost: "Plat + rainbow",
+                title: "Spend platinum and rainbow food for fireflies and ice skims",
+            });
         }
     }
     if (rows.platinum) {
         const rainbowFood = availableRainbowFood();
-        rows.platinum.hidden = !platinumUnlocked;
-        rows.platinum.disabled = !marketUnlocked || !platinumUnlocked
-            || rainbowFood < PLATINUM_RAINBOW_FOOD_COST;
-        rows.platinum.textContent = "Platinum food · " + PLATINUM_RAINBOW_FOOD_COST + " rainbow food";
-        rows.platinum.title = platinumUnlocked
-            ? "Creates an invulnerable glowing fish"
-            : "Catch " + RAINBOWS_FOR_PLATINUM + " rainbow fish to unlock";
+        setMarketTile(rows.platinum, {
+            hidden: !platinumUnlocked,
+            disabled: !marketUnlocked || !platinumUnlocked
+                || rainbowFood < PLATINUM_RAINBOW_FOOD_COST,
+            owned: false,
+            label: "Platinum",
+            cost: PLATINUM_RAINBOW_FOOD_COST + " rainbow",
+            title: platinumUnlocked
+                ? "Creates an invulnerable glowing fish"
+                : "Catch " + RAINBOWS_FOR_PLATINUM + " rainbow fish to unlock",
+        });
     }
 }
 
@@ -23956,6 +27275,17 @@ function marketBuyPicker() {
     pickerOwned = true;
     saveMarketState();
     setPickerMode(true);
+    if (Audio.rainbowChime) Audio.rainbowChime(0);
+    updateMarketUI();
+    markFirstInteraction();
+}
+
+function marketBuyStrongerCurrents() {
+    if (!marketUnlocked || strongerCurrentsOwned) return;
+    if (availableRainbowFood() < STRONGER_CURRENTS_RAINBOW_COST) return;
+    if (!spendRainbowFood(STRONGER_CURRENTS_RAINBOW_COST)) return;
+    strongerCurrentsOwned = true;
+    saveMarketState();
     if (Audio.rainbowChime) Audio.rainbowChime(0);
     updateMarketUI();
     markFirstInteraction();
@@ -24321,6 +27651,7 @@ if (marketPanel) {
     const buyCatcherUp = document.getElementById("market-buy-catcher-up");
     const buyPicker = document.getElementById("market-buy-picker");
     const buyDoublePetter = document.getElementById("market-buy-double-petter");
+    const buyStrongerCurrents = document.getElementById("market-buy-stronger-currents");
     const buyRainbow = document.getElementById("market-buy-rainbow");
     const buyGoldFood = document.getElementById("market-buy-goldfood");
     const buyRecipeMirror = document.getElementById("market-buy-recipe-mirror");
@@ -24332,6 +27663,7 @@ if (marketPanel) {
     if (buyCatcherUp) buyCatcherUp.addEventListener("click", (e) => { e.stopPropagation(); marketBuyCatcherUpgrade(); });
     if (buyPicker) buyPicker.addEventListener("click", (e) => { e.stopPropagation(); marketBuyPicker(); });
     if (buyDoublePetter) buyDoublePetter.addEventListener("click", (e) => { e.stopPropagation(); marketBuyDoublePetter(); });
+    if (buyStrongerCurrents) buyStrongerCurrents.addEventListener("click", (e) => { e.stopPropagation(); marketBuyStrongerCurrents(); });
     if (buyRainbow) buyRainbow.addEventListener("click", (e) => { e.stopPropagation(); marketBuyRainbowFood(); });
     if (buyGoldFood) buyGoldFood.addEventListener("click", (e) => { e.stopPropagation(); marketBuyGoldFood(); });
     if (buyRecipeMirror) buyRecipeMirror.addEventListener("click", (e) => { e.stopPropagation(); marketCraftMirrorFood(); });
@@ -24642,6 +27974,7 @@ function devRefreshChrome() {
         netBtn.classList.toggle("on", netMode);
         netBtn.setAttribute("aria-pressed", netMode ? "true" : "false");
     }
+    updateFoodButtonUI();
     refreshDevMenuToggles();
 }
 
@@ -24655,6 +27988,7 @@ function refreshDevMenuToggles() {
         else if (key === "crystal") on = crystalMode;
         else if (key === "hats") on = hatsOn;
         else if (key === "net") on = netMode;
+        else if (key === "food") on = foodCreationEnabled;
         else if (key === "catcher") on = catcherMode;
         else if (key === "market") on = marketOpen;
         else if (key === "pond") on = mode === "pond";
@@ -24674,6 +28008,8 @@ function devClearFinales() {
     swordfishSpearEnding = null;
     rainbowNinjaEnding = null;
     frogFinale = null;
+    bullfrogFinale = null;
+    bullfrog = null;
     octopusWhaleFight = null;
     pirateShipDrop = null;
     apexDuel = null;
@@ -24816,6 +28152,7 @@ function buildDevMenu() {
         nightUnlocked = true;
         doublePetterOwned = true;
         pickerOwned = true;
+        strongerCurrentsOwned = true;
         saveMarketState();
         if (typeof updatePickerButtonUI === "function") updatePickerButtonUI();
         if (typeof updateMarketUI === "function") updateMarketUI();
@@ -24859,6 +28196,12 @@ function buildDevMenu() {
     btn(unlocks, "Double petter", () => {
         marketUnlocked = true;
         doublePetterOwned = true;
+        saveMarketState();
+        if (typeof updateMarketUI === "function") updateMarketUI();
+    });
+    btn(unlocks, "Stronger currents", () => {
+        marketUnlocked = true;
+        strongerCurrentsOwned = true;
         saveMarketState();
         if (typeof updateMarketUI === "function") updateMarketUI();
     });
@@ -24906,6 +28249,10 @@ function buildDevMenu() {
         netSweeping = false;
         if (netMode) setCatcherMode(false);
     }, { toggle: "net" });
+    btn(modes, "Food", () => {
+        foodCreationEnabled = !foodCreationEnabled;
+        updateFoodButtonUI();
+    }, { toggle: "food" });
     btn(modes, "Catcher", () => {
         catcherOwned = true;
         setCatcherMode(!catcherMode);
@@ -25116,6 +28463,18 @@ function buildDevMenu() {
         scenery.frogs = true;
         devSyncSceneryBtn("frogs");
         spawnFrogGroup();
+    });
+    btn(apex, "Bullfrog", () => {
+        devEnsurePond();
+        scenery.frogs = true;
+        devSyncSceneryBtn("frogs");
+        if (!frogGroups.length) spawnFrogGroup();
+        spawnBullfrog();
+        if (bullfrog) {
+            const p = devSpawnPoint();
+            bullfrog.x = p.x;
+            bullfrog.y = p.y;
+        }
     });
     btn(apex, "Hero guardians", () => {
         devEnsurePond();
@@ -25687,6 +29046,26 @@ function buildDevMenu() {
         devClearFinales();
         endMariachiFiesta();
     });
+    btn(endings, "Glow swallow", () => {
+        devEnsurePond();
+        devClearFinales();
+        if (typeof setNightMode === "function") setNightMode(false);
+        if (typeof setCrystalMode === "function") setCrystalMode(false);
+        // Only platinum left: shark swallows it, glows, releases at center, leaves.
+        for (const f of fishes) {
+            if (f && !f.dead && !f.isPlatinum) f.dead = true;
+        }
+        let glow = fishes.find((f) => f && !f.dead && f.isPlatinum);
+        if (!glow) {
+            glow = devDemoFish({ platinum: true, size: 28 });
+        }
+        shark = new Shark(glow);
+        shark.x = viewW * 0.35;
+        shark.y = viewH * 0.5;
+        glow.x = shark.x + 40;
+        glow.y = shark.y;
+        shark.beginGlowSwallow(glow);
+    }, { warn: true });
     btn(endings, "POV lunge", () => {
         devClearFinales();
         const f = devDemoFish({
@@ -25814,6 +29193,40 @@ function buildDevMenu() {
         frog.x = p.x;
         frog.y = p.y;
         beginFrogFinale(frog);
+    }, { warn: true });
+    btn(endings, "Bullfrog feast", () => {
+        devEnsurePond();
+        devClearFinales();
+        scenery.frogs = true;
+        devSyncSceneryBtn("frogs");
+        if (!frogGroups.length) spawnFrogGroup();
+        spawnBullfrog();
+        if (!bullfrog) return;
+        const p = devSpawnPoint();
+        bullfrog.x = p.x;
+        bullfrog.y = p.y;
+        bullfrog.size = CONFIG.sharkSize * 0.95;
+        bullfrog.meals = CONFIG.bullfrogMealsForFinale;
+        beginBullfrogFinale("feast", bullfrog, null);
+    }, { warn: true });
+    btn(endings, "Bullfrog defeat", () => {
+        devEnsurePond();
+        devClearFinales();
+        scenery.frogs = true;
+        devSyncSceneryBtn("frogs");
+        if (!frogGroups.length) spawnFrogGroup();
+        const frog = frogGroups[frogGroups.length - 1].frog;
+        befriendFrog(frog);
+        frog.size = Math.max(frog.size, 52);
+        spawnBullfrog();
+        if (!bullfrog) return;
+        const p = devSpawnPoint();
+        bullfrog.x = p.x;
+        bullfrog.y = p.y;
+        frog.x = p.x - 40;
+        frog.y = p.y;
+        beginBullfrogFinale("defeat", bullfrog, frog);
+        bullfrog = null;
     }, { warn: true });
     btn(endings, "Octopus whale fight", () => {
         devEnsurePond();
@@ -26186,13 +29599,15 @@ function updateCurrentLanes(dt) {
 
 function currentFlowAt(x, y) {
     let fx = 0, fy = 0;
+    const range = strongerCurrentsOwned ? STRONGER_CURRENTS_RANGE : 70;
+    const forceMul = strongerCurrentsOwned ? STRONGER_CURRENTS_MULT : 1;
     for (const c of currentLanes) {
         const d = Math.hypot(c.x - x, c.y - y);
-        if (d > 70) continue;
+        if (d > range) continue;
         const u = 1 - c.age / c.life;
-        const w = (1 - d / 70) * u;
-        fx += c.ux * c.strength * w;
-        fy += c.uy * c.strength * w;
+        const w = (1 - d / range) * u;
+        fx += c.ux * c.strength * w * forceMul;
+        fy += c.uy * c.strength * w * forceMul;
     }
     return { x: fx, y: fy };
 }
@@ -27531,68 +30946,117 @@ function updateFlavorSystems(dt) {
 // WINDOW RHYTHM STUDIO: step loops on glass, save tunes, play soft in pond
 // ===========================================================================
 const RHYTHM_KEY = "ripple-tunes-v1";
-const RHYTHM_STEPS = 16;
-const RHYTHM_TUNE_CAP = 12;
+const RHYTHM_STEP_CHOICES = [16, 32, 64];
+const RHYTHM_DEFAULT_STEPS = 32;
+const RHYTHM_TUNE_CAP = 24;
+const RHYTHM_DRUM_LANES = ["kick", "snare", "clap", "hat"];
 
-function emptyRhythmLane() {
-    return Array(RHYTHM_STEPS).fill(0);
+function clampRhythmSteps(n) {
+    const v = +n || RHYTHM_DEFAULT_STEPS;
+    if (RHYTHM_STEP_CHOICES.includes(v)) return v;
+    // Migrate odd lengths toward nearest supported size.
+    if (v <= 16) return 16;
+    if (v <= 32) return 32;
+    return 64;
 }
 
-function emptyToneLane() {
-    return Array(RHYTHM_STEPS).fill(null);
+function getRhythmSteps() {
+    return clampRhythmSteps(rhythmPattern && rhythmPattern.steps);
 }
 
-function newRhythmPattern(bpm) {
+function emptyRhythmLane(n) {
+    return Array(clampRhythmSteps(n != null ? n : getRhythmSteps())).fill(0);
+}
+
+function emptyToneLane(n) {
+    return Array(clampRhythmSteps(n != null ? n : getRhythmSteps())).fill(null);
+}
+
+function resizeRhythmLane(arr, n, fill) {
+    const steps = clampRhythmSteps(n);
+    const src = Array.isArray(arr) ? arr : [];
+    const out = Array(steps).fill(fill);
+    for (let i = 0; i < Math.min(steps, src.length); i++) out[i] = src[i] || fill;
+    return out;
+}
+
+function resizeToneLane(arr, n) {
+    const steps = clampRhythmSteps(n);
+    const src = Array.isArray(arr) ? arr : [];
+    const out = Array(steps).fill(null);
+    for (let i = 0; i < Math.min(steps, src.length); i++) {
+        const t = src[i];
+        if (t && t.on) {
+            out[i] = {
+                on: 1,
+                freq: +t.freq || 440,
+                x: +t.x || 0,
+                y: +t.y || 0,
+                v: clamp01(t.v == null ? 0.45 : t.v),
+            };
+        }
+    }
+    return out;
+}
+
+function newRhythmPattern(bpm, steps) {
+    const n = clampRhythmSteps(steps != null ? steps : RHYTHM_DEFAULT_STEPS);
     return {
-        bpm: Math.max(60, Math.min(140, bpm || 96)),
-        steps: RHYTHM_STEPS,
-        kick: emptyRhythmLane(),
-        snare: emptyRhythmLane(),
-        hat: emptyRhythmLane(),
-        tone: emptyToneLane(),
+        bpm: Math.max(60, Math.min(160, bpm || 96)),
+        steps: n,
+        swing: 0,
+        gain: 1,
+        kick: emptyRhythmLane(n),
+        snare: emptyRhythmLane(n),
+        clap: emptyRhythmLane(n),
+        hat: emptyRhythmLane(n),
+        tone: emptyToneLane(n),
     };
 }
 
 function cloneRhythmPattern(src) {
-    const p = newRhythmPattern(src && src.bpm);
+    const steps = clampRhythmSteps(src && src.steps != null ? src.steps : RHYTHM_DEFAULT_STEPS);
+    const p = newRhythmPattern(src && src.bpm, steps);
     if (!src) return p;
-    p.bpm = Math.max(60, Math.min(140, src.bpm || 96));
-    for (const lane of ["kick", "snare", "hat"]) {
-        const arr = Array.isArray(src[lane]) ? src[lane] : [];
-        for (let i = 0; i < RHYTHM_STEPS; i++) p[lane][i] = arr[i] ? 1 : 0;
+    p.bpm = Math.max(60, Math.min(160, src.bpm || 96));
+    p.swing = clamp01(src.swing == null ? 0 : src.swing);
+    p.gain = Math.max(0.2, Math.min(1, src.gain == null ? 1 : +src.gain));
+    for (const lane of RHYTHM_DRUM_LANES) {
+        p[lane] = resizeRhythmLane(src[lane], steps, 0).map((v) => (v ? 1 : 0));
     }
-    const tones = Array.isArray(src.tone) ? src.tone : [];
-    for (let i = 0; i < RHYTHM_STEPS; i++) {
-        const t = tones[i];
-        if (t && t.on) {
-            p.tone[i] = {
-                on: 1,
-                freq: +t.freq || 440,
-                x: +t.x || viewW * 0.5,
-                y: +t.y || viewH * 0.5,
-                v: clamp01(t.v == null ? 0.45 : t.v),
-            };
-        } else p.tone[i] = null;
+    p.tone = resizeToneLane(src.tone, steps);
+    // Fill missing xy on tones from step position.
+    for (let i = 0; i < steps; i++) {
+        const t = p.tone[i];
+        if (!t) continue;
+        if (!(t.x > 0 || t.y > 0)) {
+            t.x = ((i + 0.5) / steps) * (viewW || 800);
+            t.y = (viewH || 600) * 0.4;
+        }
     }
     return p;
 }
 
 function patternToTunePayload(pattern, name, id) {
+    const steps = clampRhythmSteps(pattern.steps);
     return {
         id: id || ("t" + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36)),
         name: (name || "Untitled").slice(0, 28),
         bpm: pattern.bpm,
-        steps: RHYTHM_STEPS,
-        kick: pattern.kick.slice(),
-        snare: pattern.snare.slice(),
-        hat: pattern.hat.slice(),
-        tone: pattern.tone.map((t) => (t && t.on ? {
+        steps,
+        swing: clamp01(pattern.swing || 0),
+        gain: Math.max(0.2, Math.min(1, pattern.gain == null ? 1 : pattern.gain)),
+        kick: (pattern.kick || []).slice(0, steps),
+        snare: (pattern.snare || []).slice(0, steps),
+        clap: (pattern.clap || emptyRhythmLane(steps)).slice(0, steps),
+        hat: (pattern.hat || []).slice(0, steps),
+        tone: (pattern.tone || []).slice(0, steps).map((t) => (t && t.on ? {
             on: 1, freq: t.freq, x: t.x, y: t.y, v: t.v,
         } : null)),
     };
 }
 
-let rhythmPattern = newRhythmPattern(96);
+let rhythmPattern = newRhythmPattern(96, RHYTHM_DEFAULT_STEPS);
 let rhythmTunes = [];
 let rhythmActiveId = null;
 let rhythmPlaying = false;
@@ -27605,6 +31069,9 @@ let rhythmPondGain = 0.42; // quieter under pond life
 let rhythmPlaySource = null; // "studio" | "pond"
 let rhythmLifePulse = 0; // lingering beat energy for pond sway
 let rhythmKickTight = 0; // school tighten after kicks
+let rhythmMetronome = false;
+let rhythmClipboard = null;
+let rhythmMute = { kick: false, snare: false, clap: false, hat: false, tone: false };
 
 function loadRhythmStore() {
     rhythmTunes = [];
@@ -27634,7 +31101,7 @@ function loadRhythmStore() {
 function saveRhythmStore() {
     try {
         localStorage.setItem(RHYTHM_KEY, JSON.stringify({
-            version: 1,
+            version: 2,
             activeId: rhythmActiveId,
             tunes: rhythmTunes,
         }));
@@ -27642,8 +31109,17 @@ function saveRhythmStore() {
 }
 
 function rhythmStepSeconds() {
-    const bpm = Math.max(60, Math.min(140, rhythmPattern.bpm || 96));
-    return 60 / bpm / 4; // 16th notes
+    const bpm = Math.max(60, Math.min(160, rhythmPattern.bpm || 96));
+    const base = 60 / bpm / 4; // sixteenth notes
+    const swing = clamp01(rhythmPattern.swing || 0);
+    // Even steps stretch, odd steps compress (classic swung 16ths).
+    const even = (rhythmStep % 2) === 0;
+    return base * (1 + (even ? swing : -swing) * 0.55);
+}
+
+function updateRhythmStepLabel() {
+    const label = document.getElementById("rhythm-step-label");
+    if (label) label.textContent = (rhythmStep + 1) + " / " + getRhythmSteps();
 }
 
 function setRhythmPlaying(on, source) {
@@ -27665,17 +31141,24 @@ function stopRhythmPlayback() {
 }
 
 function playRhythmStep(stepIndex, visual) {
-    const i = ((stepIndex % RHYTHM_STEPS) + RHYTHM_STEPS) % RHYTHM_STEPS;
+    const steps = getRhythmSteps();
+    const i = ((stepIndex % steps) + steps) % steps;
     const pond = mode === "pond" || rhythmPlaySource === "pond";
-    const drumGain = pond ? rhythmPondGain : 1;
+    const studioGain = Math.max(0.2, Math.min(1, rhythmPattern.gain == null ? 1 : rhythmPattern.gain));
+    const drumGain = (pond ? rhythmPondGain : 1) * studioGain;
     const panKick = -0.15;
     const panSnare = 0.1;
+    const panClap = 0.2;
     const panHat = 0.35;
-    const kickOn = !!rhythmPattern.kick[i];
-    const snareOn = !!rhythmPattern.snare[i];
-    const hatOn = !!rhythmPattern.hat[i];
+    const kickOn = !rhythmMute.kick && !!rhythmPattern.kick[i];
+    const snareOn = !rhythmMute.snare && !!rhythmPattern.snare[i];
+    const clapOn = !rhythmMute.clap && !!(rhythmPattern.clap && rhythmPattern.clap[i]);
+    const hatOn = !rhythmMute.hat && !!rhythmPattern.hat[i];
     const tone = rhythmPattern.tone[i];
-    const toneOn = !!(tone && tone.on);
+    const toneOn = !rhythmMute.tone && !!(tone && tone.on);
+    if (rhythmMetronome && !pond && Audio.playRhythmHit && (i % 4) === 0) {
+        Audio.playRhythmHit("click", 0, drumGain * (i === 0 ? 1 : 0.65));
+    }
     if (kickOn && Audio.playRhythmHit) {
         Audio.playRhythmHit("kick", panKick, drumGain);
         if (visual && mode === "window") {
@@ -27688,6 +31171,12 @@ function playRhythmStep(stepIndex, visual) {
             spawnWindowRippleVisual(viewW * 0.5, viewH * 0.55, 0.4);
         }
     }
+    if (clapOn && Audio.playRhythmHit) {
+        Audio.playRhythmHit("clap", panClap, drumGain * 0.9);
+        if (visual && mode === "window") {
+            spawnWindowRippleVisual(viewW * 0.62, viewH * 0.42, 0.34);
+        }
+    }
     if (hatOn && Audio.playRhythmHit) {
         Audio.playRhythmHit("hat", panHat, drumGain * 0.85);
         if (visual && mode === "window") {
@@ -27697,7 +31186,7 @@ function playRhythmStep(stepIndex, visual) {
     if (toneOn) {
         const x = Math.max(8, Math.min(viewW - 8, tone.x));
         const y = Math.max(8, Math.min(viewH - 8, tone.y));
-        const v = clamp01((tone.v == null ? 0.45 : tone.v) * (pond ? 0.7 : 1));
+        const v = clamp01((tone.v == null ? 0.45 : tone.v) * (pond ? 0.7 : 1) * studioGain);
         if (visual && mode === "window") {
             spawnWindowRipple(x, y, v);
         } else {
@@ -27715,7 +31204,7 @@ function playRhythmStep(stepIndex, visual) {
         }
     }
     if (mode === "pond" && rhythmPlaying) {
-        pulsePondToRhythm(kickOn, snareOn, hatOn, toneOn);
+        pulsePondToRhythm(kickOn, snareOn, hatOn || clapOn, toneOn);
     }
 }
 
@@ -27805,15 +31294,15 @@ function updateRhythmStudio(dt) {
     if (typeof updatePondMusicLife === "function") updatePondMusicLife(dt);
     if (!rhythmPlaying) return;
     rhythmAcc += dt;
-    const stepDur = rhythmStepSeconds();
     let guard = 0;
-    while (rhythmAcc >= stepDur && guard < 8) {
+    while (guard < 8) {
+        const stepDur = rhythmStepSeconds();
+        if (rhythmAcc < stepDur) break;
         rhythmAcc -= stepDur;
         playRhythmStep(rhythmStep, true);
-        rhythmStep = (rhythmStep + 1) % RHYTHM_STEPS;
+        rhythmStep = (rhythmStep + 1) % getRhythmSteps();
         guard++;
-        const label = document.getElementById("rhythm-step-label");
-        if (label) label.textContent = (rhythmStep + 1) + " / " + RHYTHM_STEPS;
+        updateRhythmStepLabel();
         highlightRhythmBeat(rhythmStep);
     }
 }
@@ -27831,7 +31320,8 @@ function rhythmCaptureTone(x, y, v) {
     if (!rhythmRecordArmed || mode !== "window") return;
     Audio.ensure();
     const voice = windowPosToVoice(x, y);
-    const step = rhythmStep;
+    const steps = getRhythmSteps();
+    const step = rhythmStep % steps;
     rhythmPattern.tone[step] = {
         on: 1,
         freq: voice.freq,
@@ -27840,25 +31330,157 @@ function rhythmCaptureTone(x, y, v) {
         v: clamp01(v == null ? 0.45 : v),
     };
     if (!rhythmPlaying) {
-        rhythmStep = (step + 1) % RHYTHM_STEPS;
+        rhythmStep = (step + 1) % steps;
     }
     renderRhythmGrid();
     highlightRhythmBeat(rhythmStep);
-    const label = document.getElementById("rhythm-step-label");
-    if (label) label.textContent = (rhythmStep + 1) + " / " + RHYTHM_STEPS;
+    updateRhythmStepLabel();
     syncActiveRhythmTune();
 }
 
 function clearRhythmPattern() {
     const bpm = rhythmPattern.bpm;
-    rhythmPattern = newRhythmPattern(bpm);
+    const steps = getRhythmSteps();
+    const swing = rhythmPattern.swing || 0;
+    const gain = rhythmPattern.gain == null ? 1 : rhythmPattern.gain;
+    rhythmPattern = newRhythmPattern(bpm, steps);
+    rhythmPattern.swing = swing;
+    rhythmPattern.gain = gain;
     rhythmStep = 0;
     rhythmAcc = 0;
     renderRhythmGrid();
     highlightRhythmBeat(0);
-    const label = document.getElementById("rhythm-step-label");
-    if (label) label.textContent = "1 / 16";
+    updateRhythmStepLabel();
     syncActiveRhythmTune();
+}
+
+function setRhythmLength(steps) {
+    const n = clampRhythmSteps(steps);
+    if (n === getRhythmSteps()) {
+        updateRhythmLengthUI();
+        return;
+    }
+    rhythmPattern = cloneRhythmPattern({ ...rhythmPattern, steps: n });
+    rhythmStep = Math.min(rhythmStep, n - 1);
+    rhythmAcc = 0;
+    renderRhythmGrid();
+    highlightRhythmBeat(rhythmStep);
+    updateRhythmStepLabel();
+    updateRhythmLengthUI();
+    syncActiveRhythmTune();
+}
+
+function shiftRhythmPattern(dir) {
+    const steps = getRhythmSteps();
+    const d = dir < 0 ? -1 : 1;
+    const rot = (arr, fill) => {
+        const out = arr.slice();
+        if (d < 0) {
+            const first = out.shift();
+            out.push(first == null ? fill : first);
+        } else {
+            const last = out.pop();
+            out.unshift(last == null ? fill : last);
+        }
+        return out;
+    };
+    for (const lane of RHYTHM_DRUM_LANES) {
+        rhythmPattern[lane] = rot(rhythmPattern[lane] || emptyRhythmLane(steps), 0);
+    }
+    rhythmPattern.tone = rot(rhythmPattern.tone || emptyToneLane(steps), null);
+    renderRhythmGrid();
+    highlightRhythmBeat(rhythmStep);
+    syncActiveRhythmTune();
+}
+
+function copyRhythmPattern() {
+    rhythmClipboard = patternToTunePayload(rhythmPattern, "Clipboard");
+}
+
+function pasteRhythmPattern() {
+    if (!rhythmClipboard) return;
+    const nameEl = document.getElementById("rhythm-name");
+    const keepName = nameEl ? nameEl.value : "";
+    const swing = rhythmPattern.swing;
+    const gain = rhythmPattern.gain;
+    const steps = getRhythmSteps();
+    rhythmPattern = cloneRhythmPattern({
+        ...rhythmClipboard,
+        steps: rhythmClipboard.steps || steps,
+        swing: rhythmClipboard.swing != null ? rhythmClipboard.swing : swing,
+        gain: rhythmClipboard.gain != null ? rhythmClipboard.gain : gain,
+    });
+    syncRhythmControlsFromPattern();
+    if (nameEl && keepName) nameEl.value = keepName;
+    renderRhythmGrid();
+    highlightRhythmBeat(rhythmStep);
+    syncActiveRhythmTune();
+}
+
+function startBlankRhythmTune() {
+    stopRhythmPlayback();
+    rhythmActiveId = null;
+    rhythmPattern = newRhythmPattern(rhythmPattern.bpm || 96, getRhythmSteps());
+    rhythmStep = 0;
+    rhythmAcc = 0;
+    const nameEl = document.getElementById("rhythm-name");
+    if (nameEl) nameEl.value = "";
+    syncRhythmControlsFromPattern();
+    renderRhythmGrid();
+    highlightRhythmBeat(0);
+    updateRhythmStepLabel();
+    updateRhythmTransportUI();
+}
+
+function duplicateRhythmTune() {
+    const nameEl = document.getElementById("rhythm-name");
+    const base = ((nameEl && nameEl.value.trim()) || "Tune").slice(0, 20);
+    const name = (base + " copy").slice(0, 28);
+    if (rhythmTunes.length >= RHYTHM_TUNE_CAP) rhythmTunes.shift();
+    const next = patternToTunePayload(rhythmPattern, name);
+    rhythmTunes.push(next);
+    rhythmActiveId = next.id;
+    if (nameEl) nameEl.value = name;
+    saveRhythmStore();
+    renderRhythmLibrary();
+    renderTunesLibrary();
+}
+
+function syncRhythmControlsFromPattern() {
+    const bpmEl = document.getElementById("rhythm-bpm");
+    const bpmVal = document.getElementById("rhythm-bpm-val");
+    const swingEl = document.getElementById("rhythm-swing");
+    const swingVal = document.getElementById("rhythm-swing-val");
+    const gainEl = document.getElementById("rhythm-gain");
+    const gainVal = document.getElementById("rhythm-gain-val");
+    if (bpmEl) bpmEl.value = String(rhythmPattern.bpm);
+    if (bpmVal) bpmVal.textContent = String(rhythmPattern.bpm);
+    const swingPct = Math.round(clamp01(rhythmPattern.swing || 0) * 100);
+    if (swingEl) swingEl.value = String(swingPct);
+    if (swingVal) swingVal.textContent = String(swingPct);
+    const gainPct = Math.round(Math.max(0.2, Math.min(1, rhythmPattern.gain == null ? 1 : rhythmPattern.gain)) * 100);
+    if (gainEl) gainEl.value = String(gainPct);
+    if (gainVal) gainVal.textContent = String(gainPct);
+    updateRhythmLengthUI();
+    updateRhythmMetroUI();
+}
+
+function updateRhythmLengthUI() {
+    const steps = getRhythmSteps();
+    document.querySelectorAll(".rhythm-len").forEach((btn) => {
+        const on = +btn.dataset.steps === steps;
+        btn.classList.toggle("on", on);
+        btn.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+    const grid = document.getElementById("rhythm-grid");
+    if (grid) grid.dataset.steps = String(steps);
+}
+
+function updateRhythmMetroUI() {
+    const btn = document.getElementById("rhythm-metro");
+    if (!btn) return;
+    btn.classList.toggle("on", !!rhythmMetronome);
+    btn.setAttribute("aria-pressed", rhythmMetronome ? "true" : "false");
 }
 
 function syncActiveRhythmTune() {
@@ -27874,10 +31496,12 @@ function syncActiveRhythmTune() {
 }
 
 function toggleRhythmCell(lane, step) {
+    const steps = getRhythmSteps();
+    if (step < 0 || step >= steps) return;
     if (lane === "tone") {
         if (rhythmPattern.tone[step]) rhythmPattern.tone[step] = null;
         else {
-            const x = ((step + 0.5) / RHYTHM_STEPS) * viewW;
+            const x = ((step + 0.5) / steps) * viewW;
             const y = viewH * 0.4;
             const voice = windowPosToVoice(x, y);
             rhythmPattern.tone[step] = { on: 1, freq: voice.freq, x, y, v: 0.42 };
@@ -27891,6 +31515,7 @@ function toggleRhythmCell(lane, step) {
             }
         }
     } else {
+        if (!rhythmPattern[lane]) rhythmPattern[lane] = emptyRhythmLane(steps);
         rhythmPattern[lane][step] = rhythmPattern[lane][step] ? 0 : 1;
         if (rhythmPattern[lane][step] && Audio.playRhythmHit) {
             Audio.ensure();
@@ -27905,27 +31530,41 @@ function toggleRhythmCell(lane, step) {
 function renderRhythmGrid() {
     const grid = document.getElementById("rhythm-grid");
     if (!grid) return;
+    const steps = getRhythmSteps();
+    grid.dataset.steps = String(steps);
     const lanes = [
         { key: "kick", label: "Kick" },
         { key: "snare", label: "Snare" },
+        { key: "clap", label: "Clap" },
         { key: "hat", label: "Hat" },
         { key: "tone", label: "Tone" },
     ];
     grid.innerHTML = "";
     for (const lane of lanes) {
-        const lab = document.createElement("div");
-        lab.className = "rhythm-lane-label";
+        const lab = document.createElement("button");
+        lab.type = "button";
+        lab.className = "rhythm-lane-label" + (rhythmMute[lane.key] ? " muted" : "");
         lab.textContent = lane.label;
+        lab.title = rhythmMute[lane.key] ? "Unmute " + lane.label : "Mute " + lane.label;
+        lab.addEventListener("click", (e) => {
+            e.stopPropagation();
+            rhythmMute[lane.key] = !rhythmMute[lane.key];
+            renderRhythmGrid();
+            highlightRhythmBeat(rhythmStep);
+        });
         grid.appendChild(lab);
-        for (let i = 0; i < RHYTHM_STEPS; i++) {
+        for (let i = 0; i < steps; i++) {
             const btn = document.createElement("button");
             btn.type = "button";
-            btn.className = "rhythm-cell" + (lane.key === "tone" ? " tone" : "");
+            btn.className = "rhythm-cell"
+                + (lane.key === "tone" ? " tone" : "")
+                + (lane.key === "clap" ? " clap" : "")
+                + ((i % 4) === 0 ? " bar" : "");
             btn.dataset.lane = lane.key;
             btn.dataset.step = String(i);
             const on = lane.key === "tone"
                 ? !!(rhythmPattern.tone[i] && rhythmPattern.tone[i].on)
-                : !!rhythmPattern[lane.key][i];
+                : !!(rhythmPattern[lane.key] && rhythmPattern[lane.key][i]);
             if (on) btn.classList.add("on");
             btn.title = lane.label + " step " + (i + 1);
             btn.setAttribute("aria-pressed", on ? "true" : "false");
@@ -28017,14 +31656,12 @@ function loadRhythmTune(id) {
     rhythmPattern = cloneRhythmPattern(tune);
     rhythmStep = 0;
     rhythmAcc = 0;
-    const bpmEl = document.getElementById("rhythm-bpm");
-    const bpmVal = document.getElementById("rhythm-bpm-val");
     const nameEl = document.getElementById("rhythm-name");
-    if (bpmEl) bpmEl.value = String(rhythmPattern.bpm);
-    if (bpmVal) bpmVal.textContent = String(rhythmPattern.bpm);
     if (nameEl) nameEl.value = tune.name;
+    syncRhythmControlsFromPattern();
     renderRhythmGrid();
     highlightRhythmBeat(0);
+    updateRhythmStepLabel();
     saveRhythmStore();
     updateRhythmTransportUI();
 }
@@ -28094,7 +31731,9 @@ function setRhythmPanelOpen(open) {
     if (rhythmPanelOpen) {
         renderRhythmGrid();
         renderRhythmLibrary();
+        syncRhythmControlsFromPattern();
         highlightRhythmBeat(rhythmStep);
+        updateRhythmStepLabel();
     }
 }
 
@@ -28146,22 +31785,110 @@ function onRhythmModeChange() {
 
 function initRhythmStudioUI() {
     loadRhythmStore();
+    if (!rhythmPattern || !rhythmPattern.steps) {
+        rhythmPattern = newRhythmPattern(96, RHYTHM_DEFAULT_STEPS);
+    } else {
+        rhythmPattern = cloneRhythmPattern(rhythmPattern);
+    }
     renderRhythmGrid();
     renderRhythmLibrary();
     renderTunesLibrary();
+    syncRhythmControlsFromPattern();
+    updateRhythmStepLabel();
 
     const bpmEl = document.getElementById("rhythm-bpm");
     const bpmVal = document.getElementById("rhythm-bpm-val");
     if (bpmEl) {
-        bpmEl.value = String(rhythmPattern.bpm);
-        if (bpmVal) bpmVal.textContent = String(rhythmPattern.bpm);
         bpmEl.addEventListener("input", (e) => {
             e.stopPropagation();
-            rhythmPattern.bpm = Math.max(60, Math.min(140, +bpmEl.value || 96));
+            rhythmPattern.bpm = Math.max(60, Math.min(160, +bpmEl.value || 96));
             if (bpmVal) bpmVal.textContent = String(rhythmPattern.bpm);
             syncActiveRhythmTune();
         });
         bpmEl.addEventListener("click", (e) => e.stopPropagation());
+    }
+
+    const swingEl = document.getElementById("rhythm-swing");
+    const swingVal = document.getElementById("rhythm-swing-val");
+    if (swingEl) {
+        swingEl.addEventListener("input", (e) => {
+            e.stopPropagation();
+            rhythmPattern.swing = clamp01((+swingEl.value || 0) / 100);
+            if (swingVal) swingVal.textContent = String(Math.round(rhythmPattern.swing * 100));
+            syncActiveRhythmTune();
+        });
+        swingEl.addEventListener("click", (e) => e.stopPropagation());
+    }
+
+    const gainEl = document.getElementById("rhythm-gain");
+    const gainVal = document.getElementById("rhythm-gain-val");
+    if (gainEl) {
+        gainEl.addEventListener("input", (e) => {
+            e.stopPropagation();
+            rhythmPattern.gain = Math.max(0.2, Math.min(1, (+gainEl.value || 100) / 100));
+            if (gainVal) gainVal.textContent = String(Math.round(rhythmPattern.gain * 100));
+            syncActiveRhythmTune();
+        });
+        gainEl.addEventListener("click", (e) => e.stopPropagation());
+    }
+
+    document.querySelectorAll(".rhythm-len").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            Audio.ensure();
+            setRhythmLength(+btn.dataset.steps || RHYTHM_DEFAULT_STEPS);
+        });
+    });
+
+    const shiftL = document.getElementById("rhythm-shift-left");
+    if (shiftL) {
+        shiftL.addEventListener("click", (e) => {
+            e.stopPropagation();
+            shiftRhythmPattern(-1);
+        });
+    }
+    const shiftR = document.getElementById("rhythm-shift-right");
+    if (shiftR) {
+        shiftR.addEventListener("click", (e) => {
+            e.stopPropagation();
+            shiftRhythmPattern(1);
+        });
+    }
+    const copyBtn = document.getElementById("rhythm-copy");
+    if (copyBtn) {
+        copyBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            copyRhythmPattern();
+        });
+    }
+    const pasteBtn = document.getElementById("rhythm-paste");
+    if (pasteBtn) {
+        pasteBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            pasteRhythmPattern();
+        });
+    }
+    const newBtn = document.getElementById("rhythm-new");
+    if (newBtn) {
+        newBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            startBlankRhythmTune();
+        });
+    }
+    const dupBtn = document.getElementById("rhythm-dup");
+    if (dupBtn) {
+        dupBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            duplicateRhythmTune();
+        });
+    }
+    const metroBtn = document.getElementById("rhythm-metro");
+    if (metroBtn) {
+        metroBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            rhythmMetronome = !rhythmMetronome;
+            updateRhythmMetroUI();
+        });
     }
 
     const rhythmBtn = document.getElementById("rhythm-btn");
@@ -28197,8 +31924,7 @@ function initRhythmStudioUI() {
             stopRhythmPlayback();
             rhythmStep = 0;
             highlightRhythmBeat(0);
-            const label = document.getElementById("rhythm-step-label");
-            if (label) label.textContent = "1 / 16";
+            updateRhythmStepLabel();
         });
     }
     const recBtn = document.getElementById("rhythm-record");
@@ -28251,6 +31977,7 @@ function initRhythmStudioUI() {
     updateRhythmRecordUI();
     updateRhythmTransportUI();
     updateTunesPanelUI();
+    updateRhythmMetroUI();
 }
 
 initRhythmStudioUI();
@@ -28284,7 +32011,12 @@ function frame(now) {
         water.render(ctx);
         if (typeof drawGiantBedReveal === "function") drawGiantBedReveal(ctx);
         // Floor shadows stay on whenever sky light is casting, even on lower gfx.
-        if (lightCastsFloorShadows()) drawSunContactShadows(ctx);
+        // Draw both contact and creature casts before entities so multiply never
+        // paints phantom silhouettes on top of frogs, fish, or debris.
+        if (lightCastsFloorShadows()) {
+            drawSunContactShadows(ctx);
+            drawSunCreatureShadows(ctx);
+        }
 
         // Shore and bank scenery sit under the swimming life.
         drawShoreStones(ctx, dt);
@@ -28324,7 +32056,6 @@ function frame(now) {
         for (let i = fishes.length - 1; i >= 0; i--) {
             if (fishes[i].dead) fishes.splice(i, 1);
         }
-        if (lightCastsFloorShadows()) drawSunCreatureShadows(ctx);
         if (typeof drawTerritoryRings === "function") drawTerritoryRings(ctx);
         if (typeof drawCurrentLanes === "function") drawCurrentLanes(ctx);
         if (typeof drawWhirlpools === "function") drawWhirlpools(ctx);
@@ -28357,6 +32088,7 @@ function frame(now) {
         drawDuckweed(ctx, sceneryTime, dt);
         drawLeaves(ctx, sceneryTime, dt);
         drawLilies(ctx, sceneryTime, dt);
+        if (typeof noteDrawnPondElements === "function") noteDrawnPondElements();
 
         // Food floats on top, then rocks in flight above that.
         for (const f of foods) f.update(dt);
@@ -28416,6 +32148,9 @@ function frame(now) {
 
 function watchdogFinaleSoftlocks() {
     // Real timer: background tabs cap dt, so RAF alone can stretch finales forever.
+    if (shark && shark.glowSwallow && finaleOvertime(shark.glowSwallow)) {
+        shark.updateGlowSwallow(0.05);
+    }
     if (rainbowNinjaEnding && finaleOvertime(rainbowNinjaEnding)) {
         updateRainbowNinjaEnding(0.05);
     }
@@ -28445,6 +32180,9 @@ function watchdogFinaleSoftlocks() {
     }
     if (frogFinale && finaleOvertime(frogFinale)) {
         updateFrogFinale(0.05);
+    }
+    if (bullfrogFinale && finaleOvertime(bullfrogFinale)) {
+        updateBullfrogFinale(0.05);
     }
     for (const r of reptiles || []) {
         if (r && r.rainbowFinale && finaleOvertime(r.rainbowFinale)) {
