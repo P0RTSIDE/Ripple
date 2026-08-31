@@ -82,7 +82,7 @@
                 </button>
             </div>
         </div>
-        <button type="button" id="food-btn" class="scenery-btn on" title="Fish food on: click the pond to drop" aria-label="Fish food on" aria-pressed="true">
+        <button type="button" id="food-btn" class="scenery-btn on" title="Fish food on: hold to drop, drag to sling. Turn off to carve currents." aria-label="Fish food on" aria-pressed="true">
             <span class="ico ico-food"></span>
         </button>
         <button type="button" id="net-btn" class="scenery-btn" title="Net: scoop food with right click" aria-label="Net tool" aria-pressed="false">
@@ -322,10 +322,34 @@
                 </section>
 
                 <section>
+                    <h3>Controls</h3>
+                    <p>Most pond actions use left click or right click. Turn a tool button on first when it has an on/off state. Net, rainbow catcher, and fish picker replace each other: only one of those three can be on at a time.</p>
+                    <ul>
+                        <li>Fish food on: left-click or hold to grow a pellet, drag while holding to sling it, release to drop it.</li>
+                        <li>Fish food off: left-drag across the pond to carve temporary currents. Food throws and current carving never share the same gesture.</li>
+                        <li>Pet: right-click a fish, frog, helper, or visitor. Hold and stroke for a longer pet. Some creatures need many pets before they change.</li>
+                        <li>Net: turn the net on, then right-click or right-drag to scoop floating food into the stash.</li>
+                        <li>Rainbow catcher: turn the catcher on, then left-drag a small circle around a rainbow fish to catch it.</li>
+                        <li>Fish picker: turn the picker on, then right-drag to lift smaller fish or tow larger ones through the water.</li>
+                        <li>Food stash: click a saved pellet to arm it, then left-click the pond to place it. Right-click cancels an armed pellet.</li>
+                        <li>Settled gold: hold right-click on a gold fish or gold helper to collect spendable gold.</li>
+                        <li>Lake debris and soft plants: right-drag to move them when debris looks are on.</li>
+                        <li>Croc or alligator snout: right-click the snout a few times to scare it away.</li>
+                        <li>Pond / window: top-right circle switches surfaces. Double-click it, or use Ambient, for the soft background bed.</li>
+                        <li>Hide menus: top-right eye button, or press U. Escape also toggles immersive view when no panel is open.</li>
+                        <li>Guide: top-left book button.</li>
+                        <li>Looks, market, registry, save, and tunes: bottom-left and nearby buttons open those panels.</li>
+                        <li>Volume and drop sound: bottom-left corner controls. Drop sound cycles the splash tone style.</li>
+                        <li>Window rhythm studio: open in window mode to tap glass loops, then play them quietly under the pond with Tunes.</li>
+                    </ul>
+                </section>
+
+                <section>
                     <h3>Basics</h3>
-                    <p>Hold on the pond to grow a food pellet. Drag while holding to sling it. Release to drop it in. Larger pellets make deeper splashes and lower tones.</p>
+                    <p>With fish food on, hold on the pond to grow a pellet. Drag while holding to sling it. Release to drop it in. Larger pellets make deeper splashes and lower tones.</p>
+                    <p>Turn fish food off to carve temporary currents instead: left-drag across the pond. Food throwing and current carving never happen in the same gesture.</p>
                     <p>Right-click a fish to pet it. Petted fish close their eyes and drift calmly for a moment. Some creatures need many pets, or a long stroke, before they change.</p>
-                    <p>Food floats for a while, then sinks. Larger food sinks sooner. Floating food can be scooped with the net.</p>
+                    <p>Food floats for a while, then sinks. Larger food sinks sooner. Floating food can be scooped with the net (right-click while the net is on).</p>
                 </section>
 
                 <section>
@@ -353,16 +377,18 @@
                     <h3>Tools and menus</h3>
                     <ul>
                         <li>Looks: shore stones, plants, debris, sun, moon, crystal, frogs, hats, and more.</li>
-                        <li>Net: scoop floating food with right-click. Scooped food lands in the stash.</li>
-                        <li>Stash: choose a saved pellet, then click the pond to drop it.</li>
+                        <li>Fish food button: on throws food with left click, off carves currents with left-drag.</li>
+                        <li>Net: right-click scoop for floating food. Scooped food lands in the stash.</li>
+                        <li>Stash: choose a saved pellet, then left-click the pond to drop it.</li>
                         <li>Market: unlock with gold, then buy tools and special food.</li>
-                        <li>Rainbow catcher: draw a circle to catch rainbow fish.</li>
-                        <li>Fish picker: lift certain fish once unlocked.</li>
-                        <li>Registry: records fish you have met.</li>
+                        <li>Rainbow catcher: left-drag a circle around a rainbow fish to catch it.</li>
+                        <li>Fish picker: right-drag to lift or tow fish once unlocked.</li>
+                        <li>Stronger currents: market upgrade that makes carved currents pull harder.</li>
+                        <li>Registry: records fish and pond pieces you have met.</li>
                         <li>Save progress: store this pond in the browser, or download and upload a save file.</li>
                         <li>Tunes: play window-made loops under the pond.</li>
                     </ul>
-                    <p>The top-left book button opens this guide (with a spoiler warning first). The top-right menu button hides or shows chrome. Press U for the same immersive toggle.</p>
+                    <p>See Controls above for click and drag details. The top-left book button opens this guide (with a spoiler warning first).</p>
                 </section>
 
                 <section>
@@ -382,7 +408,7 @@
     <div id="hint" role="status" aria-live="polite">click anywhere</div>
 
     <!-- Defer keeps first paint light; guide stays a small separate file. -->
-    <script src="main.js?v=20260817af" defer></script>
+    <script src="main.js?v=20260831ag" defer></script>
     <script src="guide.js?v=20260831ae" defer></script>
 </body>
 </html>

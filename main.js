@@ -23864,6 +23864,8 @@ let netSweeping = false;
 const NET_RADIUS = 44;
 
 // Fish food creation: left-click drops pellets when on; toggle with the food button.
+// Food and current carving are exclusive: food on throws pellets only; food off
+// lets left-drag carve temporary current lanes (no pellet on release).
 let foodCreationEnabled = true;
 
 // Pellets scooped by the net are saved here for later redeploy.
@@ -24452,11 +24454,10 @@ function onPointerDown(ev) {
         petPondLifeAt(ev.clientX, ev.clientY);
         return;
     }
-    if (mode !== "pond" || foodCreationEnabled) {
-        pointerDownAt = { x: ev.clientX, y: ev.clientY, t: performance.now() };
-    } else {
-        pointerDownAt = null;
-    }
+    // Left press: food charge (food on) or current carve drag (food off). Never both.
+    // Window mode still uses hold-to-charge ripples.
+    pointerDownAt = { x: ev.clientX, y: ev.clientY, t: performance.now() };
+    chargeLaneTrail.length = 0;
     pointerNow = { x: ev.clientX, y: ev.clientY };
 }
 function onPointerMove(ev) {
@@ -24473,8 +24474,8 @@ function onPointerMove(ev) {
         }
         return;
     }
-    // Long left-drag while charging food carves a temporary current lane.
-    if (mode === "pond" && foodCreationEnabled && pointerDownAt && (ev.buttons & 1)
+    // Left-drag carves a temporary current lane only when fish food is off.
+    if (mode === "pond" && !foodCreationEnabled && pointerDownAt && (ev.buttons & 1)
         && !catcherDrag && typeof addCurrentLanePoint === "function") {
         const last = chargeLaneTrail.length
             ? chargeLaneTrail[chargeLaneTrail.length - 1]
@@ -24557,7 +24558,10 @@ function onPointerUp(ev) {
 
     if (mode === "pond") {
         if (!foodCreationEnabled) {
+            // Current carve only: release ends the drag, no food pellet.
             pointerDownAt = null;
+            chargeLaneTrail.length = 0;
+            if (!firstInteractionDone) markFirstInteraction();
             return;
         }
         // Drag = sling the food across the water from where you started.
@@ -24774,14 +24778,36 @@ function petPondLifeAt(x, y, quiet) {
 
 canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
-// Preview of the growing ball while the button is held.
+// Preview while holding: food pellet when food is on, current trail when food is off.
 function drawCharge(ctx) {
     if (!pointerDownAt || !pointerNow) return;
-    if (mode === "pond" && !foodCreationEnabled) return;
+    const { x, y } = pointerNow;
+
+    if (mode === "pond" && !foodCreationEnabled) {
+        // Current carve mode: faint path, no food ball.
+        ctx.save();
+        ctx.strokeStyle = "rgba(140,200,255,0.35)";
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.setLineDash([6, 8]);
+        ctx.beginPath();
+        ctx.moveTo(pointerDownAt.x, pointerDownAt.y);
+        for (const p of chargeLaneTrail) ctx.lineTo(p.x, p.y);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = "rgba(160,210,255,0.45)";
+        ctx.beginPath();
+        ctx.arc(x, y, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        return;
+    }
+
     const held = (performance.now() - pointerDownAt.t) / 1000;
     const v = chargeFromHold(held, null);
     const rad = 7 + v * 24;
-    const { x, y } = pointerNow;
 
     // Aim line back to where the sling started, if dragged.
     const dx = x - pointerDownAt.x;
@@ -25085,9 +25111,9 @@ function updateFoodButtonUI() {
     btn.classList.toggle("on", foodCreationEnabled);
     btn.setAttribute("aria-pressed", foodCreationEnabled ? "true" : "false");
     btn.title = foodCreationEnabled
-        ? "Fish food on: click the pond to drop"
-        : "Fish food off: click to turn on";
-    btn.setAttribute("aria-label", foodCreationEnabled ? "Fish food on" : "Fish food off");
+        ? "Fish food on: hold to drop, drag to sling. Turn off to carve currents."
+        : "Currents: drag across the pond. Turn on for fish food.";
+    btn.setAttribute("aria-label", foodCreationEnabled ? "Fish food on" : "Currents on, fish food off");
 }
 
 const foodBtn = document.getElementById("food-btn");
@@ -25095,10 +25121,9 @@ if (foodBtn) {
     foodBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         foodCreationEnabled = !foodCreationEnabled;
-        if (!foodCreationEnabled) {
-            pointerDownAt = null;
-            chargeLaneTrail.length = 0;
-        }
+        // Switching modes cancels any in-progress food charge or current carve.
+        pointerDownAt = null;
+        chargeLaneTrail.length = 0;
         updateFoodButtonUI();
         markFirstInteraction();
     });
@@ -28251,6 +28276,8 @@ function buildDevMenu() {
     }, { toggle: "net" });
     btn(modes, "Food", () => {
         foodCreationEnabled = !foodCreationEnabled;
+        pointerDownAt = null;
+        chargeLaneTrail.length = 0;
         updateFoodButtonUI();
     }, { toggle: "food" });
     btn(modes, "Catcher", () => {
@@ -29391,7 +29418,7 @@ let glassRainBurst = null; // brief rain overlay while still in pond
 let giantBedReveal = 0; // 0..1 oval drain during giant farewell
 let nextFishId = 1;
 const guardianPairs = []; // { aId, bId, t }
-let chargeLaneTrail = []; // points while charging a long throw
+let chargeLaneTrail = []; // points while carving a current (food off)
 
 function wakeColorForFish(f) {
     if (!f) return "rgba(180,210,230,0.22)";

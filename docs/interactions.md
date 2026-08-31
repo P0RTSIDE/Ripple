@@ -93,6 +93,8 @@ Friendly visitors that gift food and calm the pond instead of hunting. The pond 
 
 Special pellets are rare on random throws. Typing a food name, or about 20 discrete pets with no food throws, can force the next drop. Net scooping saves pellets to the stash; click a stash pellet, then click the pond to place it.
 
+Fish food and current carving are exclusive. With food on, left-click / hold / sling throws pellets only. With food off, left-drag carves temporary pond currents and does not throw food.
+
 ## Market tools
 
 Unlock the market by collecting enough gold fish (7). Spend gold or stashed food inside.
