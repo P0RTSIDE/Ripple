@@ -5,16 +5,20 @@ A personal reference for how fish, food, predators, market tools, and endings fi
 ## Fish kinds
 
 ### Common fish
-Everyday pond fish (koi, goldfish, minnows, and the rest). They eat food, grow, and can turn into special forms. Some spawn as heroes.
+Everyday pond fish (koi, goldfish, minnows, and the rest). They eat food, grow, and can turn into special forms. Some spawn as heroes. Body shapes and tail styles differ by species: koi keep a carp crescent, fancy goldfish show twin fans and head growth, bettas trail a long veil, and sunfish wear a deep paddle body.
 
 ## Progress saves
 Save progress is free and stays on your device. Use the save button beside the market: save or load in this browser, download a save file, upload a save file, or start a new pond. Fresh visits do not restore market tools, food stash, or catcher upgrades until you load a save. Nothing is stored on a paid server.
 
 ### Exotic fish
-Rarer visitors with odd swim habits (discus, arowana, glass fish, and similar). They behave like common fish unless they become predators, heroes, or monsters. Large arowana are heavy for the fish picker.
+Rarer visitors with odd swim habits (discus, arowana, glass fish, and similar). They behave like common fish unless they become predators, heroes, or monsters. The fish picker can lift large exotics farther than commons, and can still drag the heaviest ones.
 
 ### Night fish
 Appear when moon pond is on. Moon pond sits locked in Looks until you make a platinum fish. Sun pond is the default every visit. Moon-toned species replace the day school mix. Night also swaps day crocs for swordfish or octopus rolls, and the last-fish shark for an orca.
+
+## Registry
+
+The registry button opens a catalog of pond life and pond pieces. Entries stay dark until you meet that fish or see that piece in the water. Tabs cover common, exotic, night, crystal, apex, helpers, and rare forms. The Elements tab lists scenery, lake debris, and green-food ornaments, including the bundled reed raft. Discoveries save with progress.
 
 ## Special fish forms
 
@@ -28,10 +32,10 @@ Red-glow hunters. A fish becomes evil once it grows past the predator size thres
 Created when a non-hero fish eats a wild crocodile or alligator. Monsters hunt aggressively and can eat the day shark to start the POV ending. They ignore platinum fish as prey.
 
 ### Pink / breed
-Pink food blushes a fish. Two pink fish that are eligible can swim together and spawn young (with a cooldown and a soft population cap). Pink stays until another transform overrides it.
+Pink food blushes a fish. Two pink fish that are eligible can swim together and spawn young (with a cooldown and a soft population cap). After the first offspring, the blush clears so they need pink food again to breed. Befriended frogs can also blush on pink food and pair with a pink fish to spawn frog-fish hybrids. Two frogs do not breed with each other.
 
 ### Golden
-Golden food freezes a fish into gold. It sinks to the lakebed. Hold right click on a settled gold fish to collect gold (magnet makes this much faster). Golden crocs and night predators award fixed gold when lifted.
+Golden food freezes a fish into gold. It sinks to the lakebed. Hold right click on a settled gold fish to collect gold (magnet makes this much faster). Golden crocs and night predators award fixed gold when lifted. Helpers can turn gold the same way; collecting a gold helper pays four times the usual size-based gold award.
 
 ### Rainbow
 Rainbow food turns a fish into a fast rainbow hunter. Rainbows chase food first, then the shark or orca, and can become monsters by eating crocs. The rainbow catcher is the tool that removes them. Catching enough rainbows unlocks platinum food. Making a platinum fish unlocks moon pond.
@@ -66,22 +70,28 @@ Rare visitor. Swallows fish it swims over (not platinum, and not heroes large en
 Rare night oddity on the whale-style cadence. Pet it 50 times and it throws up 5 rainbow fish.
 
 ### Frogs and tadpoles
-Background pond life when frogs looks are on. Pet a frog enough and it befriends, eats food, and can turn heroic. Giant hero frogs have their own burst finale that releases tadpoles. Hungry tadpoles that eat enough food metamorphose into frogs.
+Background pond life when frogs looks are on. Pet a frog enough and it befriends, eats food, and can turn heroic. Giant hero frogs have their own burst finale that releases tadpoles. Hungry tadpoles that eat enough food metamorphose into frogs. Frogs treat most special pellets as growth snacks only (they do not take rainbow, gold, plant, platinum, or hero forms). Pink breed pellets are the exception: a befriended frog blushes and can breed with a blushed fish to make a frog-fish hybrid. Frog plus frog pairs do not breed.
+
+A rare bullfrog can roll in while frogs are present. It hunts smaller frogs and tadpoles. Smaller frogs flee when it gets close. A befriended frog that outgrows the bullfrog can eat it back. Bullfrog feast and bullfrog defeat are their own endings (not the hero frog burst).
+
+### Helpers (pacifists)
+Friendly visitors that gift food and calm the pond instead of hunting. The pond axolotl will not eat the gifts it drops, but it still eats food you throw. Golden food freezes a helper into gold while keeping its helper shape, with a gold sheen. Hold right click on a settled gold helper to collect it. Gold helpers pay 4 times the usual size-based gold award for a pond fish of the same size.
 
 ## Food types
 
 | Food | Effect |
 | --- | --- |
 | Normal | Grows the fish a little. Net scooping banks it for market trades. |
-| Golden | Turns the eater into a settled gold fish. |
-| Rainbow | Turns the eater into a rainbow fish. |
+| Golden | Turns the eater into a settled gold fish (helpers too). |
+| Rainbow | Turns the eater into a rainbow fish. Platinum fish snack and grow a little instead. |
 | Green | Turns the eater into a lasting pond plant. |
 | Grower | Big permanent size boost. |
-| Pink / breed | Blushes the fish for breeding. |
-| Platinum | Turns the eater into an invulnerable platinum fish (night predators only snack and grow a little). |
+| Pink / breed | Blushes fish and befriended frogs for one litter (fish fry or frog-fish hybrids). |
+| Platinum | Turns the eater into an invulnerable platinum fish. Rainbow fish, crocs, and night predators only snack and grow a little. |
+| Hero | Turns ordinary fish into hero guardians. Tames wild apex. Rainbow and platinum fish snack instead. |
 | Carcass | Large meal chunks (from some finales / events); strong growth. |
 
-Special pellets are rare on random throws. Typing a food name (or a pet streak with no throws) can force the next drop. Net scooping saves pellets to the stash; click a stash pellet, then click the pond to place it.
+Special pellets are rare on random throws. Typing a food name, or about 20 discrete pets with no food throws, can force the next drop. Net scooping saves pellets to the stash; click a stash pellet, then click the pond to place it.
 
 ## Market tools
 
@@ -90,10 +100,10 @@ Unlock the market by collecting enough gold fish (7). Spend gold or stashed food
 | Item | Cost | Notes |
 | --- | --- | --- |
 | Magnet | 3 gold | Settled gold lifts much faster. |
-| Rainbow catcher | 4 gold | Toggle on the left. Left-drag a small circle that must contain a rainbow fish (or rainbow night predator). |
+| Rainbow catcher | From the start | Toggle on the left. Left-drag a small circle that must contain a rainbow fish (or rainbow night predator). |
 | Wider catcher | 3 rainbow food each | Increases catcher radius (a few upgrades). |
-| Fish picker | 3 rainbow food | Default market once unlocked (not night-gated). Toggle on the left. Right-drag fish. |
-| Double petter | 5 rainbow food | Night unlock. One pet click counts as two. |
+| Fish picker | 3 rainbow food | Default market once unlocked (not night-gated). Toggle on the left. Right-drag fish and apex. |
+| Double petter | 5 rainbow food | Night unlock. One pet click counts as two (fish, frogs, helpers, and apex). |
 | Rainbow food | 10 gold | Adds one rainbow food to your stash (does not spawn a live rainbow fish). |
 | Gold food | 20 normal food | Adds one golden food to your stash. |
 | Platinum food | 5 rainbow food | Unlocks after catching 10 rainbow fish. Adds platinum food to your stash. |
@@ -102,12 +112,13 @@ Hats unlock separately in Looks for 5 gold and put little hats on fish.
 
 ### Fish picker details
 - Modes are mutually exclusive with net and catcher.
-- Lift threshold: fish with size under 40 (the predator size) can be lifted out of the water. They thrash above the surface and drop or throw back in like food pellets.
-- Size 40 and up, plus large exotics and apex bodies, are too heavy to lift. They drag through the water like debris.
+- Lift threshold: commons lift out of the water below size about 96. Exotic visitors lift below about 120. Mid-size apex (crocs, octopus, mantle, serpent, day shark) also lift below about 120.
+- Heavier bodies (large grown fish, swordfish, orca, prism shark, and other oversized apex) drag strongly through the water instead of flying.
+- Wild and tamed apex can both be picked up. Crystal serpent and crystal mantle count too.
+- Exotic fish stay pickable even when wild and evil.
 - Rainbow fish cannot be picked or dragged (use the catcher).
 - Platinum fish cannot be picked or dragged.
-- Wild evil fish and wild apex predators cannot be handled until tamed, redeemed, or heroic.
-- Tamed / hero apex can be dragged only.
+- Wild evil commons and monsters cannot be handled until redeemed or heroic (monsters stay blocked).
 
 ## Taming and petting
 
@@ -119,7 +130,7 @@ Hats unlock separately in Looks for 5 gold and put little hats on fish.
 - Shark / orca: pet for a belly roll (not a full tame).
 - Whale: pet for a breech and purr.
 - Blobfish: 50 pets to vomit rainbow fish.
-- Double petter doubles each discrete pet click.
+- Double petter doubles each discrete pet click on fish, frogs, helpers, guardians, and apex.
 - Hidden streak: many pets with no food throws guarantees rainbow food on the next throw.
 
 ## Endings and finales
@@ -133,6 +144,8 @@ Hats unlock separately in Looks for 5 gold and put little hats on fish.
 - **Rainbow exit**: A rainbow fish swims a fish logo trail, eases to the center, then bursts into 2 rainbow food pellets.
 - **Frog finale**: Giant hero frog bursts into tadpoles.
 - **Apex duel**: Day-only croc-versus-shark clash when wild reptiles clear the pond. Night never starts this fight; moonlight uses swordfish, octopus, and orca stories instead.
+- **Rainbow ninja**: When only rainbow fish remain (platinum ignored), they clash in a short fight, then burst into meat and rainbow food.
+- **Glow swallow**: When a day shark finds only platinum left, it swallows one unharmed, glows while carrying it to the center, releases it, then leaves as the pond restocks.
 
 ## Growth from prey
 
@@ -148,7 +161,7 @@ When a fish eats another fish that is still smaller than the eater, size gain sc
 - Hero size must be greater than wild swordfish or octopus size to hunt them; kill grants sword or tentacle.
 - Inherited sword can spear large golden, evil, monster, and wild apex prey when size allows; never platinum, rainbow, or hero / tamed allies.
 - Rainbow catcher only catches rainbow fish (including rainbow night predators).
-- Fish picker never moves rainbow or platinum fish.
+- Fish picker never moves rainbow or platinum fish. Wild evil commons and monsters stay blocked; exotic and apex (wild or tamed) are fair game.
 - Golden fish are inert on the lakebed until collected or the page refreshes (sword-bearers large enough can still spear them).
 - Tamed apex and redeemed heroes stop hunting pond fish.
 - Platinum and gold do not count toward last-fish shark / orca spawns.

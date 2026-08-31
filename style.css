@@ -6,12 +6,83 @@
     --bg-pond: #071012;
     --ink: rgba(200, 224, 255, 0.85);
     --muted: rgba(180, 210, 200, 0.55);
+    /* Handmade pond scrollbars: water channel + reed/pebble thumb. */
+    --scroll-track: rgba(6, 18, 16, 0.55);
+    --scroll-track-edge: rgba(90, 130, 110, 0.18);
+    --scroll-thumb: rgba(132, 168, 148, 0.55);
+    --scroll-thumb-mid: rgba(168, 196, 170, 0.62);
+    --scroll-thumb-tip: rgba(198, 214, 188, 0.72);
+    --scroll-thumb-hover: rgba(186, 210, 192, 0.78);
+    --scroll-thumb-active: rgba(210, 224, 200, 0.88);
+    --scroll-moss: rgba(70, 110, 88, 0.45);
 }
 
 * {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+}
+
+/*
+ * Chromium / Safari / Electron:
+ * Soft water-tint track with inset channel, pebble/reed thumb,
+ * moss edge. Readable min size via padding-box border.
+ */
+*::-webkit-scrollbar {
+    width: 11px;
+    height: 11px;
+}
+
+*::-webkit-scrollbar-track {
+    background:
+        linear-gradient(90deg, var(--scroll-track-edge), transparent 28%, transparent 72%, var(--scroll-track-edge)),
+        linear-gradient(180deg, rgba(12, 28, 24, 0.35), var(--scroll-track) 40%, rgba(4, 12, 10, 0.55));
+    border-radius: 999px;
+    box-shadow:
+        inset 0 1px 2px rgba(0, 0, 0, 0.45),
+        inset 0 -1px 0 rgba(140, 170, 150, 0.08);
+    margin: 2px;
+}
+
+*::-webkit-scrollbar-thumb {
+    background:
+        linear-gradient(160deg, var(--scroll-thumb-tip) 0%, var(--scroll-thumb-mid) 42%, var(--scroll-thumb) 100%);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    box-shadow:
+        inset 0 1px 0 rgba(230, 240, 220, 0.22),
+        inset 0 -1px 1px rgba(40, 70, 55, 0.35),
+        0 0 0 1px var(--scroll-moss);
+    min-height: 28px;
+    min-width: 28px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+    background:
+        linear-gradient(160deg, rgba(220, 232, 210, 0.88) 0%, var(--scroll-thumb-hover) 48%, rgba(150, 180, 158, 0.7) 100%);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    box-shadow:
+        inset 0 1px 0 rgba(240, 248, 230, 0.28),
+        inset 0 -1px 1px rgba(40, 70, 55, 0.3),
+        0 0 0 1px rgba(100, 140, 115, 0.55);
+}
+
+*::-webkit-scrollbar-thumb:active {
+    background:
+        linear-gradient(160deg, var(--scroll-thumb-active) 0%, rgba(160, 188, 168, 0.8) 100%);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    box-shadow:
+        inset 0 1px 2px rgba(20, 40, 30, 0.4),
+        0 0 0 1px rgba(90, 130, 105, 0.5);
+}
+
+*::-webkit-scrollbar-corner {
+    background: transparent;
 }
 
 html,
@@ -47,13 +118,20 @@ body.pond {
     width: 100%;
     height: 100%;
     touch-action: none; /* let us handle all pointer gestures ourselves */
+    opacity: 0;
+    animation: surface-in 1.1s ease forwards;
+}
+
+@keyframes surface-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
 /* Hide/show chrome: always reachable, even when other menus are off. */
 #ui-toggle {
     position: fixed;
-    top: 18px;
-    right: 56px;
+    top: max(18px, env(safe-area-inset-top, 0px));
+    right: max(56px, calc(16px + env(safe-area-inset-right, 0px)));
     width: 34px;
     height: 34px;
     display: flex;
@@ -73,6 +151,11 @@ body.pond {
 #ui-toggle:focus-visible {
     opacity: 0.75;
     outline: none;
+    box-shadow: 0 0 0 2px rgba(140, 200, 170, 0.22);
+}
+
+#ui-toggle:active {
+    transform: scale(0.94);
 }
 
 body.ui-hidden #ui-toggle {
@@ -88,8 +171,8 @@ body.ui-hidden #ui-toggle:focus-visible {
 /* Guide entry: own corner (top-left), separate from mode / menu chrome. */
 #guide-btn {
     position: fixed;
-    top: 18px;
-    left: 18px;
+    top: max(18px, env(safe-area-inset-top, 0px));
+    left: max(18px, env(safe-area-inset-left, 0px));
     width: 34px;
     height: 34px;
     display: flex;
@@ -110,6 +193,11 @@ body.ui-hidden #ui-toggle:focus-visible {
 #guide-btn[aria-pressed="true"] {
     opacity: 0.8;
     outline: none;
+    box-shadow: 0 0 0 2px rgba(140, 200, 170, 0.22);
+}
+
+#guide-btn:active {
+    transform: scale(0.94);
 }
 
 body.ui-hidden #guide-btn {
@@ -160,8 +248,8 @@ body.ui-hidden .ico-ui {
 /* Minimal corner toggle: an icon only, faint until hovered. */
 #mode-toggle {
     position: fixed;
-    top: 18px;
-    right: 18px;
+    top: max(18px, env(safe-area-inset-top, 0px));
+    right: max(18px, env(safe-area-inset-right, 0px));
     width: 34px;
     height: 34px;
     display: flex;
@@ -180,6 +268,11 @@ body.ui-hidden .ico-ui {
 #mode-toggle:focus-visible {
     opacity: 0.75;
     outline: none;
+    box-shadow: 0 0 0 2px rgba(140, 200, 170, 0.22);
+}
+
+#mode-toggle:active {
+    transform: scale(0.94);
 }
 
 /* Immersive mode: every menu except the UI toggle itself. */
@@ -249,8 +342,8 @@ body.pond #mode-icon::after {
 /* Gold tally sits under the guide button so the top-left corner stays clear. */
 #gold-counter {
     position: fixed;
-    left: 16px;
-    top: 56px;
+    left: max(16px, env(safe-area-inset-left, 0px));
+    top: max(56px, calc(38px + env(safe-area-inset-top, 0px)));
     z-index: 10;
     display: none;
     align-items: center;
@@ -287,8 +380,8 @@ body.pond #gold-counter {
 /* Pond aesthetics + drop sound: tucked bottom-left, quiet until hovered. */
 #pond-controls {
     position: fixed;
-    left: 16px;
-    bottom: 16px;
+    left: max(16px, env(safe-area-inset-left, 0px));
+    bottom: max(16px, env(safe-area-inset-bottom, 0px));
     display: none;
     flex-direction: column;
     gap: 8px;
@@ -306,11 +399,47 @@ body.pond #pond-controls {
     opacity: 0.85;
 }
 
+/* Touch screens: no hover, so keep controls a little easier to spot. */
+@media (pointer: coarse) {
+    #pond-controls,
+    #window-controls {
+        opacity: 0.48;
+    }
+
+    #pond-controls:focus-within,
+    #window-controls:focus-within {
+        opacity: 0.88;
+    }
+
+    .scenery-btn,
+    #ambient-btn,
+    #drop-sound-btn,
+    #looks-btn,
+    #hats-btn,
+    #market-btn,
+    #progress-btn,
+    #catcher-btn,
+    #picker-btn,
+    #tunes-btn,
+    #rhythm-btn,
+    #food-btn,
+    #net-btn {
+        width: 40px;
+        min-height: 40px;
+    }
+
+    #ui-toggle,
+    #mode-toggle {
+        width: 40px;
+        height: 40px;
+    }
+}
+
 /* Window mode chrome: rhythm studio entry, same quiet corner feel. */
 #window-controls {
     position: fixed;
-    left: 16px;
-    bottom: 16px;
+    left: max(16px, env(safe-area-inset-left, 0px));
+    bottom: max(16px, env(safe-area-inset-bottom, 0px));
     display: none;
     flex-direction: column;
     gap: 8px;
@@ -389,6 +518,7 @@ body:not(.pond) #window-controls {
 #picker-btn,
 #tunes-btn,
 #rhythm-btn,
+#food-btn,
 #net-btn {
     width: 34px;
     min-height: 34px;
@@ -403,7 +533,7 @@ body:not(.pond) #window-controls {
     cursor: pointer;
     color: var(--muted);
     padding: 6px 0;
-    transition: border-color 0.3s ease, color 0.3s ease, opacity 0.3s ease;
+    transition: border-color 0.3s ease, color 0.3s ease, opacity 0.3s ease, transform 0.12s ease, box-shadow 0.2s ease, background 0.25s ease;
 }
 
 .scenery-btn:hover,
@@ -418,6 +548,7 @@ body:not(.pond) #window-controls {
 #picker-btn:hover,
 #tunes-btn:hover,
 #rhythm-btn:hover,
+#food-btn:hover,
 #net-btn:hover,
 .scenery-btn:focus-visible,
 #ambient-btn:focus-visible,
@@ -431,10 +562,30 @@ body:not(.pond) #window-controls {
 #picker-btn:focus-visible,
 #tunes-btn:focus-visible,
 #rhythm-btn:focus-visible,
+#food-btn:focus-visible,
 #net-btn:focus-visible {
     outline: none;
     border-color: rgba(200, 224, 210, 0.55);
     color: var(--ink);
+    box-shadow: 0 0 0 2px rgba(140, 200, 170, 0.22);
+}
+
+.scenery-btn:active,
+#ambient-btn:active,
+#drop-sound-btn:active,
+#looks-btn:active,
+#hats-btn:active,
+#market-btn:active,
+#progress-btn:active,
+#catcher-btn:active,
+#picker-btn:active,
+#tunes-btn:active,
+#rhythm-btn:active,
+#food-btn:active,
+#net-btn:active {
+    transform: scale(0.94);
+    border-color: rgba(160, 200, 170, 0.65);
+    transition: transform 0.08s ease, border-color 0.08s ease;
 }
 
 .scenery-btn.on,
@@ -444,9 +595,28 @@ body:not(.pond) #window-controls {
 #progress-btn.on,
 #catcher-btn.on,
 #picker-btn.on,
+#food-btn.on,
 #net-btn.on {
     border-color: rgba(160, 200, 170, 0.55);
     color: rgba(200, 230, 210, 0.9);
+    background: rgba(60, 100, 88, 0.18);
+}
+
+#food-btn:not(.on) .ico-food {
+    opacity: 0.55;
+}
+
+#food-btn:not(.on) .ico-food::before {
+    content: "";
+    position: absolute;
+    left: -1px;
+    right: -1px;
+    top: 50%;
+    height: 1.5px;
+    background: currentColor;
+    transform: rotate(-38deg);
+    opacity: 0.75;
+    box-shadow: none;
 }
 
 .scenery-btn:not(.on) {
@@ -461,6 +631,7 @@ body:not(.pond) #window-controls {
     border-style: dashed;
     border-color: rgba(200, 170, 80, 0.35);
     color: rgba(220, 190, 100, 0.7);
+    cursor: not-allowed;
 }
 
 #hats-btn.locked.ready,
@@ -736,6 +907,27 @@ body:not(.pond) #window-controls {
 .ico-frog::before { left: 1px; }
 .ico-frog::after { right: 1px; }
 
+.ico-food {
+    width: 10px;
+    height: 10px;
+    margin-top: 2px;
+    border: 1.5px solid currentColor;
+    border-radius: 50%;
+    box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.ico-food::after {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    width: 3px;
+    height: 3px;
+    background: currentColor;
+    border-radius: 50%;
+    opacity: 0.5;
+}
+
 .ico-net {
     width: 12px;
     height: 12px;
@@ -901,20 +1093,23 @@ body:not(.pond) #window-controls {
     background: currentColor;
 }
 
-/* Quiet market panel: sits above pond controls when open. */
+/* Quiet market popup: icon tile grid above pond controls. */
 #market-panel {
     position: fixed;
-    left: 58px;
-    bottom: 16px;
+    left: max(58px, calc(16px + env(safe-area-inset-left, 0px) + 42px));
+    bottom: max(16px, env(safe-area-inset-bottom, 0px));
     z-index: 11;
     display: none;
     flex-direction: column;
-    gap: 4px;
-    min-width: 168px;
-    padding: 8px 8px 7px;
-    background: rgba(12, 22, 20, 0.42);
+    gap: 6px;
+    width: min(292px, calc(100vw - 72px));
+    padding: 9px 9px 8px;
+    background: rgba(12, 22, 20, 0.48);
     border: 1px solid rgba(180, 210, 200, 0.18);
-    border-radius: 10px;
+    border-radius: 12px;
+    box-shadow: 0 8px 28px rgba(4, 10, 8, 0.28);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.35s ease;
@@ -922,29 +1117,32 @@ body:not(.pond) #window-controls {
 
 body.pond #market-panel.open {
     display: flex;
-    opacity: 0.78;
+    opacity: 0.82;
     pointer-events: auto;
 }
 
 body.pond #market-panel.open:hover,
 body.pond #market-panel.open:focus-within {
-    opacity: 0.95;
+    opacity: 0.96;
 }
 
 /* Progress panel: same quiet chrome as market, free local saves only. */
 #progress-panel {
     position: fixed;
-    left: 58px;
-    bottom: 16px;
+    left: max(58px, calc(16px + env(safe-area-inset-left, 0px) + 42px));
+    bottom: max(16px, env(safe-area-inset-bottom, 0px));
     z-index: 11;
     display: none;
     flex-direction: column;
     gap: 4px;
     min-width: 176px;
     padding: 8px 8px 7px;
-    background: rgba(12, 22, 20, 0.42);
+    background: rgba(12, 22, 20, 0.48);
     border: 1px solid rgba(180, 210, 200, 0.18);
     border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(4, 10, 8, 0.28);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.35s ease;
@@ -963,18 +1161,21 @@ body.pond #progress-panel.open:focus-within {
 
 #registry-panel {
     position: fixed;
-    left: 58px;
-    bottom: 16px;
+    left: max(58px, calc(16px + env(safe-area-inset-left, 0px) + 42px));
+    bottom: max(16px, env(safe-area-inset-bottom, 0px));
     z-index: 11;
     display: none;
     flex-direction: column;
     gap: 8px;
-    width: min(420px, calc(100vw - 80px));
-    max-height: min(520px, calc(100vh - 48px));
+    width: min(440px, calc(100vw - 80px));
+    max-height: min(520px, calc(100vh - 48px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)));
     padding: 10px 10px 9px;
     background: rgba(12, 22, 20, 0.52);
     border: 1px solid rgba(180, 210, 200, 0.18);
     border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(4, 10, 8, 0.28);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.35s ease;
@@ -1053,7 +1254,7 @@ body.pond #registry-panel.open:focus-within {
     grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
     gap: 6px;
     overflow: auto;
-    padding: 2px;
+    padding: 2px 4px 2px 2px;
     max-height: 300px;
 }
 
@@ -1131,10 +1332,399 @@ body.pond #registry-panel.open:focus-within {
     display: flex;
     justify-content: space-between;
     gap: 12px;
-    padding: 0 2px 4px;
+    padding: 0 2px 2px;
     font: 300 10px/1 "Segoe UI", Roboto, sans-serif;
     letter-spacing: 0.06em;
     color: rgba(200, 220, 210, 0.55);
+}
+
+.market-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+}
+
+@media (max-width: 420px) {
+    #market-panel {
+        width: min(240px, calc(100vw - 72px));
+    }
+
+    .market-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+.market-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 3px;
+    margin: 0;
+    min-height: 68px;
+    padding: 7px 4px 5px;
+    background: rgba(18, 32, 28, 0.35);
+    border: 1px solid rgba(180, 210, 200, 0.14);
+    border-radius: 8px;
+    color: rgba(210, 230, 220, 0.82);
+    cursor: pointer;
+    transition: border-color 0.25s ease, color 0.25s ease, background 0.25s ease, opacity 0.25s ease;
+}
+
+.market-tile:hover:not(:disabled),
+.market-tile:focus-visible:not(:disabled) {
+    outline: none;
+    border-color: rgba(200, 224, 210, 0.42);
+    background: rgba(180, 210, 200, 0.1);
+    color: rgba(235, 245, 240, 0.95);
+    box-shadow: 0 0 0 2px rgba(140, 200, 170, 0.16);
+}
+
+.market-tile.can-buy {
+    border-color: rgba(170, 210, 150, 0.38);
+    background: rgba(60, 100, 80, 0.12);
+}
+
+.market-tile.can-buy:hover:not(:disabled),
+.market-tile.can-buy:focus-visible:not(:disabled) {
+    border-color: rgba(190, 230, 170, 0.55);
+    box-shadow: 0 0 0 2px rgba(150, 210, 140, 0.22);
+}
+
+.market-tile:active:not(:disabled) {
+    transform: scale(0.96);
+    transition: transform 0.08s ease, border-color 0.08s ease;
+}
+
+.market-tile:disabled:not(.owned) {
+    opacity: 0.32;
+    border-style: dashed;
+}
+
+.market-tile:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.market-tile.owned {
+    opacity: 0.72;
+    border-color: rgba(180, 210, 200, 0.22);
+    background: rgba(180, 210, 200, 0.06);
+}
+
+.market-tile.owned:disabled {
+    opacity: 0.72;
+}
+
+.market-tile-label {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: 300 9px/1.15 "Segoe UI", Roboto, sans-serif;
+    letter-spacing: 0.03em;
+    text-align: center;
+    color: inherit;
+}
+
+.market-tile-cost {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: 300 8px/1.1 "Segoe UI", Roboto, sans-serif;
+    letter-spacing: 0.02em;
+    text-align: center;
+    color: rgba(180, 210, 200, 0.52);
+}
+
+.market-tile.owned .market-tile-cost {
+    color: rgba(190, 215, 205, 0.62);
+}
+
+.market-ico {
+    display: block;
+    position: relative;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    margin-bottom: 1px;
+    color: rgba(210, 230, 220, 0.88);
+}
+
+.market-ico-magnet {
+    width: 14px;
+    height: 16px;
+    border: 1.5px solid currentColor;
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    margin-top: 2px;
+}
+
+.market-ico-magnet::before,
+.market-ico-magnet::after {
+    content: "";
+    position: absolute;
+    top: -3px;
+    width: 4px;
+    height: 5px;
+    background: currentColor;
+    border-radius: 1px;
+}
+
+.market-ico-magnet::before { left: -1.5px; }
+.market-ico-magnet::after { right: -1.5px; }
+
+.market-ico-catcher {
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid currentColor;
+    border-radius: 50%;
+}
+
+.market-ico-catcher::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 3px;
+    width: 8px;
+    height: 8px;
+    border: 1.2px dashed currentColor;
+    border-radius: 50%;
+    opacity: 0.75;
+}
+
+.market-ico-catcher-up {
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid currentColor;
+    border-radius: 50%;
+}
+
+.market-ico-catcher-up::before {
+    content: "";
+    position: absolute;
+    left: 1px;
+    top: 1px;
+    right: 1px;
+    bottom: 1px;
+    border: 1.2px solid currentColor;
+    border-radius: 50%;
+    opacity: 0.55;
+}
+
+.market-ico-catcher-up::after {
+    content: "";
+    position: absolute;
+    left: 3.5px;
+    top: 3.5px;
+    width: 7px;
+    height: 7px;
+    border: 1.1px dashed currentColor;
+    border-radius: 50%;
+    opacity: 0.8;
+}
+
+.market-ico-picker {
+    width: 16px;
+    height: 16px;
+}
+
+.market-ico-picker::before {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 7px;
+    width: 12px;
+    height: 7px;
+    border: 1.4px solid currentColor;
+    border-radius: 0 0 7px 7px;
+    border-top: none;
+}
+
+.market-ico-picker::after {
+    content: "";
+    position: absolute;
+    left: 5px;
+    top: 1px;
+    width: 6px;
+    height: 7px;
+    border: 1.4px solid currentColor;
+    border-bottom: none;
+    border-radius: 4px 4px 0 0;
+}
+
+.market-ico-pet {
+    width: 16px;
+    height: 14px;
+    margin-top: 2px;
+}
+
+.market-ico-pet::before {
+    content: "";
+    position: absolute;
+    left: 4px;
+    bottom: 0;
+    width: 8px;
+    height: 8px;
+    border: 1.4px solid currentColor;
+    border-radius: 50% 50% 45% 45%;
+}
+
+.market-ico-pet::after {
+    content: "";
+    position: absolute;
+    left: 1px;
+    top: 1px;
+    width: 3.5px;
+    height: 3.5px;
+    border: 1.3px solid currentColor;
+    border-radius: 50%;
+    box-shadow:
+        5.5px -1px 0 -0.1px currentColor,
+        11px 1px 0 -0.1px currentColor,
+        3px 5px 0 -0.15px currentColor;
+}
+
+.market-ico-current {
+    width: 16px;
+    height: 14px;
+    margin-top: 2px;
+}
+
+.market-ico-current::before,
+.market-ico-current::after {
+    content: "";
+    position: absolute;
+    left: 1px;
+    right: 1px;
+    height: 4px;
+    border: 1.3px solid currentColor;
+    border-top: none;
+    border-radius: 0 0 10px 10px;
+}
+
+.market-ico-current::before { top: 1px; }
+.market-ico-current::after { top: 7px; opacity: 0.7; }
+
+.market-ico-rainbow {
+    width: 16px;
+    height: 10px;
+    margin-top: 4px;
+    border: 1.4px solid currentColor;
+    border-bottom: none;
+    border-radius: 10px 10px 0 0;
+}
+
+.market-ico-rainbow::before {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 3px;
+    right: 3px;
+    height: 5px;
+    border: 1.2px solid currentColor;
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    opacity: 0.7;
+}
+
+.market-ico-pellet {
+    width: 10px;
+    height: 10px;
+    margin-top: 4px;
+    border: 1.5px solid currentColor;
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px rgba(180, 210, 200, 0.12);
+}
+
+.market-ico-pellet::after {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    width: 3px;
+    height: 3px;
+    background: currentColor;
+    border-radius: 50%;
+    opacity: 0.55;
+}
+
+.market-ico-mirror {
+    width: 14px;
+    height: 14px;
+    margin-top: 2px;
+    border: 1.4px solid currentColor;
+    border-radius: 3px;
+    transform: skewX(-8deg);
+}
+
+.market-ico-mirror::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 2px;
+    width: 4px;
+    height: 8px;
+    border-left: 1.3px solid currentColor;
+    opacity: 0.65;
+}
+
+.market-ico-storm {
+    width: 12px;
+    height: 14px;
+    margin-top: 2px;
+}
+
+.market-ico-storm::before {
+    content: "";
+    position: absolute;
+    left: 1px;
+    top: 0;
+    width: 10px;
+    height: 7px;
+    border: 1.4px solid currentColor;
+    border-radius: 50% 50% 40% 40%;
+}
+
+.market-ico-storm::after {
+    content: "";
+    position: absolute;
+    left: 5px;
+    top: 7px;
+    width: 4px;
+    height: 7px;
+    background: currentColor;
+    clip-path: polygon(30% 0, 100% 0, 55% 45%, 90% 45%, 0 100%, 35% 48%, 0 48%);
+}
+
+.market-ico-moon {
+    width: 14px;
+    height: 14px;
+    margin-top: 2px;
+    border: 1.5px solid currentColor;
+    border-radius: 50%;
+    box-shadow: inset -4px -1px 0 -1px currentColor;
+}
+
+.market-ico-platinum {
+    width: 12px;
+    height: 12px;
+    margin-top: 3px;
+    border: 1.5px solid currentColor;
+    border-radius: 2px;
+    transform: rotate(45deg);
+}
+
+.market-ico-platinum::after {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    right: 2px;
+    bottom: 2px;
+    border: 1.1px solid currentColor;
+    opacity: 0.65;
 }
 
 .market-row {
@@ -1150,7 +1740,7 @@ body.pond #registry-panel.open:focus-within {
     font: 300 11px/1.2 "Segoe UI", Roboto, sans-serif;
     letter-spacing: 0.03em;
     cursor: pointer;
-    transition: border-color 0.25s ease, color 0.25s ease, opacity 0.25s ease;
+    transition: border-color 0.25s ease, color 0.25s ease, opacity 0.25s ease, transform 0.1s ease, box-shadow 0.2s ease;
 }
 
 .market-row:hover:not(:disabled),
@@ -1158,6 +1748,12 @@ body.pond #registry-panel.open:focus-within {
     outline: none;
     border-color: rgba(200, 224, 210, 0.45);
     color: rgba(235, 245, 240, 0.95);
+    box-shadow: 0 0 0 2px rgba(140, 200, 170, 0.18);
+}
+
+.market-row:active:not(:disabled) {
+    transform: scale(0.98);
+    transition: transform 0.08s ease;
 }
 
 .market-row:disabled {
@@ -1272,10 +1868,27 @@ body.pond #food-stash.has-items {
     animation: breathe 3.4s ease-in-out infinite;
     transition: opacity 1s ease;
     z-index: 5;
+    text-align: center;
+    max-width: min(280px, calc(100vw - 48px));
+    text-shadow:
+        0 1px 10px rgba(4, 10, 8, 0.7),
+        0 0 22px rgba(7, 16, 18, 0.45);
 }
 
 #hint.gone {
     opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #hint {
+        animation: none;
+        opacity: 0.45;
+    }
+
+    #surface {
+        animation: none;
+        opacity: 1;
+    }
 }
 
 @keyframes breathe {
@@ -1369,7 +1982,7 @@ body.pond #food-stash.has-items {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    padding-right: 2px;
+    padding-right: 4px;
 }
 
 .dev-section-title {
@@ -1466,8 +2079,8 @@ body.pond #food-stash.has-items {
     flex-direction: column;
     gap: 6px;
     min-width: 248px;
-    max-width: min(320px, calc(100vw - 72px));
-    max-height: min(70vh, 520px);
+    max-width: min(560px, calc(100vw - 72px));
+    max-height: min(78vh, 640px);
     overflow: auto;
     padding: 8px 8px 7px;
     background: rgba(12, 22, 20, 0.52);
@@ -1476,13 +2089,13 @@ body.pond #food-stash.has-items {
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.35s ease;
-    scrollbar-width: thin;
 }
 
 body:not(.pond) #rhythm-panel.open {
     display: flex;
     opacity: 0.88;
     pointer-events: auto;
+    min-width: min(520px, calc(100vw - 72px));
 }
 
 body.pond #tunes-panel.open {
@@ -1508,9 +2121,16 @@ body.pond #tunes-panel.open:focus-within {
 .market-row.rhythm-mini {
     width: auto;
     flex: 1 1 auto;
-    min-width: 52px;
+    min-width: 44px;
     padding: 5px 7px;
     text-align: center;
+}
+
+.market-row.rhythm-len.on,
+#rhythm-metro.on {
+    border-color: rgba(160, 210, 200, 0.55);
+    color: rgba(210, 240, 230, 0.95);
+    background: rgba(60, 100, 90, 0.35);
 }
 
 .rhythm-bpm-wrap {
@@ -1560,28 +2180,73 @@ body.pond #tunes-panel.open:focus-within {
 
 .rhythm-grid {
     display: grid;
-    grid-template-columns: 34px repeat(16, minmax(0, 1fr));
+    grid-template-columns: 40px repeat(32, minmax(0, 1fr));
     gap: 2px;
-    padding: 2px 0 4px;
+    padding: 2px 2px 10px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scroll-thumb-mid) var(--scroll-track);
+}
+
+/* Horizontal reed rail: a bit more presence when the loop is long. */
+.rhythm-grid::-webkit-scrollbar {
+    height: 12px;
+}
+
+.rhythm-grid::-webkit-scrollbar-track {
+    margin: 0 4px;
+}
+
+.rhythm-grid[data-steps="16"] {
+    grid-template-columns: 40px repeat(16, minmax(0, 1fr));
+}
+
+.rhythm-grid[data-steps="32"] {
+    grid-template-columns: 40px repeat(32, minmax(0, 1fr));
+}
+
+.rhythm-grid[data-steps="64"] {
+    grid-template-columns: 40px repeat(64, minmax(8px, 1fr));
+    min-width: 640px;
 }
 
 .rhythm-lane-label {
     display: flex;
     align-items: center;
+    justify-content: flex-start;
+    gap: 2px;
+    margin: 0;
+    padding: 0 2px;
+    border: none;
+    background: transparent;
     font: 300 9px/1 "Segoe UI", Roboto, sans-serif;
     letter-spacing: 0.04em;
     color: rgba(190, 210, 200, 0.55);
+    cursor: pointer;
+    user-select: none;
+    text-align: left;
+}
+
+.rhythm-lane-label.muted {
+    color: rgba(140, 150, 145, 0.35);
+    text-decoration: line-through;
 }
 
 .rhythm-cell {
     aspect-ratio: 1;
     min-width: 0;
+    min-height: 12px;
     padding: 0;
     border: 1px solid rgba(180, 210, 200, 0.14);
     border-radius: 3px;
     background: rgba(20, 32, 30, 0.35);
     cursor: pointer;
     color: transparent;
+}
+
+.rhythm-cell.bar {
+    border-left-color: rgba(220, 230, 210, 0.28);
 }
 
 .rhythm-cell.on {
@@ -1592,6 +2257,11 @@ body.pond #tunes-panel.open:focus-within {
 .rhythm-cell.tone.on {
     background: rgba(160, 190, 230, 0.55);
     border-color: rgba(190, 210, 245, 0.5);
+}
+
+.rhythm-cell.clap.on {
+    background: rgba(210, 180, 140, 0.55);
+    border-color: rgba(230, 200, 160, 0.5);
 }
 
 .rhythm-cell.beat {
