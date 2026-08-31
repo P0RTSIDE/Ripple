@@ -4,11 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Ripple</title>
-    <link rel="stylesheet" href="style.css?v=20260812av" />
+    <link rel="stylesheet" href="style.css?v=20260831ad" />
 </head>
 <body>
     <!-- The whole experience is a single full-viewport canvas surface. -->
     <canvas id="surface"></canvas>
+
+    <!-- User guide: top-left, apart from mode / menu controls. Disclaimer first. -->
+    <button id="guide-btn" type="button" aria-label="User guide" title="User guide" aria-pressed="false" aria-expanded="false" aria-controls="guide-gate">
+        <span class="ico ico-guide"></span>
+    </button>
 
     <!-- Hide / show all on-screen menus. Stays available when the rest of the UI is off. -->
     <button id="ui-toggle" type="button" aria-label="Hide menus" title="Hide menus" aria-pressed="false">
@@ -202,9 +207,104 @@
     <!-- Secret developer tools: type "dev code fartgoblin" to open. -->
     <div id="dev-panel" aria-label="Dev menu" aria-hidden="true"></div>
 
+    <!-- Guide disclaimer: shown before the written guide. Encourages exploration first. -->
+    <div id="guide-gate" role="dialog" aria-modal="true" aria-labelledby="guide-gate-title" aria-hidden="true">
+        <div class="guide-card">
+            <h2 id="guide-gate-title">Before you open the guide</h2>
+            <p>
+                Ripple is built for exploration and experimentation. Most of the joy is in poking the water,
+                feeding the pond, and discovering what happens next on your own.
+            </p>
+            <p>
+                The guide can spoil surprises: rare food, visitors, unlocks, and endings. If you are still curious
+                to figure things out yourself, you can close this and keep playing.
+            </p>
+            <p class="guide-ask">Do you still want to open the user guide?</p>
+            <div class="guide-actions">
+                <button type="button" id="guide-proceed" class="guide-action primary">Open the guide</button>
+                <button type="button" id="guide-decline" class="guide-action">Keep exploring</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Written user guide. Update this whenever pond or fish mechanics change. -->
+    <div id="guide-panel" role="dialog" aria-modal="true" aria-labelledby="guide-title" aria-hidden="true">
+        <div class="guide-sheet">
+            <div class="guide-sheet-head">
+                <h2 id="guide-title">Ripple guide</h2>
+                <button type="button" id="guide-close" class="guide-close" aria-label="Close guide">Close</button>
+            </div>
+            <div class="guide-sheet-body">
+                <p class="guide-updated">Last updated for the current pond, fish, and tools build.</p>
+
+                <section>
+                    <h3>Surfaces</h3>
+                    <p>Use the top-right circle to switch between the pond and the rain-on-glass window. Double-click it, or use the ambient button, to toggle the soft background bed.</p>
+                    <p>Window mode includes a rhythm studio for glass loops you can save and play quietly under the pond later.</p>
+                </section>
+
+                <section>
+                    <h3>Basics</h3>
+                    <p>Hold on the pond to grow a food pellet. Drag while holding to sling it. Release to drop it in. Larger pellets make deeper splashes and lower tones.</p>
+                    <p>Right-click a fish to pet it. Petted fish close their eyes and drift calmly for a moment. Some creatures need many pets, or a long stroke, before they change.</p>
+                    <p>Food floats for a while, then sinks. Larger food sinks sooner. Floating food can be scooped with the net.</p>
+                </section>
+
+                <section>
+                    <h3>Food and growth</h3>
+                    <p>Ordinary brown food grows fish. Fish that grow past a threshold can turn predator: they keep their species look and habits, hunt smaller fish, eat food, and get faster with each food bite.</p>
+                    <p>Special pellets appear rarely, or from the market and stash:</p>
+                    <ul>
+                        <li>Gold food: turns a fish gold. It settles on the lakebed. Hold right-click on settled gold to collect spendable gold.</li>
+                        <li>Rainbow food: creates a very fast rainbow predator. Late in a cycle it can challenge the end visitor, then leave so the pond restocks.</li>
+                        <li>Pink and breed food: blush a fish. Two pink fish can make young.</li>
+                        <li>Grower food: surges a fish far past normal size.</li>
+                        <li>Hero food: turns a fish into a hero that hunts smaller predators.</li>
+                        <li>Green food: grows uncommon pond ornaments, sometimes a carved wooden fish.</li>
+                        <li>Platinum food: unlocked later. Makes a glowing, resilient platinum fish, and helps open moon and crystal looks.</li>
+                    </ul>
+                </section>
+
+                <section>
+                    <h3>Fish roles</h3>
+                    <p>Heroes hunt evil fish. Evil fish can cannibalize smaller predators. Petting can soothe evil fish back into heroes. Very large fish, monsters, and biome predators need more pets to tame.</p>
+                    <p>Frogs, tadpoles, reptiles, night visitors, crystal visitors, whales, and other rare guests can arrive on their own timers. Petting and feeding change many of them.</p>
+                </section>
+
+                <section>
+                    <h3>Tools and menus</h3>
+                    <ul>
+                        <li>Looks: shore stones, plants, debris, sun, moon, crystal, frogs, hats, and more.</li>
+                        <li>Net: scoop floating food with right-click. Scooped food lands in the stash.</li>
+                        <li>Stash: choose a saved pellet, then click the pond to drop it.</li>
+                        <li>Market: unlock with gold, then buy tools and special food.</li>
+                        <li>Rainbow catcher: draw a circle to catch rainbow fish.</li>
+                        <li>Fish picker: lift certain fish once unlocked.</li>
+                        <li>Registry: records fish you have met.</li>
+                        <li>Save progress: store this pond in the browser, or download and upload a save file.</li>
+                        <li>Tunes: play window-made loops under the pond.</li>
+                    </ul>
+                    <p>The top-left book button opens this guide (with a spoiler warning first). The top-right menu button hides or shows chrome. Press U for the same immersive toggle.</p>
+                </section>
+
+                <section>
+                    <h3>Sound and feel</h3>
+                    <p>Clicks, bites, pets, and rare events all drive procedural sound. Pitch and fade follow the same physics as the ripples you see. Use the volume slider and drop-sound cycle in the corner controls.</p>
+                </section>
+
+                <section>
+                    <h3>A note on spoilers</h3>
+                    <p>This guide lists systems, not every secret timing or ending path. If something surprising happens, that is working as intended. Feed, pet, rearrange the shore, and see what the water does.</p>
+                </section>
+            </div>
+        </div>
+    </div>
+
     <!-- On-load hint that fades out after the first interaction and never returns. -->
     <div id="hint">click anywhere</div>
 
-    <script src="main.js?v=20260813ac"></script>
+    <!-- Defer keeps first paint light; guide stays a small separate file. -->
+    <script src="main.js?v=20260813ac" defer></script>
+    <script src="guide.js?v=20260831ad" defer></script>
 </body>
 </html>

@@ -85,6 +85,63 @@ body.ui-hidden #ui-toggle:focus-visible {
     opacity: 0.65;
 }
 
+/* Guide entry: own corner (top-left), separate from mode / menu chrome. */
+#guide-btn {
+    position: fixed;
+    top: 18px;
+    left: 18px;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    color: var(--ink);
+    opacity: 0.22;
+    transition: opacity 0.4s ease;
+    z-index: 12;
+}
+
+#guide-btn:hover,
+#guide-btn:focus-visible,
+#guide-btn[aria-pressed="true"] {
+    opacity: 0.8;
+    outline: none;
+}
+
+body.ui-hidden #guide-btn {
+    opacity: 0.14;
+}
+
+body.ui-hidden #guide-btn:hover,
+body.ui-hidden #guide-btn:focus-visible,
+body.ui-hidden #guide-btn[aria-pressed="true"] {
+    opacity: 0.7;
+}
+
+.ico-guide {
+    width: 14px;
+    height: 14px;
+    border: 1.4px solid currentColor;
+    border-radius: 2px;
+    position: relative;
+}
+
+.ico-guide::before {
+    content: "";
+    position: absolute;
+    left: 2px;
+    right: 2px;
+    top: 3px;
+    height: 1.4px;
+    background: currentColor;
+    box-shadow: 0 3px 0 currentColor, 0 6px 0 currentColor;
+    opacity: 0.9;
+}
+
 .ico-ui {
     width: 12px;
     height: 10px;
@@ -142,6 +199,14 @@ body.ui-hidden #hint {
     visibility: hidden;
 }
 
+/* Guide overlays stay usable even when chrome is hidden. */
+body.ui-hidden #guide-gate.open,
+body.ui-hidden #guide-panel.open {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    visibility: visible;
+}
+
 /* Open dev panel stays usable even when chrome is hidden. */
 body.ui-hidden #dev-panel.open {
     opacity: 0.96 !important;
@@ -181,11 +246,11 @@ body.pond #mode-icon::after {
     opacity: 0.7;
 }
 
-/* Top-left gold fish tally for the hats unlock. */
+/* Gold tally sits under the guide button so the top-left corner stays clear. */
 #gold-counter {
     position: fixed;
     left: 16px;
-    top: 16px;
+    top: 56px;
     z-index: 10;
     display: none;
     align-items: center;
@@ -1613,4 +1678,167 @@ body.pond #tunes-panel.open:focus-within {
 .ico-tunes {
     background: linear-gradient(currentColor, currentColor) 13px 3px / 2.5px 9px no-repeat;
     width: 16px;
+}
+
+/* ==========================================================================
+   User guide: disclaimer gate + scrollable sheet
+   Keep guide copy in index.html in sync when mechanics or fish change.
+   ========================================================================== */
+#guide-gate,
+#guide-panel {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    background: rgba(4, 8, 10, 0.62);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+#guide-gate.open,
+#guide-panel.open {
+    display: flex;
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.guide-card,
+.guide-sheet {
+    width: min(520px, calc(100vw - 32px));
+    max-height: min(84vh, 720px);
+    display: flex;
+    flex-direction: column;
+    padding: 18px 18px 16px;
+    border-radius: 14px;
+    border: 1px solid rgba(180, 210, 200, 0.22);
+    background: rgba(10, 18, 20, 0.94);
+    color: rgba(210, 230, 220, 0.9);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+}
+
+.guide-sheet {
+    width: min(640px, calc(100vw - 32px));
+}
+
+.guide-card h2,
+.guide-sheet-head h2 {
+    margin: 0 0 10px;
+    font: 500 16px/1.25 "Segoe UI", Roboto, sans-serif;
+    letter-spacing: 0.04em;
+    color: rgba(230, 245, 238, 0.95);
+}
+
+.guide-card p,
+.guide-sheet-body p,
+.guide-sheet-body li {
+    margin: 0 0 10px;
+    font: 300 13px/1.55 "Segoe UI", Roboto, sans-serif;
+    letter-spacing: 0.01em;
+    color: rgba(200, 220, 210, 0.82);
+}
+
+.guide-ask {
+    margin-top: 4px !important;
+    color: rgba(230, 240, 235, 0.92) !important;
+}
+
+.guide-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.guide-action {
+    margin: 0;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(180, 210, 200, 0.22);
+    background: transparent;
+    color: rgba(210, 230, 220, 0.88);
+    font: 300 12px/1.2 "Segoe UI", Roboto, sans-serif;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+}
+
+.guide-action:hover,
+.guide-action:focus-visible {
+    outline: none;
+    border-color: rgba(200, 224, 210, 0.5);
+    color: rgba(240, 250, 245, 0.98);
+}
+
+.guide-action.primary {
+    border-color: rgba(160, 200, 180, 0.45);
+    background: rgba(60, 110, 95, 0.28);
+}
+
+.guide-sheet-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(180, 210, 200, 0.14);
+    margin-bottom: 10px;
+}
+
+.guide-sheet-head h2 {
+    margin: 0;
+}
+
+.guide-close {
+    margin: 0;
+    padding: 5px 10px;
+    border-radius: 7px;
+    border: 1px solid rgba(180, 210, 200, 0.22);
+    background: transparent;
+    color: rgba(210, 230, 220, 0.8);
+    font: 300 12px/1 "Segoe UI", Roboto, sans-serif;
+    cursor: pointer;
+}
+
+.guide-close:hover,
+.guide-close:focus-visible {
+    outline: none;
+    border-color: rgba(200, 224, 210, 0.5);
+    color: rgba(240, 250, 245, 0.98);
+}
+
+.guide-sheet-body {
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding-right: 4px;
+}
+
+.guide-updated {
+    font-size: 11px !important;
+    letter-spacing: 0.04em !important;
+    color: rgba(170, 195, 185, 0.55) !important;
+}
+
+.guide-sheet-body section {
+    margin-bottom: 16px;
+}
+
+.guide-sheet-body h3 {
+    margin: 0 0 6px;
+    font: 500 12px/1.3 "Segoe UI", Roboto, sans-serif;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(180, 210, 200, 0.7);
+}
+
+.guide-sheet-body ul {
+    margin: 0 0 8px;
+    padding-left: 1.15em;
+}
+
+.guide-sheet-body li {
+    margin-bottom: 6px;
 }
