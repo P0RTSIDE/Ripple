@@ -3704,73 +3704,484 @@ function fillFishShadowPaths(ctx, L, W, shape, wig, opts) {
 }
 
 function fillReptileShadowPaths(ctx, r) {
+    // Same local-space silhouette as Reptile.draw (waving tail, streaming limbs, species snout).
     const L = r.size;
     const isGator = r.kind === "alligator";
-    const W = r.size * (isGator ? 0.34 : 0.28);
-    const snout = isGator ? 0.5 : 0.58;
-    // Alligator shadow keeps longer aft limb lobes (legs stream along the flanks).
-    const midW = isGator ? 1.12 : 1.0;
-    const aftW = isGator ? 1.05 : 0.9;
+    const W = r.size * (isGator ? 0.36 : 0.28);
+    const amp = r.golden ? 0 : (r.tamed ? 0.16 : 0.28);
+    const phase = r.tailPhase || 0;
+    const waveAt = (u) => r.golden ? 0 : Math.sin(phase - u * 2.4) * amp * (0.25 + 0.75 * u);
+    const w0 = waveAt(0.2);
+    const w1 = waveAt(0.45);
+    const w2 = waveAt(0.7);
+    const w3 = waveAt(1.0);
     ctx.beginPath();
-    // Single fusiform + snout + soft limb lobes.
-    ctx.moveTo(L * snout, 0);
-    if (isGator) {
-        ctx.bezierCurveTo(L * 0.4, -W * 0.7, L * 0.15, -W * 1.0 * midW, -L * 0.15, -W * 0.95 * midW);
-    } else {
-        ctx.bezierCurveTo(L * 0.35, -W * 0.35, L * 0.1, -W * 0.95, -L * 0.15, -W * 0.8);
-    }
-    ctx.bezierCurveTo(-L * 0.35, -W * 0.95 * aftW, -L * 0.55, -W * 0.55, -L * 0.7, -W * 0.25);
-    ctx.quadraticCurveTo(-L * 0.92, -W * 0.35, -L * 0.98, 0);
-    ctx.quadraticCurveTo(-L * 0.92, W * 0.35, -L * 0.7, W * 0.25);
-    ctx.bezierCurveTo(-L * 0.55, W * 0.55, -L * 0.35, W * 0.95 * aftW, -L * 0.15, W * 0.95 * midW);
-    if (isGator) {
-        ctx.bezierCurveTo(L * 0.15, W * 1.0 * midW, L * 0.4, W * 0.7, L * snout, 0);
-    } else {
-        ctx.bezierCurveTo(L * 0.1, W * 1.05, L * 0.35, W * 0.7, L * snout, 0);
-    }
+    ctx.moveTo(-L * 0.28, -W * 0.35 + w0 * W * 0.08);
+    ctx.bezierCurveTo(
+        -L * 0.5, -W * (0.55 + w1 * 0.2) + w1 * W * 0.35,
+        -L * 0.72, -W * (0.35 + w2 * 0.28) + w2 * W * 0.55,
+        -L * 0.92, -W * (0.08 + w3 * 0.18) + w3 * W * 0.75
+    );
+    ctx.quadraticCurveTo(
+        -L * 0.98 + w3 * W * 0.12, w3 * W * 0.85,
+        -L * 0.92, W * (0.08 + w3 * 0.18) + w3 * W * 0.75
+    );
+    ctx.bezierCurveTo(
+        -L * 0.72, W * (0.35 + w2 * 0.28) + w2 * W * 0.55,
+        -L * 0.5, W * (0.55 + w1 * 0.2) + w1 * W * 0.35,
+        -L * 0.28, W * 0.35 + w0 * W * 0.08
+    );
     ctx.closePath();
+    ctx.fill();
+    if (!r.limbTips && typeof r.updateLimbSwim === "function") r.updateLimbSwim(1 / 60);
+    const limbSpecs = [
+        [0.1, 1, false], [-0.14, 1, true], [0.1, -1, false], [-0.14, -1, true],
+    ];
+    for (let i = 0; i < limbSpecs.length; i++) {
+        const [along, side, isHind] = limbSpecs[i];
+        const tip = (r.limbTips && r.limbTips[i]) || {
+            x: L * (along - (isHind ? (isGator ? 0.56 : 0.36) : (isGator ? 0.34 : 0.22))),
+            y: side * W * (isHind ? 0.62 : 0.48),
+        };
+        const bx = L * along;
+        const by = side * W * (isHind ? 0.4 : 0.34);
+        const tx = tip.x;
+        const ty = tip.y;
+        const midX = bx * 0.4 + tx * 0.6;
+        const midY = (by + ty) * 0.5 + side * W * (isHind ? 0.06 : 0.04);
+        const rootW = L * (isHind ? (isGator ? 0.085 : 0.065) : (isGator ? 0.06 : 0.045));
+        const tipW = L * (isHind ? (isGator ? 0.038 : 0.028) : (isGator ? 0.028 : 0.02));
+        ctx.beginPath();
+        ctx.moveTo(bx, by - side * rootW * 0.15);
+        ctx.quadraticCurveTo(midX, midY - side * rootW * 0.55, tx, ty - side * tipW * 0.2);
+        ctx.lineTo(tx, ty + side * tipW * 0.85);
+        ctx.quadraticCurveTo(midX, midY + side * rootW * 0.35, bx - L * 0.02, by + side * rootW * 0.35);
+        ctx.closePath();
+        ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.moveTo(L * 0.18, 0);
+    ctx.bezierCurveTo(L * 0.02, -W * 1.05, -L * 0.2, -W * 1.05, -L * 0.36, -W * 0.42);
+    ctx.quadraticCurveTo(-L * 0.42, 0, -L * 0.36, W * 0.42);
+    ctx.bezierCurveTo(-L * 0.2, W * 1.0, L * 0.02, W * 1.0, L * 0.18, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(L * 0.16, 0, L * 0.16, W * 0.72, -0.05, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    if (isGator) {
+        ctx.moveTo(L * 0.18, -W * 0.42);
+        ctx.bezierCurveTo(L * 0.34, -W * 0.55, L * 0.48, -W * 0.4, L * 0.52, -W * 0.08);
+        ctx.lineTo(L * 0.52, W * 0.12);
+        ctx.bezierCurveTo(L * 0.48, W * 0.4, L * 0.34, W * 0.52, L * 0.18, W * 0.42);
+        ctx.closePath();
+    } else {
+        ctx.moveTo(L * 0.16, -W * 0.32);
+        ctx.bezierCurveTo(L * 0.34, -W * 0.22, L * 0.5, -W * 0.1, L * 0.58, -W * 0.02);
+        ctx.lineTo(L * 0.58, W * 0.04);
+        ctx.bezierCurveTo(L * 0.5, W * 0.12, L * 0.34, W * 0.24, L * 0.16, W * 0.32);
+        ctx.closePath();
+    }
     ctx.fill();
 }
 
-function fillSharkShadowPaths(ctx, L, W) {
+function fillOrcaShadowPaths(ctx, shark) {
+    const L = shark.size;
+    const W = L * 0.42;
+    const wig = Math.sin(shark.tailPhase || 0) * 0.28;
     ctx.beginPath();
-    ctx.moveTo(L * 0.62, 0);
-    ctx.bezierCurveTo(L * 0.3, -W * 0.9, -L * 0.05, -W * 1.15, -L * 0.4, -W * 0.55);
-    ctx.quadraticCurveTo(-L * 0.15, -W * 1.45, -L * 0.05, -W * 0.7);
-    ctx.bezierCurveTo(-L * 0.55, -W * 0.7, -L * 0.75, -W * 0.55, -L * 0.88, 0);
-    ctx.bezierCurveTo(-L * 0.75, W * 0.55, -L * 0.55, W * 0.7, -L * 0.4, W * 0.5);
-    ctx.bezierCurveTo(-L * 0.05, W * 1.05, L * 0.3, W * 0.85, L * 0.62, 0);
+    ctx.moveTo(-L * 0.38, 0);
+    ctx.bezierCurveTo(-L * 0.6, -W * 0.9, -L * 0.82, -W * (1.4 + wig * 0.3), -L * 1.08, -W * (0.18 + wig * 0.2));
+    ctx.lineTo(-L * 0.72, 0);
+    ctx.lineTo(-L * 1.08, W * (0.18 + wig * 0.2));
+    ctx.bezierCurveTo(-L * 0.82, W * (1.4 + wig * 0.3), -L * 0.6, W * 0.9, -L * 0.38, 0);
     ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(L * 0.52, 0);
+    ctx.bezierCurveTo(L * 0.25, -W * 0.95, -L * 0.08, -W * 1.08, -L * 0.42, -W * 0.5);
+    ctx.quadraticCurveTo(-L * 0.5, 0, -L * 0.42, W * 0.5);
+    ctx.bezierCurveTo(-L * 0.08, W * 1.08, L * 0.25, W * 0.95, L * 0.52, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(L * 0.42, -W * 0.05, L * 0.2, W * 0.68, -0.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(L * 0.05, -W * 0.55);
+    ctx.quadraticCurveTo(-L * 0.02, -W * 1.65, -L * 0.08, -W * 1.55);
+    ctx.quadraticCurveTo(-L * 0.2, -W * 0.85, -L * 0.16, -W * 0.5);
+    ctx.closePath();
+    ctx.fill();
+    const pec = Math.sin((shark.tailPhase || 0) * 0.85) * 0.12;
+    ctx.beginPath();
+    ctx.moveTo(L * 0.1, W * 0.38);
+    ctx.bezierCurveTo(L * 0.02, W * (1.05 + pec), -L * 0.14, W * (1.5 + pec), -L * 0.3, W * 0.55);
+    ctx.quadraticCurveTo(-L * 0.1, W * 0.4, L * 0.1, W * 0.38);
     ctx.fill();
 }
 
-function fillWhaleShadowPaths(ctx, L, W) {
+function fillCrystalSharkShadowPaths(ctx, shark) {
+    const L = shark.size;
+    const W = L * 0.36;
+    const wig = Math.sin(shark.tailPhase || 0) * 0.3;
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.42, 0);
+    ctx.lineTo(-L * 0.92, -W * (1.05 + wig));
+    ctx.lineTo(-L * 0.7, 0);
+    ctx.lineTo(-L * 0.92, W * (0.9 + wig * 0.5));
+    ctx.closePath();
+    ctx.fill();
     ctx.beginPath();
     ctx.moveTo(L * 0.55, 0);
-    ctx.bezierCurveTo(L * 0.25, -W * 1.0, -L * 0.1, -W * 1.1, -L * 0.4, -W * 0.5);
-    ctx.bezierCurveTo(-L * 0.65, -W * 1.15, -L * 0.9, -W * 0.35, -L * 1.0, 0);
-    ctx.bezierCurveTo(-L * 0.9, W * 0.35, -L * 0.65, W * 1.15, -L * 0.4, W * 0.5);
-    ctx.bezierCurveTo(-L * 0.1, W * 1.05, L * 0.25, W * 0.95, L * 0.55, 0);
+    ctx.bezierCurveTo(L * 0.25, -W * 0.9, -L * 0.05, -W * 1.05, -L * 0.4, -W * 0.4);
+    ctx.quadraticCurveTo(-L * 0.48, 0, -L * 0.4, W * 0.4);
+    ctx.bezierCurveTo(-L * 0.05, W * 1.05, L * 0.25, W * 0.9, L * 0.55, 0);
     ctx.closePath();
     ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.05, -W * 0.7);
+    ctx.lineTo(L * 0.08, -W * 1.55);
+    ctx.lineTo(L * 0.2, -W * 0.65);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(L * 0.4, -W * 0.3);
+    ctx.lineTo(L * 0.75, 0);
+    ctx.lineTo(L * 0.4, W * 0.3);
+    ctx.closePath();
+    ctx.fill();
+    const pec = Math.sin((shark.tailPhase || 0) * 0.9) * 0.12;
+    ctx.beginPath();
+    ctx.ellipse(L * 0.02, W * (0.85 + pec), L * 0.22, W * 0.5, 0.45, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function fillSharkShadowPaths(ctx, shark) {
+    if (!shark) return;
+    if (shark.isOrca) {
+        fillOrcaShadowPaths(ctx, shark);
+        return;
+    }
+    if (shark.isCrystal) {
+        fillCrystalSharkShadowPaths(ctx, shark);
+        return;
+    }
+    const L = shark.size;
+    const W = L * 0.38;
+    const wig = Math.sin(shark.tailPhase || 0) * 0.35;
+    const pec = Math.sin((shark.tailPhase || 0) * 0.9) * 0.14;
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.44, 0);
+    ctx.bezierCurveTo(-L * 0.58, -W * 0.55, -L * 0.78, -W * (1.15 + wig * 0.3), -L * 0.95, -W * (0.95 + wig));
+    ctx.quadraticCurveTo(-L * 0.72, -W * 0.2, -L * 0.58, 0);
+    ctx.quadraticCurveTo(-L * 0.68, W * 0.25, -L * 0.82, W * (0.7 + wig * 0.4));
+    ctx.bezierCurveTo(-L * 0.7, W * 0.45, -L * 0.55, W * 0.25, -L * 0.44, 0);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(L * 0.55, 0);
+    ctx.bezierCurveTo(L * 0.28, -W * 0.85, -L * 0.05, -W * 1.05, -L * 0.42, -W * 0.45);
+    ctx.quadraticCurveTo(-L * 0.5, 0, -L * 0.42, W * 0.45);
+    ctx.bezierCurveTo(-L * 0.05, W * 1.05, L * 0.28, W * 0.85, L * 0.55, 0);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(L * 0.02, -W * 0.7);
+    ctx.quadraticCurveTo(-L * 0.02, -W * 1.65, -L * 0.12, -W * 1.55);
+    ctx.quadraticCurveTo(-L * 0.22, -W * 0.85, -L * 0.18, -W * 0.65);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.28, -W * 0.45);
+    ctx.lineTo(-L * 0.32, -W * 0.75);
+    ctx.lineTo(-L * 0.38, -W * 0.42);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.22, W * 0.5);
+    ctx.lineTo(-L * 0.28, W * 0.85);
+    ctx.lineTo(-L * 0.36, W * 0.48);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(L * 0.1, W * 0.35);
+    ctx.bezierCurveTo(
+        L * (0.02 - pec * 0.1), W * (1.05 + pec),
+        -L * (0.2 + pec * 0.1), W * (1.45 + pec * 0.3),
+        -L * 0.32, W * 0.5
+    );
+    ctx.quadraticCurveTo(-L * 0.1, W * 0.4, L * 0.1, W * 0.35);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(L * 0.08, -W * 0.3);
+    ctx.bezierCurveTo(L * 0.0, -W * 0.85, -L * 0.15, -W * 1.05, -L * 0.22, -W * 0.4);
+    ctx.quadraticCurveTo(-L * 0.08, -W * 0.32, L * 0.08, -W * 0.3);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(L * 0.42, -W * 0.28);
+    ctx.quadraticCurveTo(L * 0.72, -W * 0.05, L * 0.78, 0);
+    ctx.quadraticCurveTo(L * 0.72, W * 0.12, L * 0.42, W * 0.32);
+    ctx.closePath();
+    ctx.fill();
+}
+
+function fillWhaleShadowPaths(ctx, whale) {
+    const L = typeof whale === "number" ? whale : whale.size;
+    const W = L * (typeof whale === "number" ? 0.3 : 0.3);
+    const wig = typeof whale === "object"
+        ? Math.sin(whale.tailPhase || 0) * 0.28
+        : 0;
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.38, 0);
+    ctx.bezierCurveTo(-L * 0.58, -W * 0.85, -L * 0.78, -W * (1.45 + wig * 0.3), -L * 1.05, -W * (0.2 + wig * 0.3));
+    ctx.lineTo(-L * 0.72, 0);
+    ctx.lineTo(-L * 1.05, W * (0.2 + wig * 0.3));
+    ctx.bezierCurveTo(-L * 0.78, W * (1.45 + wig * 0.3), -L * 0.58, W * 0.85, -L * 0.38, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(L * 0.48, 0);
+    ctx.bezierCurveTo(L * 0.22, -W * 1.05, -L * 0.1, -W * 1.15, -L * 0.4, -W * 0.5);
+    ctx.quadraticCurveTo(-L * 0.5, 0, -L * 0.4, W * 0.5);
+    ctx.bezierCurveTo(-L * 0.1, W * 1.15, L * 0.22, W * 1.05, L * 0.48, 0);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(L * 0.42, W * 0.05, L * 0.16, W * 0.62, 0.08, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.02, -W * 0.55);
+    ctx.lineTo(L * 0.08, -W * 0.95);
+    ctx.lineTo(L * 0.18, -W * 0.48);
+    ctx.closePath();
+    ctx.fill();
+}
+
+function fillSwordfishShadowPaths(ctx, sf) {
+    const L = sf.size;
+    const W = L * 0.22;
+    const wig = sf.golden ? 0 : Math.sin(sf.tailPhase || 0) * 0.25;
+    const sailWiggle = sf.golden ? 0 : Math.sin((sf.tailPhase || 0) * 1.2) * 0.2;
+    const sailH = 2.15 + sailWiggle * 0.7;
+    const billBase = L * SF_BILL_BASE;
+    const billTip = L * SF_BILL_TIP;
+    ctx.beginPath();
+    ctx.moveTo(billTip, -W * 0.12);
+    ctx.lineTo(billBase, -W * 0.35);
+    ctx.lineTo(billBase, W * 0.35);
+    ctx.lineTo(billTip, W * 0.12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(L * 0.38, 0);
+    ctx.bezierCurveTo(L * 0.18, -W * 1.05, -L * 0.1, -W * 0.95, -L * 0.38, -W * 0.42);
+    ctx.quadraticCurveTo(-L * 0.48, 0, -L * 0.38, W * 0.42);
+    ctx.bezierCurveTo(-L * 0.1, W * 0.95, L * 0.18, W * 1.05, L * 0.38, 0);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.1, -W * 0.55);
+    ctx.quadraticCurveTo(L * 0.05, -W * sailH, L * 0.22, -W * (sailH * 0.82));
+    ctx.quadraticCurveTo(L * 0.32, -W * 0.65, L * 0.15, -W * 0.45);
+    ctx.quadraticCurveTo(0, -W * 0.65, -L * 0.1, -W * 0.55);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.05, W * 0.55);
+    ctx.quadraticCurveTo(L * 0.05, W * 1.15, -L * 0.18, W * 1.05);
+    ctx.quadraticCurveTo(-L * 0.12, W * 0.65, -L * 0.05, W * 0.55);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(L * 0.08, W * 0.35);
+    ctx.bezierCurveTo(L * 0.02, W * 0.9, -L * 0.12, W * 1.2, -L * 0.18, W * 0.55);
+    ctx.quadraticCurveTo(-L * 0.05, W * 0.4, L * 0.08, W * 0.35);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.36, 0);
+    ctx.bezierCurveTo(-L * 0.52, -W * 0.7, -L * 0.72, -W * (1.25 + wig * 0.3), -L * 0.85, -W * (1.05 + wig));
+    ctx.quadraticCurveTo(-L * 0.65, -W * 0.15, -L * 0.52, 0);
+    ctx.quadraticCurveTo(-L * 0.65, W * 0.15, -L * 0.85, W * (1.05 + wig));
+    ctx.bezierCurveTo(-L * 0.72, W * (1.25 + wig * 0.3), -L * 0.52, W * 0.7, -L * 0.36, 0);
+    ctx.fill();
+}
+
+function fillCrystalSerpentShadowPaths(ctx, s) {
+    const L = s.size;
+    const W = L * 0.24;
+    const segs = Math.max(8, (s.segments || 11) | 0);
+    const alongOf = (i) => -L * 0.52 + (i / (segs - 1)) * L * 1.05;
+    const swayOf = (i) => Math.sin((s.tailPhase || 0) * 1.15 + i * 0.62) * W
+        * (0.25 + (i / (segs - 1)) * 1.15);
+    const radOf = (i) => {
+        const t = i / (segs - 1);
+        const mid = Math.sin(t * Math.PI) * 0.85;
+        const hood = t > 0.78 ? (t - 0.78) / 0.22 * 0.55 : 0;
+        return W * (0.28 + mid + (1 - t) * 0.12 + hood);
+    };
+    for (let i = segs - 1; i >= 0; i--) {
+        const ax = alongOf(i);
+        const ay = swayOf(i);
+        const rw = radOf(i);
+        const rh = rw * (0.78 + 0.12 * Math.sin((s.phase || 0) + i));
+        ctx.beginPath();
+        ctx.ellipse(ax, ay, rw, rh, Math.sin((s.tailPhase || 0) + i) * 0.2, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    const headI = segs - 1;
+    const hx = alongOf(headI);
+    const hy = swayOf(headI);
+    const hr = radOf(headI);
+    ctx.beginPath();
+    ctx.moveTo(hx - L * 0.04, hy - hr * 0.15);
+    ctx.quadraticCurveTo(hx + L * 0.02, hy - hr * 1.05, hx + L * 0.1, hy - hr * 0.25);
+    ctx.quadraticCurveTo(hx + L * 0.02, hy, hx + L * 0.1, hy + hr * 0.25);
+    ctx.quadraticCurveTo(hx + L * 0.02, hy + hr * 1.05, hx - L * 0.04, hy + hr * 0.15);
+    ctx.closePath();
+    ctx.fill();
+    for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(hx + L * 0.02, hy + side * hr * 0.25);
+        ctx.lineTo(hx + L * 0.08, hy + side * hr * 0.7);
+        ctx.lineTo(hx + L * 0.05, hy + side * hr * 0.15);
+        ctx.closePath();
+        ctx.fill();
+    }
 }
 
 function fillOctopusShadowPaths(ctx, oc) {
     if (!oc) return;
     const S = oc.size || 40;
+    const breath = oc.golden ? 1 : 1 + Math.sin(oc.pulse || 0) * 0.05;
     const dir = oc.dir || 0;
+    const cosD = Math.cos(dir);
+    const sinD = Math.sin(dir);
+    const toLocal = (wx, wy) => ({
+        x: (wx - oc.x) * cosD + (wy - oc.y) * sinD,
+        y: -(wx - oc.x) * sinD + (wy - oc.y) * cosD,
+    });
+    const rearX = -S * 0.34;
+    const rearY = 0;
     ctx.beginPath();
-    ctx.ellipse(0, 0, S * 0.42, S * 0.34, dir, 0, Math.PI * 2);
-    const hx = Math.cos(dir) * -S * 0.12;
-    const hy = Math.sin(dir) * -S * 0.12;
-    for (const leg of oc.legs || []) {
-        const lx = (leg.tipX || oc.x) - oc.x;
-        const ly = (leg.tipY || oc.y) - oc.y;
-        ctx.moveTo(hx, hy);
-        ctx.quadraticCurveTo(lx * 0.5, ly * 0.5, lx, ly);
-        ctx.lineTo(lx + 3, ly + 1);
-        ctx.quadraticCurveTo(lx * 0.5 + 1, ly * 0.5 + 1, hx, hy);
+    ctx.moveTo(rearX, rearY);
+    for (let i = 0; i < (oc.legs || []).length; i++) {
+        const leg = oc.legs[i];
+        const ang = Math.PI + leg.rearOffset * 0.55;
+        ctx.lineTo(rearX + Math.cos(ang) * S * 0.34 * breath, rearY + Math.sin(ang) * S * 0.34 * breath);
     }
+    ctx.closePath();
+    ctx.fill();
+    for (const leg of oc.legs || []) {
+        const ang = Math.PI + leg.rearOffset * 0.5;
+        const bx = rearX + Math.cos(ang) * S * 0.14;
+        const by = rearY + Math.sin(ang) * S * 0.14;
+        const tip = toLocal(leg.tipX, leg.tipY);
+        const side = Math.sin(leg.rearOffset) || 0.2;
+        const mx = (bx + tip.x) * 0.5 + Math.cos(Math.PI * 0.5) * side * S * 0.32 * Math.sin(leg.phase || 0);
+        const my = (by + tip.y) * 0.5 + Math.sin(Math.PI * 0.5) * side * S * 0.32 * Math.sin(leg.phase || 0);
+        const baseW = Math.max(5, S * 0.2);
+        const tipW = Math.max(1.2, S * 0.024);
+        ctx.beginPath();
+        ctx.moveTo(bx, by - baseW * 0.5);
+        ctx.quadraticCurveTo(mx, my - baseW * 0.35, tip.x, tip.y - tipW * 0.5);
+        ctx.lineTo(tip.x, tip.y + tipW * 0.5);
+        ctx.quadraticCurveTo(mx, my + baseW * 0.35, bx, by + baseW * 0.5);
+        ctx.closePath();
+        ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.ellipse(-S * 0.28, 0, S * 0.26 * breath, S * 0.32 * breath, 0.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(-S * 0.18, 0, S * 0.2 * breath, S * 0.24 * breath, -0.05, 0, Math.PI * 2);
+    ctx.fill();
+    const pulse = oc.golden ? 0 : Math.sin(oc.pulse || 0);
+    ctx.beginPath();
+    ctx.ellipse(S * 0.22, pulse * S * 0.012, S * 0.44 * breath, S * 0.38 * breath, -0.06, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(S * 0.42, -S * 0.02, S * 0.22 * breath, S * 0.24 * breath, 0.08, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function fillBiomeGuardianShadowPaths(ctx, g) {
+    const L = g.size;
+    const limb = g.limbPhase || 0;
+    const fin = g.finWave || 0;
+    const breath = 1 + Math.sin(g.breath || 0) * 0.04;
+    const W = L * (g.kind === "aegis" ? 0.48 : g.kind === "vigil" ? 0.28 : 0.38);
+    if (g.kind === "vigil") {
+        const und = Math.sin(fin);
+        ctx.beginPath();
+        ctx.moveTo(L * 0.62, 0);
+        ctx.lineTo(L * 0.48, -W * 0.35);
+        ctx.bezierCurveTo(
+            L * 0.15, -W * (0.85 + und * 0.2) * breath,
+            -L * 0.25, -W * (0.7 - und * 0.25) * breath,
+            -L * 0.7, -W * 0.25
+        );
+        ctx.quadraticCurveTo(-L * 1.05, und * W * 0.35, -L * 1.25, 0);
+        ctx.quadraticCurveTo(-L * 1.05, -und * W * 0.35, -L * 0.7, W * 0.25);
+        ctx.bezierCurveTo(
+            -L * 0.25, W * (0.7 + und * 0.2),
+            L * 0.15, W * (0.85 - und * 0.15),
+            L * 0.48, W * 0.35
+        );
+        ctx.closePath();
+        ctx.fill();
+        const pec = Math.sin(limb) * 0.1;
+        ctx.beginPath();
+        ctx.ellipse(L * 0.1, W * (0.45 + pec), L * 0.12, W * 0.28, 0.45, 0, Math.PI * 2);
+        ctx.fill();
+        return;
+    }
+    if (g.kind === "aegis") {
+        const flap = Math.sin(fin) * 0.14;
+        ctx.beginPath();
+        ctx.moveTo(L * 0.38, 0);
+        ctx.bezierCurveTo(L * 0.05, -W * (1.55 + flap) * breath, -L * 0.35, -W * 1.5 * breath, -L * 0.4, 0);
+        ctx.bezierCurveTo(-L * 0.35, W * 1.5, L * 0.05, W * (1.55 - flap), L * 0.38, 0);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(-L * 0.15, -W * 1.1);
+        ctx.quadraticCurveTo(-L * 0.55, -W * (1.6 + flap), -L * 1.05, -W * 0.4);
+        ctx.quadraticCurveTo(-L * 0.5, -W * 0.9, -L * 0.15, -W * 0.7);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(-L * 0.15, W * 1.1);
+        ctx.quadraticCurveTo(-L * 0.55, W * (1.6 - flap), -L * 1.05, W * 0.4);
+        ctx.quadraticCurveTo(-L * 0.5, W * 0.9, -L * 0.15, W * 0.7);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(L * 0.32, -W * 0.12);
+        ctx.lineTo(L * 0.52, 0);
+        ctx.lineTo(L * 0.32, W * 0.12);
+        ctx.closePath();
+        ctx.fill();
+        return;
+    }
+    const pec = Math.sin(limb) * 0.18;
+    const tw = Math.sin(g.tailPhase || 0) * 0.28;
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.35, 0);
+    ctx.quadraticCurveTo(-L * 0.62, -W * (1.15 + tw), -L * 0.95, -W * 0.25);
+    ctx.lineTo(-L * 0.7, 0);
+    ctx.lineTo(-L * 0.95, W * 0.25);
+    ctx.quadraticCurveTo(-L * 0.62, W * (1.15 - tw), -L * 0.35, 0);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(L * 0.35, 0);
+    ctx.bezierCurveTo(L * 0.1, -W * 1.35 * breath, -L * 0.2, -W * 1.35 * breath, -L * 0.38, -W * 0.35);
+    ctx.quadraticCurveTo(-L * 0.45, 0, -L * 0.38, W * 0.35);
+    ctx.bezierCurveTo(-L * 0.2, W * 1.3, L * 0.1, W * 1.3, L * 0.35, 0);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.05, -W * 0.8);
+    ctx.quadraticCurveTo(-L * 0.15, -W * 1.15, -L * 0.28, -W * 0.7);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(L * 0.28, -W * 0.2);
+    ctx.quadraticCurveTo(L * 0.55, -W * 0.05, L * 0.58, W * 0.08);
+    ctx.quadraticCurveTo(L * 0.4, W * 0.25, L * 0.25, W * 0.18);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(L * 0.0, W * (0.95 + pec), L * 0.24, W * (0.6 + pec * 0.25), 0.45 + pec, 0, Math.PI * 2);
     ctx.fill();
 }
 
@@ -4116,14 +4527,70 @@ function pathPondPlantShadow(ctx, p) {
 }
 
 function fillTadpoleShadowPaths(ctx, t) {
-    const s = t.size || 6;
+    const L = t.size || 6;
+    const tailWave = Math.sin((t.phase || 0) * 3.4) * 0.55;
     ctx.beginPath();
-    ctx.moveTo(s * 0.55, 0);
-    ctx.bezierCurveTo(s * 0.25, -s * 0.35, -s * 0.1, -s * 0.32, -s * 0.45, -s * 0.18);
-    ctx.quadraticCurveTo(-s * 0.85, -s * 0.28, -s * 1.05, 0);
-    ctx.quadraticCurveTo(-s * 0.85, s * 0.28, -s * 0.45, s * 0.18);
-    ctx.bezierCurveTo(-s * 0.1, s * 0.32, s * 0.25, s * 0.35, s * 0.55, 0);
+    ctx.ellipse(L * 0.15, 0, L * 0.55, L * 0.42, 0, 0, Math.PI * 2);
+    ctx.fill();
+    for (let i = -1; i <= 1; i++) {
+        ctx.beginPath();
+        ctx.moveTo(-L * 0.05, i * L * 0.18);
+        ctx.quadraticCurveTo(-L * 0.35, i * L * 0.35 + tailWave * 2, -L * 0.55, i * L * 0.1);
+        ctx.lineTo(-L * 0.05, i * L * 0.14);
+        ctx.closePath();
+        ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.15, 0);
+    ctx.quadraticCurveTo(-L * 0.7, -L * 0.08 + tailWave * L * 0.15, -L * 1.55, tailWave * L * 0.55);
+    ctx.quadraticCurveTo(-L * 0.95, L * 0.35, -L * 0.55, L * 0.12);
+    ctx.quadraticCurveTo(-L * 0.3, L * 0.05, -L * 0.15, 0);
     ctx.closePath();
+    ctx.fill();
+}
+
+function fillFrogFishHybridShadowPaths(ctx, fish) {
+    const S = fish.size;
+    const kick = 0.35 + 0.45 * Math.abs(Math.sin((fish.age || 0) * 5.2));
+    const breath = 1 + Math.sin((fish.age || 0) * 2.1) * 0.035;
+    const tw = Math.sin((fish.age || 0) * 7 + kick) * 0.2;
+    const tuckX = -S * (0.32 + kick * 0.7);
+    const tuckY = S * (0.18 - kick * 0.04);
+    const footSpread = S * (0.12 + kick * 0.45);
+    for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(-S * 0.15, side * S * 0.06);
+        ctx.quadraticCurveTo(-S * (0.4 + kick * 0.3), side * S * (0.24 + kick * 0.08), tuckX, side * tuckY);
+        ctx.quadraticCurveTo(-S * (0.5 + kick * 0.4), side * S * 0.04, -S * 0.2, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(tuckX, side * tuckY * 0.85);
+        ctx.lineTo(tuckX - S * (0.16 + kick * 0.28), side * (tuckY + footSpread));
+        ctx.lineTo(tuckX - S * (0.28 + kick * 0.32), side * tuckY * 0.15);
+        ctx.closePath();
+        ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.moveTo(-S * 0.45, 0);
+    ctx.quadraticCurveTo(-S * 0.85, -S * (0.32 + tw), -S * 1.15, -S * (0.08 + tw * 0.5));
+    ctx.quadraticCurveTo(-S * 0.95, 0, -S * 1.15, S * (0.08 - tw * 0.5));
+    ctx.quadraticCurveTo(-S * 0.85, S * (0.32 - tw), -S * 0.45, 0);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-S * 0.05, -S * 0.28 * breath);
+    ctx.quadraticCurveTo(S * 0.05, -S * 0.55, S * 0.28, -S * 0.22);
+    ctx.quadraticCurveTo(S * 0.1, -S * 0.32, -S * 0.05, -S * 0.28 * breath);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(S * 0.72, 0);
+    ctx.bezierCurveTo(S * 0.5, -S * 0.34 * breath, -S * 0.05, -S * 0.38 * breath, -S * 0.48, -S * 0.1);
+    ctx.bezierCurveTo(-S * 0.62, 0, -S * 0.48, S * 0.12, -S * 0.12, S * 0.3);
+    ctx.bezierCurveTo(S * 0.22, S * 0.38, S * 0.52, S * 0.26, S * 0.72, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(S * 0.52, -S * 0.06, S * 0.3, S * 0.24 * breath, -0.1, 0, Math.PI * 2);
     ctx.fill();
 }
 
@@ -4347,7 +4814,7 @@ function fillPacifistShadowPaths(ctx, p) {
         return;
     }
     if (kind === "beluga" || kind === "singer") {
-        fillWhaleShadowPaths(ctx, S, S * (kind === "beluga" ? 0.36 : 0.3));
+        fillWhaleShadowPaths(ctx, { size: S, tailPhase: p.limbPhase || 0 });
         return;
     }
     // Nurse / shard (and fallback): torpedo + heterocercal caudal + dorsals + pecs.
@@ -4429,14 +4896,7 @@ function drawSunCreatureShadows(ctx) {
             (c) => {
                 c.scale(scale * pose.discPulse, scale * (shape === "eel" ? 1 : pose.discPulse));
                 if (f.frogHybrid && !f.golden && !f.isRainbow) {
-                    fillFrogShadowPaths(c, { size: L * 0.95 });
-                    // Caudal wedge so the hybrid shadow matches the fish fin.
-                    c.beginPath();
-                    c.moveTo(-L * 0.4, 0);
-                    c.lineTo(-L * 1.05, -L * 0.22);
-                    c.lineTo(-L * 1.05, L * 0.22);
-                    c.closePath();
-                    c.fill();
+                    fillFrogFishHybridShadowPaths(c, { size: L * 0.95, age: f.age });
                 } else {
                     fillFishShadowPaths(c, L, W, shape, pose.wig, {
                         noDorsal: pose.noDorsal,
@@ -4455,48 +4915,32 @@ function drawSunCreatureShadows(ctx) {
     }
     if (castsFloorShadow(swordfish)) {
         withFloorShadow(ctx, swordfish.x, swordfish.y, swordfish.size, 0.76, swordfish.dir, (c) => {
-            const L = swordfish.size;
-            const W = L * 0.32;
-            c.beginPath();
-            c.moveTo(L * 0.95, 0);
-            c.lineTo(L * 0.45, -W * 0.12);
-            c.bezierCurveTo(L * 0.2, -W * 1.0, -L * 0.15, -W * 1.1, -L * 0.55, -W * 0.45);
-            c.bezierCurveTo(-L * 0.8, -W * 0.7, -L * 1.05, -W * 0.5, -L * 1.15, 0);
-            c.bezierCurveTo(-L * 1.05, W * 0.5, -L * 0.8, W * 0.65, -L * 0.55, W * 0.4);
-            c.bezierCurveTo(-L * 0.15, W * 0.95, L * 0.2, W * 0.75, L * 0.45, W * 0.12);
-            c.closePath();
-            c.fill();
+            fillSwordfishShadowPaths(c, swordfish);
         });
     }
     if (castsFloorShadow(octopus)) {
-        withFloorShadow(ctx, octopus.x, octopus.y, octopus.size * 2.4, 0.7, 0, (c) => {
+        withFloorShadow(ctx, octopus.x, octopus.y, octopus.size * 2.4, 0.7, octopus.dir, (c) => {
             fillOctopusShadowPaths(c, octopus);
         });
     }
     if (castsFloorShadow(crystalMantle)) {
-        withFloorShadow(ctx, crystalMantle.x, crystalMantle.y, crystalMantle.size * 2.4, 0.72, 0, (c) => {
+        withFloorShadow(ctx, crystalMantle.x, crystalMantle.y, crystalMantle.size * 2.4, 0.72, crystalMantle.dir, (c) => {
             fillOctopusShadowPaths(c, crystalMantle);
         });
     }
     if (castsFloorShadow(shark)) {
-        const L = shark.size;
-        const W = shark.size * 0.38;
-        withFloorShadow(ctx, shark.x, shark.y, L, 0.8, shark.dir, (c) => {
-            fillSharkShadowPaths(c, L, W);
+        withFloorShadow(ctx, shark.x, shark.y, shark.size, 0.8, shark.dir, (c) => {
+            fillSharkShadowPaths(c, shark);
         });
     }
     if (castsFloorShadow(whale)) {
-        const L = whale.size;
-        const W = whale.size * 0.3;
-        withFloorShadow(ctx, whale.x, whale.y, L, 0.72, whale.dir, (c) => {
-            fillWhaleShadowPaths(c, L, W);
+        withFloorShadow(ctx, whale.x, whale.y, whale.size, 0.72, whale.dir, (c) => {
+            fillWhaleShadowPaths(c, whale);
         });
     }
     if (castsFloorShadow(crystalSerpent)) {
         withFloorShadow(ctx, crystalSerpent.x, crystalSerpent.y, crystalSerpent.size, 0.74, crystalSerpent.dir, (c) => {
-            c.beginPath();
-            c.ellipse(0, 0, crystalSerpent.size * 0.48, crystalSerpent.size * 0.16, 0, 0, Math.PI * 2);
-            c.fill();
+            fillCrystalSerpentShadowPaths(c, crystalSerpent);
         });
     }
     for (const pv of pacifistVisitors || []) {
@@ -4511,7 +4955,7 @@ function drawSunCreatureShadows(ctx) {
     for (const g of biomeGuardians || []) {
         if (!castsFloorShadow(g)) continue;
         withFloorShadow(ctx, g.x, g.y, g.size, 0.74, g.dir, (c) => {
-            fillFishShadowPaths(c, g.size, g.size * 0.34, "oval");
+            fillBiomeGuardianShadowPaths(c, g);
         });
     }
     if (scenery.frogs) {
@@ -4579,15 +5023,47 @@ function drawSunCreatureShadows(ctx) {
 }
 
 function fillFrogShadowPaths(ctx, frog) {
-    const s = frog.size || 14;
+    // Same local-space silhouette as drawFrogModel (kick legs, streamlined body, head).
+    const S = frog.size || 14;
+    const kick = frog.kick || 0;
+    const breath = 1 + Math.sin(frog.breath || 0) * 0.04;
+    const tuckX = -S * (0.35 + kick * 0.85);
+    const tuckY = S * (0.2 - kick * 0.05);
+    const footSpread = S * (0.15 + kick * 0.55);
+    for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(-S * 0.2, side * S * 0.08);
+        ctx.quadraticCurveTo(-S * (0.45 + kick * 0.35), side * S * (0.28 + kick * 0.1), tuckX, side * tuckY);
+        ctx.quadraticCurveTo(-S * (0.55 + kick * 0.5), side * S * 0.05, -S * 0.25, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(tuckX, side * tuckY * 0.85);
+        ctx.lineTo(tuckX - S * (0.2 + kick * 0.35), side * (tuckY + footSpread));
+        ctx.lineTo(tuckX - S * (0.35 + kick * 0.4), side * tuckY * 0.2);
+        ctx.lineTo(tuckX - S * (0.15 + kick * 0.2), side * (tuckY - footSpread * 0.4));
+        ctx.closePath();
+        ctx.fill();
+    }
     ctx.beginPath();
-    ctx.moveTo(s * 0.45, 0);
-    ctx.bezierCurveTo(s * 0.35, -s * 0.35, s * 0.05, -s * 0.42, -s * 0.2, -s * 0.3);
-    ctx.quadraticCurveTo(-s * 0.55, -s * 0.55, -s * 0.85, -s * 0.28);
-    ctx.quadraticCurveTo(-s * 0.45, 0, -s * 0.85, s * 0.28);
-    ctx.quadraticCurveTo(-s * 0.55, s * 0.55, -s * 0.2, s * 0.3);
-    ctx.bezierCurveTo(s * 0.05, s * 0.42, s * 0.35, s * 0.35, s * 0.45, 0);
+    ctx.moveTo(S * 0.15, S * 0.1);
+    ctx.quadraticCurveTo(S * 0.35, S * 0.28, S * 0.22, S * 0.32);
+    ctx.quadraticCurveTo(S * 0.08, S * 0.22, S * 0.1, S * 0.08);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(S * 0.12, -S * 0.05);
+    ctx.quadraticCurveTo(S * 0.28, -S * 0.22, S * 0.18, -S * 0.28);
+    ctx.quadraticCurveTo(S * 0.05, -S * 0.15, S * 0.08, -S * 0.02);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(S * 0.75, 0);
+    ctx.bezierCurveTo(S * 0.55, -S * 0.38 * breath, -S * 0.1, -S * 0.42 * breath, -S * 0.55, -S * 0.12);
+    ctx.bezierCurveTo(-S * 0.72, 0, -S * 0.55, S * 0.14, -S * 0.2, S * 0.32);
+    ctx.bezierCurveTo(S * 0.2, S * 0.4, S * 0.55, S * 0.28, S * 0.75, 0);
     ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(S * 0.55, -S * 0.06, S * 0.32, S * 0.26 * breath, -0.1, 0, Math.PI * 2);
     ctx.fill();
 }
 
