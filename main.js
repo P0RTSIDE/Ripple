@@ -5484,6 +5484,7 @@ function petFrog(frog, quiet) {
         bright: 0.95,
     });
     water.disturb(frog.x, frog.y, frog.size * 0.4, 40);
+    if (typeof noteSecretFrogPet === "function") noteSecretFrogPet(frog);
     if (frog.befriended) return;
     frog.petCount++;
     frog.petProgress += 0.5;
@@ -9077,7 +9078,7 @@ const pondPlants = [];
 const GREEN_POND_SPECIALS = [
     "lantern", "buoy", "bottle", "shell", "mushroom",
     "bamboo", "shipwheel", "teapot", "coral",
-    "lotus", "weed",
+    "lotus", "lily", "reed", "cattail", "weed", "moss",
 ];
 // Dev menu + rare wooden fish share this list.
 const PLANT_KINDS = GREEN_POND_SPECIALS.concat(["woodenfish"]);
@@ -10017,6 +10018,13 @@ class Food {
         ctx.beginPath();
         ctx.arc(this.x, depthY + bob, r, 0, Math.PI * 2);
         ctx.fill();
+        if (this.swirlSnack && !this.sinking) {
+            ctx.strokeStyle = "rgba(140, 200, 230, 0.55)";
+            ctx.lineWidth = 1.4;
+            ctx.beginPath();
+            ctx.arc(this.x, depthY + bob, r + 3.5 + Math.sin(this.phase * 2) * 1.2, 0, Math.PI * 2);
+            ctx.stroke();
+        }
         ctx.restore();
     }
 }
@@ -10746,6 +10754,7 @@ class Fish {
                 vomitBlobfishRainbows(this);
             }
         }
+        if (typeof noteSecretFishPet === "function") noteSecretFishPet(this);
     }
 
     // Soften an evil fish: stop hunting, and never turn predator from food again.
@@ -24109,6 +24118,7 @@ function sweepFoodNear(x, y) {
             Audio.playDrop({ freq: 420, decay: 0.7, velocity: 0.22, pan: 0, plunk: false });
         }
     }
+    if (typeof noteSecretNetSweep === "function") noteSecretNetSweep(scooped, x, y);
     return scooped;
 }
 
@@ -24527,6 +24537,7 @@ function onPointerUp(ev) {
             return;
         }
         if (liftState) {
+            if (typeof noteSecretGoldHelperTap === "function") noteSecretGoldHelperTap(liftState);
             // Released too early: the gold fish settles back on the lakebed.
             cancelGoldLift();
         }
@@ -24557,6 +24568,11 @@ function onPointerUp(ev) {
     const v = chargeFromHold(held, ev);
 
     if (mode === "pond") {
+        if (typeof noteSecretLilyTap === "function"
+            && held < 0.32
+            && Math.hypot(x - pointerDownAt.x, y - pointerDownAt.y) < 14) {
+            noteSecretLilyTap(x, y);
+        }
         if (!foodCreationEnabled) {
             // Current carve only: release ends the drag, no food pellet.
             pointerDownAt = null;
@@ -24564,14 +24580,16 @@ function onPointerUp(ev) {
             if (!firstInteractionDone) markFirstInteraction();
             return;
         }
-        // Drag = sling the food across the water from where you started.
-        let sx = x, sy = y;
-        const dx = x - pointerDownAt.x;
-        const dy = y - pointerDownAt.y;
-        if (Math.hypot(dx, dy) > 8) { sx = pointerDownAt.x; sy = pointerDownAt.y; }
-        if (rocks.length < CONFIG.maxRocks) {
-            rocks.push(new Rock(sx, sy, x, y, v));
-            resetPetRainbowStreak();
+        if (foodCreationEnabled) {
+            // Drag = sling the food across the water from where you started.
+            let sx = x, sy = y;
+            const dx = x - pointerDownAt.x;
+            const dy = y - pointerDownAt.y;
+            if (Math.hypot(dx, dy) > 8) { sx = pointerDownAt.x; sy = pointerDownAt.y; }
+            if (rocks.length < CONFIG.maxRocks) {
+                rocks.push(new Rock(sx, sy, x, y, v));
+                resetPetRainbowStreak();
+            }
         }
     } else {
         spawnWindowRipple(x, y, v);
@@ -24766,7 +24784,12 @@ function petPondLifeAt(x, y, quiet) {
         const reach = Math.max(28, f.size * 0.9);
         if (d < reach && d < bestD) { bestD = d; best = f; }
     }
-    if (!best) return;
+    if (!best) {
+        if (typeof noteSecretMoonPet === "function" && noteSecretMoonPet(x, y, quiet)) {
+            markFirstInteraction();
+        }
+        return;
+    }
     if (quiet && best.petTimer > 0.6) {
         best.petTimer = 1.4;
         return;
@@ -24805,6 +24828,7 @@ function drawCharge(ctx) {
         return;
     }
 
+
     const held = (performance.now() - pointerDownAt.t) / 1000;
     const v = chargeFromHold(held, null);
     const rad = 7 + v * 24;
@@ -24829,15 +24853,24 @@ function drawCharge(ctx) {
     ctx.beginPath();
     ctx.arc(x, y, 31, 0, Math.PI * 2);
     ctx.stroke();
-    // The food pellet grows brown while held (matches what flies into the pond).
-    const g = ctx.createRadialGradient(x - rad * 0.3, y - rad * 0.3, rad * 0.1, x, y, rad);
-    g.addColorStop(0, "#b98a48");
-    g.addColorStop(0.6, "#8a6531");
-    g.addColorStop(1, "#5c4321");
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(x, y, rad, 0, Math.PI * 2);
-    ctx.fill();
+    if (mode !== "pond" || foodCreationEnabled) {
+        // The food pellet grows brown while held (matches what flies into the pond).
+        const g = ctx.createRadialGradient(x - rad * 0.3, y - rad * 0.3, rad * 0.1, x, y, rad);
+        g.addColorStop(0, "#b98a48");
+        g.addColorStop(0.6, "#8a6531");
+        g.addColorStop(1, "#5c4321");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(x, y, rad, 0, Math.PI * 2);
+        ctx.fill();
+    } else {
+        // Food off: growing current charge, no pellet.
+        ctx.strokeStyle = "rgba(170,215,240," + (0.28 + v * 0.4) + ")";
+        ctx.lineWidth = 2 + v * 2;
+        ctx.beginPath();
+        ctx.arc(x, y, rad, 0, Math.PI * 2);
+        ctx.stroke();
+    }
     ctx.restore();
 }
 
@@ -25325,6 +25358,7 @@ const REGISTRY_TABS = [
     { id: "helpers", label: "Helpers" },
     { id: "rare", label: "Rare" },
     { id: "elements", label: "Elements" },
+    { id: "secrets", label: "Quiet" },
 ];
 
 const REGISTRY_GROUP_BLURB = {
@@ -25335,7 +25369,8 @@ const REGISTRY_GROUP_BLURB = {
     apex: "Large hunters and guests that can empty or reshape the pond. Pet carefully, or let them leave on their own.",
     helpers: "Pacifist counterparts and rare biome guardians. Helpers gift and soothe. Guardians hunt aggressive fish, then leave unless you pet them enough to stay. Later biomes take more pets.",
     rare: "Special forms a fish can enter. Gold rests on the bed, rainbow hunts hard, monster rises from eating reptiles, and platinum cannot be eaten.",
-    elements: "Pond scenery, lake debris, and ornaments grown from green food. Entries stay dark until that piece appears in the water.",
+    elements: "Every scenery piece, lake debris kind, and green-food ornament, including the reed raft. Silhouettes fill in when that piece is in the water.",
+    secrets: "Quiet pond moments. Tiles stay dark until you stumble on them.",
 };
 
 const REGISTRY_ODD_TIP = {
@@ -25393,6 +25428,7 @@ const REGISTRY_ELEMENT_META = [
     { id: "elem:lilies", source: "scenery", kind: "lilies", label: "Lily pads", color: "#5a8a48", tip: "Round floating pads with a small notch. They bob on wakes and can be nudged." },
     { id: "elem:duckweed", source: "scenery", kind: "duckweed", label: "Duckweed", color: "#5a8a50", tip: "Tiny surface greens in loose clusters. They share a Looks toggle with floating leaves." },
     { id: "elem:leaves", source: "scenery", kind: "leaves", label: "Floating leaves", color: "#7a6a38", tip: "Loose leaves on the surface. They drift with duckweed when surface greens are on." },
+    { id: "elem:bed", source: "scenery", kind: "bed", label: "Pond bed", color: "#5a4a32", tip: "The muddy lake floor, with silt, pebbles, and sunk twigs. You can hide it from pond looks." },
     { id: "elem:boulder", source: "obstacle", kind: "boulder", label: "Boulder", color: "#6a6860", tip: "A heavy lake stone. Fish swim around it. Right click drag to haul it through the water." },
     { id: "elem:mossrock", source: "obstacle", kind: "mossrock", label: "Mossy rock", color: "#5a6a50", tip: "A lake stone with moss patches. Same drag as other debris." },
     { id: "elem:log", source: "obstacle", kind: "log", label: "Log", color: "#6a4a28", tip: "A thick fallen log. Long debris yaws slowly while you drag it." },
@@ -25414,8 +25450,13 @@ const REGISTRY_ELEMENT_META = [
     { id: "elem:coral", source: "plant", kind: "coral", label: "Coral", color: "#d87898", tip: "Branching coral on the bed. A fantasy ornament from green food." },
     { id: "elem:woodenfish", source: "plant", kind: "woodenfish", label: "Wooden fish", color: "#b88850", tip: "A carved wooden fish. A rare green-food roll, and it stays until restock." },
     { id: "elem:lotus", source: "plant", kind: "lotus", label: "Lotus", color: "#e0b4a0", tip: "A flowering pad with a pale bloom. Grown from green food, not the usual lily pads." },
+    { id: "elem:lily", source: "plant", kind: "lily", label: "Lily plant", color: "#6a9a58", tip: "A planted lily grown from green food. Broader than the usual floating pads, and it has no lotus bloom." },
+    { id: "elem:reed", source: "plant", kind: "reed", label: "Reed tuft", color: "#4a7a48", tip: "A small reed clump grown from green food, out in the water rather than along the bank." },
+    { id: "elem:cattail", source: "plant", kind: "cattail", label: "Cattail tuft", color: "#6a5a38", tip: "A short cattail grown from green food. Brown seed head on a few stems, away from the bank." },
     { id: "elem:weed", source: "plant", kind: "weed", label: "Weed tuft", color: "#3a8250", tip: "A tuft of underwater weed. Soft fronds that sway on the bed." },
+    { id: "elem:moss", source: "plant", kind: "moss", label: "Moss pebble", color: "#4a6a48", tip: "A small mossy stone left by green food. Soft green sits on a pebble on the bed." },
 ];
+_registryCatalog = null;
 
 function registryPrettyName(name) {
     return String(name || "")
@@ -25536,6 +25577,18 @@ function getRegistryCatalog() {
             elemSource: el.source,
         });
     }
+    if (typeof REGISTRY_SECRET_META !== "undefined") {
+        for (const s of REGISTRY_SECRET_META) {
+            list.push({
+                id: s.id,
+                group: "secrets",
+                label: s.label,
+                color: s.color,
+                tip: s.tip,
+                previewSecret: true,
+            });
+        }
+    }
     _registryCatalog = list;
     return list;
 }
@@ -25613,6 +25666,7 @@ function noteDrawnPondElements() {
     if (scenery.duckweed && sceneryItems.leaves && sceneryItems.leaves.length) {
         noteRegistryEncounter("elem:leaves");
     }
+    if (scenery.bed) noteRegistryEncounter("elem:bed");
     if (scenery.debris) {
         for (const o of obstacles) {
             if (o && o.kind) noteRegistryEncounter("elem:" + o.kind);
@@ -25714,7 +25768,12 @@ function makeRegistryObstaclePreview(kind) {
 }
 
 function makeRegistryPlantPreview(kind) {
-    const size = kind === "bamboo" ? 34 : kind === "woodenfish" ? 40 : kind === "weed" ? 36 : 38;
+    const size = kind === "bamboo" ? 34
+        : kind === "woodenfish" ? 40
+        : kind === "weed" ? 36
+        : kind === "lily" ? 36
+        : kind === "moss" ? 28
+        : 38;
     return {
         soft: "plant",
         kind,
@@ -25822,6 +25881,31 @@ function paintSceneryElementPreview(ctx, kind) {
             try { drawLeaves(ctx, 0.4, 0); }
             finally { sceneryItems.leaves = prev; }
         });
+        return;
+    }
+    if (kind === "bed") {
+        ctx.scale(1.25, 1.25);
+        const mud = ctx.createRadialGradient(-4, -3, 2, 0, 2, 16);
+        mud.addColorStop(0, "#6a5a3a");
+        mud.addColorStop(1, "#3a3020");
+        ctx.fillStyle = mud;
+        ctx.beginPath();
+        ctx.ellipse(0, 2, 16, 10, -0.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(90,80,60,0.75)";
+        ctx.beginPath();
+        ctx.ellipse(-5, 1, 3.2, 2.1, 0.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(4, 3, 2.4, 1.6, -0.3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(70,50,30,0.55)";
+        ctx.lineWidth = 1.2;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(-8, 4);
+        ctx.quadraticCurveTo(0, 6, 7, 3);
+        ctx.stroke();
     }
 }
 
@@ -25831,7 +25915,7 @@ function paintElementRegistryPreview(ctx, entry, seen, cssW, cssH) {
     const tall = kind === "reeds" || kind === "cattails" || kind === "reedraft"
         || kind === "bamboo" || kind === "lantern" || kind === "weed"
         || kind === "reed" || kind === "cattail" || kind === "mushroom"
-        || kind === "coral" || kind === "lotus";
+        || kind === "coral" || kind === "lotus" || kind === "lily";
     const oy = tall ? cssH * 0.84 : cssH * 0.56;
     ctx.save();
     if (!seen) {
@@ -25973,6 +26057,10 @@ function paintRegistryPreview(canvas, entry, seen) {
         });
         return;
     }
+    if (entry.previewSecret) {
+        paintSecretRegistryPreview(ctx, entry, seen, cssW, cssH);
+        return;
+    }
 
     const preview = createRegistryPreviewEntity(entry);
     if (!preview || !preview.ent || typeof preview.ent.draw !== "function") return;
@@ -26008,11 +26096,19 @@ function renderRegistryUI() {
 
     const titleEl = document.getElementById("registry-title");
     if (titleEl) {
-        titleEl.textContent = registryTab === "elements" ? "Pond elements" : "Fish registry";
+        titleEl.textContent = registryTab === "elements"
+            ? "Pond elements"
+            : registryTab === "secrets"
+                ? "Quiet finds"
+                : "Fish registry";
     }
     const panel = document.getElementById("registry-panel");
     if (panel) {
-        panel.setAttribute("aria-label", registryTab === "elements" ? "Pond elements" : "Fish registry");
+        panel.setAttribute("aria-label", registryTab === "elements"
+            ? "Pond elements"
+            : registryTab === "secrets"
+                ? "Quiet finds"
+                : "Fish registry");
     }
 
     const blurbEl = document.getElementById("registry-blurb");
@@ -26049,25 +26145,30 @@ function renderRegistryUI() {
     let selected = null;
     for (const entry of rows) {
         const seen = !!registrySeen[entry.id];
+        const revealed = seen || entry.group === "elements";
         const card = document.createElement("button");
         card.type = "button";
         card.className = "registry-card"
-            + (seen ? " seen" : " locked")
+            + (revealed ? " seen" : " locked")
             + (registrySelectedId === entry.id ? " selected" : "");
         card.setAttribute("role", "listitem");
         card.style.setProperty("--reg-color", entry.color || "#7aa89a");
-    card.title = seen
-        ? entry.label
-        : (entry.group === "elements" ? "Not yet seen" : "Not yet met");
+        card.title = revealed
+            ? entry.label
+            : (entry.group === "elements"
+                ? "Not yet seen"
+                : entry.group === "secrets"
+                    ? "Not yet found"
+                    : "Not yet met");
         const preview = document.createElement("canvas");
         preview.className = "registry-preview";
         preview.setAttribute("aria-hidden", "true");
         const name = document.createElement("span");
         name.className = "registry-name";
-        name.textContent = seen ? entry.label : "???";
+        name.textContent = revealed ? entry.label : "???";
         card.appendChild(preview);
         card.appendChild(name);
-        if (seen) {
+        if (revealed) {
             card.addEventListener("click", (e) => {
                 e.stopPropagation();
                 registrySelectedId = entry.id;
@@ -26078,13 +26179,15 @@ function renderRegistryUI() {
             card.disabled = true;
         }
         grid.appendChild(card);
-        paintRegistryPreview(preview, entry, seen);
+        paintRegistryPreview(preview, entry, revealed);
     }
     if (detail) {
         if (selected) {
             detail.textContent = selected.label + ". " + (selected.tip || "");
         } else if (registryTab === "elements") {
-            detail.textContent = "Pond pieces stay dark until they appear in the water. Select a revealed entry for notes.";
+            detail.textContent = "Every pond piece is listed here. Select an entry for notes.";
+        } else if (registryTab === "secrets") {
+            detail.textContent = "Quiet pond moments stay dark until you find them.";
         } else {
             detail.textContent = "Meet a new fish in the pond to reveal its silhouette. Select a revealed entry for notes.";
         }
@@ -27429,6 +27532,7 @@ function tryCatchRainbowInCircle(cx, cy, r, dragMeta) {
     }
     if (!best) {
         water.disturb(cx, cy, r * 0.35, 35);
+        if (typeof noteSecretCatcherMiss === "function") noteSecretCatcherMiss(cx, cy, r, dragMeta);
         return false;
     }
     const bx = best.x;
@@ -28996,6 +29100,10 @@ function buildDevMenu() {
         const p = devSpawnPoint();
         spawnHeroApexGuardians(p.x, p.y);
     });
+    const quietHint = document.createElement("p");
+    quietHint.className = "dev-hint";
+    quietHint.textContent = "The pond keeps a few quiet tricks. Pads, pets, currents, and helpers remember patterns.";
+    eggs.parentNode.appendChild(quietHint);
 
     const kits = section("Scene kits");
     btn(kits, "Night fireflies", () => {
@@ -30924,7 +31032,562 @@ function updateNightLoop(dt) {
     }
 }
 
+// ===========================================================================
+// QUIET POND SECRETS: hidden, discoverable moments. Not advertised in the toolbar.
+// ===========================================================================
+const REGISTRY_SECRET_META = [
+    { id: "secret:kindred", label: "Kindred swim", color: "#7ec8c0", tip: "Two of the same kind answered each other and eased closer." },
+    { id: "secret:purr", label: "Purr trio", color: "#e8b878", tip: "One fish was petted three times in a row and glowed with a small stretch." },
+    { id: "secret:swirl", label: "Swirl snack", color: "#8ec4e8", tip: "A pellet rode a current long enough to become a richer swirl snack." },
+    { id: "secret:pact", label: "Salamander pact", color: "#f0a0b8", tip: "A pond axolotl and a lotus softshell met and shared a gift burst." },
+    { id: "secret:pads", label: "Pad waltz", color: "#6a9a58", tip: "Three lily pads were tapped in a short dance and the surface bloomed." },
+    { id: "secret:moon", label: "Moon trail", color: "#c8d8f0", tip: "A night pet on the moon left a silver glow trail on nearby fish." },
+    { id: "secret:cairn", label: "Stone cairn", color: "#8a8880", tip: "Three lake stones sat in a tight cluster and a moss pebble took root." },
+    { id: "secret:chorus", label: "Pad chorus", color: "#5a8a48", tip: "A frog on a lily pad croaked, and friends on pads answered." },
+    { id: "secret:goldhush", label: "Gold hush", color: "#e0b24a", tip: "A settled gold helper was tapped lightly and shed a gold pellet." },
+    { id: "secret:eddy", label: "Quiet tools", color: "#9ab8a8", tip: "An empty net sweep or empty catcher ring carved a small eddy." },
+];
+_registryCatalog = null;
+
+const secretMotes = [];
+const secretState = {
+    lastPetFish: null,
+    lastPetAt: 0,
+    lastPetKind: "",
+    purrFish: null,
+    purrCount: 0,
+    purrAt: 0,
+    lilyTaps: [],
+    goldHelper: null,
+    goldTaps: 0,
+    goldAt: 0,
+    emptyNet: 0,
+    emptyNetAt: 0,
+    lastEmptyNetX: 0,
+    lastEmptyNetY: 0,
+    pactCd: 0,
+    cairnCd: 0,
+    eddyCd: 0,
+    chorusCd: 0,
+    school: null,
+    moonFish: [],
+};
+
+function secretLivingFoodCount() {
+    let n = 0;
+    if (!foods) return 0;
+    for (const f of foods) if (f && !f.eaten) n++;
+    return n;
+}
+
+function spawnSecretFood(x, y, flags, size) {
+    const cap = (CONFIG && CONFIG.maxFoods) || 28;
+    if (secretLivingFoodCount() >= cap) return null;
+    const pellet = new Food(x, y, size || (7 + Math.random() * 4), flags || {});
+    foods.push(pellet);
+    return pellet;
+}
+
+function emitSecretMotes(x, y, n, rgb) {
+    const col = rgb || [200, 230, 210];
+    const count = Math.max(4, Math.min(n || 10, 22));
+    for (let i = 0; i < count; i++) {
+        if (secretMotes.length > 90) secretMotes.shift();
+        const a = Math.random() * Math.PI * 2;
+        const sp = 18 + Math.random() * 46;
+        secretMotes.push({
+            x: x, y: y,
+            vx: Math.cos(a) * sp,
+            vy: Math.sin(a) * sp - 8,
+            age: 0,
+            life: 0.55 + Math.random() * 0.55,
+            r: 1.2 + Math.random() * 2.2,
+            rgb: col,
+        });
+    }
+}
+
+function unlockPondSecret(id, x, y) {
+    if (typeof noteRegistryEncounter !== "function") return false;
+    const first = noteRegistryEncounter(id);
+    if (first) {
+        if (typeof emitStarWishSparks === "function") emitStarWishSparks(x, y, 12, false);
+        const pan = Math.max(-1, Math.min(1, ((x || viewW * 0.5) / viewW) * 2 - 1));
+        if (Audio && Audio.rainbowChime) Audio.rainbowChime(pan * 0.5);
+        else if (Audio && Audio.fishNote) {
+            Audio.fishNote({
+                freq: 480, wave: "sine", pan, dur: 0.38, level: 0.055,
+                partialAmt: 0.18, bright: 1.15,
+            });
+        }
+        if (typeof water !== "undefined" && water.disturb) water.disturb(x, y, 10, 48);
+        emitSecretMotes(x, y, 12, [210, 235, 220]);
+    }
+    return first;
+}
+
+function secretChime(x, y, freq) {
+    const pan = Math.max(-1, Math.min(1, ((x || 0) / viewW) * 2 - 1));
+    if (Audio && Audio.fishNote) {
+        Audio.fishNote({
+            freq: freq || 360, wave: "sine", pan, dur: 0.28, level: 0.05,
+            partialAmt: 0.16, bright: 1.05,
+        });
+    }
+}
+
+function moonSecretPos() {
+    const drift = 0.5 + 0.5 * Math.sin((typeof sunPhase === "number" ? sunPhase : 0) * 0.23 + 0.8);
+    return { x: viewW * (0.7 + drift * 0.02), y: viewH * 0.12, r: Math.min(viewW, viewH) * 0.055 };
+}
+
+function secretLilyList() {
+    if (!scenery || !scenery.lilies || !sceneryItems || !sceneryItems.lilies) return [];
+    return sceneryItems.lilies;
+}
+
+function noteSecretFishPet(fish) {
+    if (!fish || fish.dead || fish.golden) return;
+    const now = performance.now();
+    const kind = (fish.type && fish.type.name) || "";
+
+    // Kindred: pet two different fish of the same species in a short window.
+    if (secretState.lastPetFish && secretState.lastPetFish !== fish
+        && !secretState.lastPetFish.dead
+        && kind && kind === secretState.lastPetKind
+        && now - secretState.lastPetAt < 1500) {
+        const a = secretState.lastPetFish;
+        const b = fish;
+        secretState.school = { a: a, b: b, t: 3.2 };
+        const mx = (a.x + b.x) * 0.5;
+        const my = (a.y + b.y) * 0.5;
+        emitSecretMotes(mx, my, 10, [160, 220, 210]);
+        secretChime(mx, my, 390);
+        unlockPondSecret("secret:kindred", mx, my);
+    }
+    secretState.lastPetFish = fish;
+    secretState.lastPetAt = now;
+    secretState.lastPetKind = kind;
+
+    // Purr trio: three discrete pets on the same fish.
+    if (secretState.purrFish === fish && now - secretState.purrAt < 2600) {
+        secretState.purrCount++;
+    } else {
+        secretState.purrFish = fish;
+        secretState.purrCount = 1;
+    }
+    secretState.purrAt = now;
+    if (secretState.purrCount >= 3) {
+        secretState.purrCount = 0;
+        if (typeof fish.grow === "function") fish.grow(1.6);
+        fish.petTimer = Math.max(fish.petTimer || 0, 1.8);
+        fish.secretPurr = 1.6;
+        emitSecretMotes(fish.x, fish.y, 8, [240, 200, 140]);
+        secretChime(fish.x, fish.y, 340);
+        unlockPondSecret("secret:purr", fish.x, fish.y);
+    }
+}
+
+function noteSecretLilyTap(x, y) {
+    const pads = secretLilyList();
+    if (!pads.length) return;
+    let hit = null;
+    for (const L of pads) {
+        const rr = (L.r || 14) * 1.2;
+        if (Math.hypot(x - L.x, y - L.y) < rr) { hit = L; break; }
+    }
+    if (!hit) return;
+    hit.secretBob = 1;
+    const now = performance.now();
+    secretState.lilyTaps = secretState.lilyTaps.filter((t) => now - t.at < 4500);
+    if (!secretState.lilyTaps.some((t) => t.pad === hit)) {
+        secretState.lilyTaps.push({ pad: hit, at: now });
+    }
+    emitSecretMotes(hit.x, hit.y, 5, [140, 190, 110]);
+    if (secretState.lilyTaps.length >= 3) {
+        const taps = secretState.lilyTaps.slice();
+        secretState.lilyTaps = [];
+        let sx = 0, sy = 0;
+        for (const t of taps) { sx += t.pad.x; sy += t.pad.y; t.pad.secretBloom = 1.2; }
+        sx /= taps.length; sy /= taps.length;
+        spawnSecretFood(sx, sy, { green: true }, 8);
+        if (typeof water !== "undefined" && water.disturb) water.disturb(sx, sy, 16, 70);
+        secretChime(sx, sy, 410);
+        unlockPondSecret("secret:pads", sx, sy);
+    }
+}
+
+function noteSecretMoonPet(x, y, quiet) {
+    if (quiet) return false;
+    if (!nightMode) return false;
+    const moon = moonSecretPos();
+    if (Math.hypot(x - moon.x, y - moon.y) > moon.r * 1.8) return false;
+    emitSecretMotes(moon.x, moon.y, 14, [200, 220, 255]);
+    secretChime(moon.x, moon.y, 520);
+    if (typeof beginWeatherMood === "function") beginWeatherMood("fireflies");
+    for (const f of fishes) {
+        if (!f || f.dead || f.golden) continue;
+        const d = Math.hypot(f.x - moon.x, f.y - moon.y);
+        if (d > Math.min(viewW, viewH) * 0.55) continue;
+        f.secretMoonTrail = 7.5;
+        secretState.moonFish.push({ fish: f, t: 7.5 });
+    }
+    unlockPondSecret("secret:moon", moon.x, moon.y);
+    return true;
+}
+
+function noteSecretFrogPet(frog) {
+    if (!frog || frog.dead) return;
+    const pads = secretLilyList();
+    if (!pads.length) return;
+    let onPad = null;
+    for (const L of pads) {
+        if (Math.hypot(frog.x - L.x, frog.y - L.y) < (L.r || 14) + frog.size * 0.65) {
+            onPad = L;
+            break;
+        }
+    }
+    if (!onPad) return;
+    onPad.secretBob = Math.max(onPad.secretBob || 0, 0.8);
+    if (secretState.chorusCd > 0) {
+        secretChime(frog.x, frog.y, 210);
+        return;
+    }
+    let others = 0;
+    for (const g of frogGroups) {
+        const fr = g && g.frog;
+        if (!fr || fr.dead || fr === frog) continue;
+        for (const L of pads) {
+            if (Math.hypot(fr.x - L.x, fr.y - L.y) < (L.r || 14) + fr.size * 0.7) {
+                others++;
+                fr.secretChorus = 1.1;
+                break;
+            }
+        }
+    }
+    frog.secretChorus = 1.2;
+    secretChime(frog.x, frog.y, 200);
+    if (others >= 1) {
+        secretState.chorusCd = 8;
+        let delay = 0;
+        for (const g of frogGroups) {
+            const fr = g && g.frog;
+            if (!fr || fr.dead || !fr.secretChorus) continue;
+            const fx = fr.x, fy = fr.y;
+            setTimeout(() => {
+                if (Audio && Audio.fishNote) {
+                    Audio.fishNote({
+                        freq: 190 + Math.random() * 40,
+                        wave: "triangle",
+                        pan: Math.max(-1, Math.min(1, (fx / viewW) * 2 - 1)),
+                        dur: 0.32, level: 0.05, partialAmt: 0.14, bright: 0.9,
+                    });
+                }
+            }, delay);
+            delay += 140;
+        }
+        emitSecretMotes(onPad.x, onPad.y, 10, [120, 180, 100]);
+        unlockPondSecret("secret:chorus", frog.x, frog.y);
+    }
+}
+
+function noteSecretGoldHelperTap(state) {
+    if (!state || !state.isPacifist) return;
+    const h = state.fish;
+    if (!h || h.dead || !h.golden) return;
+    const held = state.holdTime || 0;
+    if (held > 0.34) return;
+    const now = performance.now();
+    if (secretState.goldHelper === h && now - secretState.goldAt < 4000) {
+        secretState.goldTaps++;
+    } else {
+        secretState.goldHelper = h;
+        secretState.goldTaps = 1;
+    }
+    secretState.goldAt = now;
+    emitSecretMotes(h.x, h.y, 4, [240, 210, 120]);
+    if (secretState.goldTaps >= 3) {
+        secretState.goldTaps = 0;
+        spawnSecretFood(h.x + (Math.random() - 0.5) * 18, h.y + 10, { golden: true }, 8);
+        if (Audio && Audio.goldChime) Audio.goldChime(Math.max(-1, Math.min(1, (h.x / viewW) * 2 - 1)));
+        unlockPondSecret("secret:goldhush", h.x, h.y);
+    }
+}
+
+function noteSecretNetSweep(scooped, x, y) {
+    if (scooped > 0) {
+        secretState.emptyNet = 0;
+        return;
+    }
+    const now = performance.now();
+    if (now - secretState.emptyNetAt > 5000) secretState.emptyNet = 0;
+    secretState.emptyNet++;
+    secretState.emptyNetAt = now;
+    secretState.lastEmptyNetX = x;
+    secretState.lastEmptyNetY = y;
+    if (secretState.emptyNet >= 3) {
+        secretState.emptyNet = 0;
+        carveSecretEddy(x, y);
+    }
+}
+
+function noteSecretCatcherMiss(cx, cy, r, dragMeta) {
+    if (r < 26) return;
+    const round = (typeof catcherRoundnessScore === "function")
+        ? catcherRoundnessScore(dragMeta)
+        : 0.6;
+    if (round < 0.42) return;
+    carveSecretEddy(cx, cy);
+}
+
+function carveSecretEddy(x, y) {
+    if (secretState.eddyCd > 0) return;
+    secretState.eddyCd = 10;
+    if (typeof spawnWhirlpool === "function") spawnWhirlpool(x, y, 32, 4.5);
+    if (typeof addCurrentLanePoint === "function") {
+        for (let i = 0; i < 8; i++) {
+            const a = (i / 8) * Math.PI * 2;
+            const px = x + Math.cos(a) * 28;
+            const py = y + Math.sin(a) * 22;
+            addCurrentLanePoint(px, py, -Math.sin(a) * 40, Math.cos(a) * 40);
+        }
+    }
+    emitSecretMotes(x, y, 10, [150, 200, 220]);
+    secretChime(x, y, 300);
+    if (typeof water !== "undefined" && water.disturb) water.disturb(x, y, 18, 80);
+    unlockPondSecret("secret:eddy", x, y);
+}
+
+function updateSecretHelperPact(dt) {
+    secretState.pactCd = Math.max(0, secretState.pactCd - dt);
+    if (secretState.pactCd > 0 || !pacifistVisitors || pacifistVisitors.length < 2) return;
+    let axo = null, lotus = null;
+    for (const p of pacifistVisitors) {
+        if (!p || p.dead || p.leaving || p.golden) continue;
+        if (p.kind === "axolotl") axo = p;
+        if (p.kind === "lotus") lotus = p;
+    }
+    if (!axo || !lotus) return;
+    const d = Math.hypot(axo.x - lotus.x, axo.y - lotus.y);
+    if (d > Math.max(70, (axo.size + lotus.size) * 0.85)) return;
+    secretState.pactCd = 42;
+    const mx = (axo.x + lotus.x) * 0.5;
+    const my = (axo.y + lotus.y) * 0.5;
+    const k = 1 - Math.exp(-2.2 * dt);
+    axo.x += (mx - axo.x) * k * 0.15;
+    axo.y += (my - axo.y) * k * 0.15;
+    lotus.x += (mx - lotus.x) * k * 0.15;
+    lotus.y += (my - lotus.y) * k * 0.15;
+    if (typeof axo.dropGift === "function") axo.dropGift(true);
+    if (typeof lotus.dropGift === "function") lotus.dropGift(true);
+    spawnSecretFood(mx, my, { pink: true }, 8);
+    emitSecretMotes(mx, my, 16, [255, 170, 200]);
+    secretChime(mx, my, 360);
+    unlockPondSecret("secret:pact", mx, my);
+}
+
+function updateSecretCairn(dt) {
+    secretState.cairnCd = Math.max(0, secretState.cairnCd - dt);
+    if (secretState.cairnCd > 0 || !obstacles || obstacles.length < 3) return;
+    const rocks = [];
+    for (const o of obstacles) {
+        if (!o || (o.kind !== "boulder" && o.kind !== "mossrock")) continue;
+        rocks.push(o);
+    }
+    if (rocks.length < 3) return;
+    for (let i = 0; i < rocks.length; i++) {
+        const a = rocks[i];
+        const near = [a];
+        for (let j = 0; j < rocks.length; j++) {
+            if (i === j) continue;
+            const b = rocks[j];
+            if (Math.hypot(a.x - b.x, a.y - b.y) < 62) near.push(b);
+        }
+        if (near.length < 3) continue;
+        let cx = 0, cy = 0;
+        for (const r of near) { cx += r.x; cy += r.y; }
+        cx /= near.length; cy /= near.length;
+        secretState.cairnCd = 28;
+        if (typeof makePondPlant === "function" && pondPlants.length < 18) {
+            pondPlants.push(makePondPlant(cx, cy, 22, "moss"));
+        }
+        emitSecretMotes(cx, cy, 12, [160, 170, 130]);
+        secretChime(cx, cy, 180);
+        if (typeof water !== "undefined" && water.disturb) water.disturb(cx, cy, 14, 60);
+        unlockPondSecret("secret:cairn", cx, cy);
+        break;
+    }
+}
+
+function updateSecretSwirlSnacks(dt) {
+    if (!foods || !foods.length) return;
+    const flowFn = (typeof currentFlowAt === "function") ? currentFlowAt : null;
+    if (!flowFn) return;
+    for (const f of foods) {
+        if (!f || f.eaten || f.sinking) continue;
+        if (f.golden || f.rainbow || f.green || f.grower || f.pink || f.platinum || f.hero || f.carcass) {
+            continue;
+        }
+        const flow = flowFn(f.x, f.y);
+        const mag = Math.hypot(flow.x || 0, flow.y || 0);
+        if (mag > 16) f.secretSoak = (f.secretSoak || 0) + dt;
+        else f.secretSoak = Math.max(0, (f.secretSoak || 0) - dt * 0.4);
+        if ((f.secretSoak || 0) < 2.3) continue;
+        f.secretSoak = 0;
+        if (typeof applyFoodVariant === "function") applyFoodVariant(f, "grower");
+        else { f.grower = true; }
+        f.rare = typeof isRareFoodFlags === "function" ? isRareFoodFlags(f) : true;
+        f.floatLife = Infinity;
+        f.swirlSnack = true;
+        emitSecretMotes(f.x, f.y, 8, [140, 190, 230]);
+        secretChime(f.x, f.y, 430);
+        unlockPondSecret("secret:swirl", f.x, f.y);
+    }
+}
+
+function updatePondSecrets(dt) {
+    secretState.eddyCd = Math.max(0, secretState.eddyCd - dt);
+    secretState.chorusCd = Math.max(0, secretState.chorusCd - dt);
+    updateSecretHelperPact(dt);
+    updateSecretCairn(dt);
+    updateSecretSwirlSnacks(dt);
+
+    if (secretState.school) {
+        const s = secretState.school;
+        s.t -= dt;
+        if (!s.a || !s.b || s.a.dead || s.b.dead || s.t <= 0) {
+            secretState.school = null;
+        } else {
+            const k = 1 - Math.exp(-1.8 * dt);
+            const mx = (s.a.x + s.b.x) * 0.5;
+            const my = (s.a.y + s.b.y) * 0.5;
+            s.a.x += (mx - s.a.x) * k * 0.28;
+            s.a.y += (my - s.a.y) * k * 0.28;
+            s.b.x += (mx - s.b.x) * k * 0.28;
+            s.b.y += (my - s.b.y) * k * 0.28;
+            const ang = Math.atan2(s.b.y - s.a.y, s.b.x - s.a.x);
+            if (s.a.dir != null) s.a.dir += Math.atan2(Math.sin(ang - s.a.dir), Math.cos(ang - s.a.dir)) * k * 0.4;
+            if (s.b.dir != null) s.b.dir += Math.atan2(Math.sin(ang + Math.PI - s.b.dir), Math.cos(ang + Math.PI - s.b.dir)) * k * 0.4;
+        }
+    }
+
+    for (let i = secretState.moonFish.length - 1; i >= 0; i--) {
+        const m = secretState.moonFish[i];
+        m.t -= dt;
+        if (!m.fish || m.fish.dead || m.t <= 0) {
+            if (m.fish) m.fish.secretMoonTrail = 0;
+            secretState.moonFish.splice(i, 1);
+            continue;
+        }
+        m.fish.secretMoonTrail = m.t;
+        if (Math.random() < 0.35) {
+            secretMotes.push({
+                x: m.fish.x - Math.cos(m.fish.dir || 0) * (m.fish.size || 12) * 0.4,
+                y: m.fish.y - Math.sin(m.fish.dir || 0) * (m.fish.size || 12) * 0.3,
+                vx: (Math.random() - 0.5) * 12,
+                vy: (Math.random() - 0.5) * 10 - 4,
+                age: 0,
+                life: 0.7,
+                r: 1.4,
+                rgb: [190, 220, 255],
+            });
+        }
+    }
+
+    const pads = secretLilyList();
+    for (const L of pads) {
+        if (L.secretBob) L.secretBob = Math.max(0, L.secretBob - dt * 1.6);
+        if (L.secretBloom) L.secretBloom = Math.max(0, L.secretBloom - dt * 0.8);
+    }
+    for (const f of fishes) {
+        if (f && f.secretPurr) f.secretPurr = Math.max(0, f.secretPurr - dt);
+    }
+    for (const g of frogGroups) {
+        if (g && g.frog && g.frog.secretChorus) g.frog.secretChorus = Math.max(0, g.frog.secretChorus - dt);
+    }
+
+    for (let i = secretMotes.length - 1; i >= 0; i--) {
+        const p = secretMotes[i];
+        p.age += dt;
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vx *= Math.exp(-2.2 * dt);
+        p.vy *= Math.exp(-1.6 * dt);
+        p.vy -= 6 * dt;
+        if (p.age >= p.life) secretMotes.splice(i, 1);
+    }
+}
+
+function drawPondSecrets(ctx) {
+    if (!secretMotes.length && !secretLilyList().some((L) => L.secretBloom || L.secretBob)
+        && !fishes.some((f) => f && (f.secretMoonTrail || f.secretPurr))) {
+        if (!secretState.school) return;
+    }
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (const p of secretMotes) {
+        const u = 1 - p.age / p.life;
+        ctx.globalAlpha = Math.max(0, u * 0.7);
+        ctx.fillStyle = "rgba(" + p.rgb[0] + "," + p.rgb[1] + "," + p.rgb[2] + ",1)";
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r * (0.7 + u * 0.6), 0, Math.PI * 2);
+        ctx.fill();
+    }
+    for (const f of fishes) {
+        if (!f || f.dead) continue;
+        if (f.secretMoonTrail > 0.05) {
+            const a = Math.min(1, f.secretMoonTrail / 7.5) * 0.28;
+            const g = ctx.createRadialGradient(f.x, f.y, 2, f.x, f.y, (f.size || 16) * 1.6);
+            g.addColorStop(0, "rgba(210,230,255," + a + ")");
+            g.addColorStop(1, "rgba(140,180,230,0)");
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.arc(f.x, f.y, (f.size || 16) * 1.6, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        if (f.secretPurr > 0.05) {
+            ctx.globalAlpha = Math.min(1, f.secretPurr) * 0.35;
+            ctx.strokeStyle = "rgba(255,210,140,0.9)";
+            ctx.lineWidth = 1.4;
+            ctx.beginPath();
+            ctx.arc(f.x, f.y, (f.size || 16) * (0.9 + (1 - f.secretPurr) * 0.25), 0, Math.PI * 2);
+            ctx.stroke();
+        }
+    }
+    for (const L of secretLilyList()) {
+        if (L.secretBloom > 0.04) {
+            ctx.globalAlpha = L.secretBloom * 0.35;
+            ctx.strokeStyle = "rgba(180,230,140,0.9)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(L.x, L.y, (L.r || 14) * (1.1 + (1 - L.secretBloom) * 0.4), 0, Math.PI * 2);
+            ctx.stroke();
+        }
+    }
+    ctx.restore();
+}
+
+function paintSecretRegistryPreview(ctx, entry, seen, w, h) {
+    ctx.save();
+    ctx.translate(w * 0.5, h * 0.52);
+    ctx.globalAlpha = seen ? 0.95 : 0.32;
+    ctx.fillStyle = seen ? (entry.color || "#c8e0d0") : "#1a2420";
+    ctx.beginPath();
+    ctx.moveTo(0, -11);
+    ctx.lineTo(3, -3);
+    ctx.lineTo(11, 0);
+    ctx.lineTo(3, 3);
+    ctx.lineTo(0, 11);
+    ctx.lineTo(-3, 3);
+    ctx.lineTo(-11, 0);
+    ctx.lineTo(-3, -3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+}
+
 function updateFlavorSystems(dt) {
+    if (typeof updatePondSecrets === "function") updatePondSecrets(dt);
     updateColoredWakes(dt);
     updateCurrentLanes(dt);
     updatePetEchoes(dt);
@@ -32093,6 +32756,7 @@ function frame(now) {
         if (typeof drawBreathBubbles === "function") drawBreathBubbles(ctx);
         if (typeof drawCometVisitor === "function") drawCometVisitor(ctx);
         if (typeof drawStarWishSparks === "function") drawStarWishSparks(ctx);
+        if (typeof drawPondSecrets === "function") drawPondSecrets(ctx);
         // Draw resting gold first (lakebed), then swimmers above them.
         for (const fish of fishes) {
             if (fish.golden) fish.draw(ctx);

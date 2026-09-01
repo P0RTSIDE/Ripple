@@ -18,7 +18,7 @@ Appear when moon pond is on. Moon pond sits locked in Looks until you make a pla
 
 ## Registry
 
-The registry button opens a catalog of pond life and pond pieces. Entries stay dark until you meet that fish or see that piece in the water. Tabs cover common, exotic, night, crystal, apex, helpers, and rare forms. The Elements tab lists scenery, lake debris, and green-food ornaments, including the bundled reed raft. Discoveries save with progress.
+The registry button opens a catalog of pond life and pond pieces. Fish entries stay dark until you meet them. Tabs cover common, exotic, night, crystal, apex, helpers, and rare forms. The Elements tab lists every scenery piece, lake debris kind, and green-food ornament, including the reed raft, lily plant, moss pebble, and pond bed. Discoveries save with progress.
 
 ## Special fish forms
 
@@ -167,3 +167,18 @@ When a fish eats another fish that is still smaller than the eater, size gain sc
 - Golden fish are inert on the lakebed until collected or the page refreshes (sword-bearers large enough can still spear them).
 - Tamed apex and redeemed heroes stop hunting pond fish.
 - Platinum and gold do not count toward last-fish shark / orca spawns.
+
+## Quiet pond tricks
+
+Hidden, not listed on the main toolbar. The registry Quiet tab stays dark until you find each one.
+
+1. Kindred swim: pet two different fish of the same species in a short span. They ease toward each other.
+2. Purr trio: pet the same fish three times quickly. It glows and grows a little.
+3. Swirl snack: leave a plain pellet in a current. After a couple of seconds it becomes a grower swirl snack.
+4. Salamander pact: let a pond axolotl and a lotus softshell swim close. They share a gift burst.
+5. Pad waltz: tap three different lily pads in a few seconds. The pads bloom and a green snack appears.
+6. Moon trail: at night, pet the moon disc. Nearby fish keep a silver glow trail for a while.
+7. Stone cairn: drag three boulders or mossy rocks into a tight cluster. A moss pebble takes root.
+8. Pad chorus: pet a frog sitting on a lily pad while another frog is on a pad too. They croak in turn.
+9. Gold hush: short-tap a settled gold helper three times without finishing the collect hold. It sheds a gold pellet.
+10. Quiet tools: three empty net sweeps in a row, or one fairly round empty catcher ring, carves a small eddy.
