@@ -5,10 +5,15 @@ Ripple is a single-page pond sim. Almost all gameplay lives in `main.js` with sh
 ## Layout
 
 - `main.js`: fish, apex, helpers, finales, ecosystem, danger menu, draw loop
-- `guide.js`: guide gate and open/close only; written guide copy lives in `index.html`
+- `guide.js`: guide gate and open/close only; written guide copy lives in `index.html`. Loaded on demand from the guide button (not on first paint).
 - `index.html`: canvas + menus + guide sheet; bump cache queries when shipping JS/CSS changes
 - `.cursor/rules/`: persistent agent rules (motion, finales, helpers)
 - `docs/ripple-user-guide.*`: personal notes. Do not commit or push these
+
+## Load notes
+
+- `main.js` is deferred. `guide.js` loads only after the guide button is clicked.
+- The draw loop pauses while the tab is hidden; `watchdogFinaleSoftlocks` still runs on an interval so endings clear.
 
 ## UI chrome corners
 

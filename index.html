@@ -4,7 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Ripple</title>
-    <link rel="stylesheet" href="style.css?v=20260831ae" />
+    <meta name="description" content="A calm interactive pond: feed fish, carve currents, and watch the water react." />
+    <link rel="stylesheet" href="style.css?v=20260903a" fetchpriority="high" />
 </head>
 <body>
     <!-- The whole experience is a single full-viewport canvas surface. -->
@@ -407,8 +408,35 @@
     <!-- On-load hint that fades out after the first interaction and never returns. -->
     <div id="hint" role="status" aria-live="polite">click anywhere</div>
 
-    <!-- Defer keeps first paint light; guide stays a small separate file. -->
-    <script src="main.js?v=20260831ai" defer></script>
-    <script src="guide.js?v=20260831ae" defer></script>
+    <!-- Defer pond sim; guide.js loads only when the guide button is used. -->
+    <script src="main.js?v=20260903a" defer></script>
+    <script>
+        (function () {
+            var GUIDE_SRC = "guide.js?v=20260903a";
+            var btn = document.getElementById("guide-btn");
+            if (!btn) return;
+            var loading = false;
+            function ensureGuide(thenOpen) {
+                if (window.__rippleGuide) {
+                    if (thenOpen) window.__rippleGuide.toggle();
+                    return;
+                }
+                if (loading) return;
+                loading = true;
+                var s = document.createElement("script");
+                s.src = GUIDE_SRC;
+                s.onload = function () {
+                    loading = false;
+                    if (thenOpen && window.__rippleGuide) window.__rippleGuide.openGate();
+                };
+                s.onerror = function () { loading = false; };
+                document.head.appendChild(s);
+            }
+            btn.addEventListener("click", function (e) {
+                e.stopPropagation();
+                ensureGuide(true);
+            });
+        })();
+    </script>
 </body>
 </html>

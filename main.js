@@ -33155,6 +33155,12 @@ let lastFrame = performance.now();
 let sceneryTime = 0;
 
 function frame(now) {
+    // Background tabs: stop the heavy pond loop; finale softlock timer still runs.
+    if (document.hidden) {
+        pondRafRunning = false;
+        return;
+    }
+    pondRafRunning = true;
     const dt = Math.min(0.05, (now - lastFrame) / 1000);
     lastFrame = now;
     sceneryTime += dt;
@@ -33313,6 +33319,20 @@ function frame(now) {
     requestAnimationFrame(frame);
 }
 
+let pondRafRunning = true;
+document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+        pondRafRunning = false;
+        return;
+    }
+    // Resume after a background pause without applying a huge catch-up dt.
+    lastFrame = performance.now();
+    if (!pondRafRunning) {
+        pondRafRunning = true;
+        requestAnimationFrame(frame);
+    }
+});
+
 function watchdogFinaleSoftlocks() {
     // Real timer: background tabs cap dt, so RAF alone can stretch finales forever.
     if (shark && shark.glowSwallow && finaleOvertime(shark.glowSwallow)) {
@@ -33374,7 +33394,9 @@ setInterval(() => {
 }, 500);
 
 gfxQualityCap = estimateGfxQualityCap();
-gfxQuality = gfxQualityCap;
+// Soft boot: start one step under the cap so first bed/water grids stay light,
+// then tickGfxQuality can step up once frames are stable.
+gfxQuality = Math.max(0, gfxQualityCap - (gfxQualityCap > 0 ? 1 : 0));
 resize();
 rebuildScenery();
 initFish();

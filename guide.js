@@ -4,10 +4,14 @@
  * The written guide lives in index.html (#guide-panel). Whenever pond, fish,
  * food, tools, or unlock mechanics change, update that HTML so the guide
  * stays current. This file only handles the disclaimer gate and open/close.
+ *
+ * Loaded on demand from the guide button so the first pond paint stays light.
  */
 
 (function () {
     "use strict";
+
+    if (window.__rippleGuide) return;
 
     const btn = document.getElementById("guide-btn");
     const gate = document.getElementById("guide-gate");
@@ -21,6 +25,10 @@
     function setOpen(el, open) {
         el.classList.toggle("open", open);
         el.setAttribute("aria-hidden", open ? "false" : "true");
+    }
+
+    function isOpen() {
+        return gate.classList.contains("open") || panel.classList.contains("open");
     }
 
     function closeAll() {
@@ -49,15 +57,10 @@
         if (closeBtn) closeBtn.focus();
     }
 
-    btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (gate.classList.contains("open") || panel.classList.contains("open")) {
-            closeAll();
-            return;
-        }
-        // Always show the exploration disclaimer before the written guide.
-        openGate();
-    });
+    function toggle() {
+        if (isOpen()) closeAll();
+        else openGate();
+    }
 
     if (proceed) {
         proceed.addEventListener("click", (e) => {
@@ -90,7 +93,7 @@
 
     document.addEventListener("keydown", (e) => {
         if (e.key !== "Escape") return;
-        if (gate.classList.contains("open") || panel.classList.contains("open")) {
+        if (isOpen()) {
             e.preventDefault();
             closeAll();
         }
@@ -99,4 +102,6 @@
     // Keep guide clicks from falling through to the canvas.
     gate.querySelector(".guide-card")?.addEventListener("click", (e) => e.stopPropagation());
     panel.querySelector(".guide-sheet")?.addEventListener("click", (e) => e.stopPropagation());
+
+    window.__rippleGuide = { toggle, openGate, openGuide, closeAll, isOpen };
 })();
