@@ -1,58 +1,54 @@
 # Ripple
 
-An interactive pond you can feed, pet, and rearrange. Every splash drives both the water you see and the sound you hear.
+An interactive pond. Food, currents, fish, and visitors disturb a height-field water surface, and the same impact strength shapes a procedural tone.
 
-**Live demo:** [ripple-nine-chi.vercel.app](https://ripple-nine-chi.vercel.app)
+Live site: [ripplefish.xyz](https://ripplefish.xyz/).
 
 ## What it is
 
-Ripple is a single-page experience with two surfaces:
+Ripple is one page with two surfaces:
 
-- **Pond:** a height-field water simulation. Waves travel, bounce off the banks, and interfere. Food, currents, fish, and visitors all leave marks on the surface.
-- **Window:** rain on glass, with a rhythm studio for quiet loops you can play back under the pond later.
+- **Pond:** waves travel, bounce off the banks, and interfere. Food, currents, fish, and visitors all leave marks on the surface.
+- **Window:** rain on glass, with a rhythm studio. Loops saved there can play under the pond.
 
-Sound is procedural Web Audio. There are no sample libraries and no frameworks. Canvas draws the scene; the same impact strength that shapes a ripple also shapes its tone.
+Sound is procedural Web Audio. There is no sample library. Canvas draws the scene.
 
 ## Highlights
 
 - Physics-linked water and audio
-- Growing pond life, special food, tools, and a progress save that stays on your device
-- Day, moon, and crystal looks with their own visitors
-- Adaptive graphics that ease down on lighter machines
-- Built-in user guide (opens from the book button, with a spoiler warning first)
+- Pond life, special food, tools, and a progress save that stays in the browser
+- Day, moon, and crystal looks, each with its own visitors
+- Graphics settings that ease down on lighter machines
+- A written guide opened from the book button, behind a spoiler notice
 
-## Controls (quick start)
+## Controls
 
 | Action | How |
 | --- | --- |
-| Throw food | Fish food on, then left-click or hold and drag to sling |
+| Throw food | Fish food on, then left-click, or hold and drag to sling |
 | Carve currents | Turn fish food off, then left-drag across the pond |
 | Pet | Right-click a creature |
 | Scoop floating food | Turn the net on, then right-click or right-drag |
 | Catch a rainbow fish | Turn the rainbow catcher on, then left-drag a circle around it |
 | Hide chrome | Top-right eye button, or press `U` |
 
-Food throwing and current carving are exclusive modes on the same food button.
+Food throwing and current carving share one button and cannot both be on.
 
 ## Run locally
 
-No build step and no install.
-
-1. Clone the repository.
-2. Serve the folder over HTTP (browsers restrict some APIs from `file://`).
-3. Open `index.html` in a modern browser.
-
-Examples:
+No install and no build step. Browsers block some APIs from `file://`, so serve the folder over HTTP and open `index.html`.
 
 ```bash
-# Python
 python -m http.server 8080
+```
 
-# Node
+Or:
+
+```bash
 npx --yes serve .
 ```
 
-Then visit `http://localhost:8080`.
+Then open http://localhost:8080.
 
 ## Project layout
 
@@ -61,24 +57,24 @@ Then visit `http://localhost:8080`.
 | `index.html` | Page shell, menus, and written guide copy |
 | `main.js` | Pond simulation, creatures, tools, audio, finales |
 | `style.css` | UI chrome and layout |
-| `guide.js` | Guide open/close only (loaded when the guide button is used) |
+| `guide.js` | Guide open and close. Loaded when the guide button is used |
 
-Almost all gameplay lives in `main.js`. After shipping JS or CSS changes, bump the `?v=` cache query on that file in `index.html`.
+Almost all gameplay lives in `main.js`.
 
 ## Tech notes
 
 - Vanilla JavaScript, HTML, and CSS
 - Canvas 2D for rendering
 - Web Audio API for synthesis
-- Adaptive quality for DPR, water grid density, and decorative detail
-- Draw loop pauses while the tab is hidden; endings still clear on a background timer
+- Adaptive quality for device pixel ratio, water grid density, and decorative detail
+- The draw loop pauses while the tab is hidden. Endings still clear on a background timer
 
-Window rain aesthetics are inspired by [SardineFish/raindrop-fx](https://github.com/SardineFish/raindrop-fx) (MIT).
+Window rain drawing is inspired by [SardineFish/raindrop-fx](https://github.com/SardineFish/raindrop-fx) (MIT).
 
 ## Saves and privacy
 
-Progress saving is optional and local to the browser. You can also download or upload a save file. Nothing is stored on a paid server by this project.
+Progress saving is optional and stays in the browser. A save file can be downloaded or uploaded. This project does not store progress on a server.
 
 ## License
 
-No license file is published in this repository yet. All rights reserved unless the author adds one.
+No license file is included with this repository.
