@@ -148,12 +148,19 @@ const RECIPE_MIRROR_COST = { golden: 1, pink: 1 }; // craft mirror food
 const RECIPE_STORM_COST = { rainbow: 1, grower: 1 }; // craft storm food
 
 
-// Adaptive render quality: 0 = laptop-safe, 1 = balanced, 2 = full detail.
-// Starts from a hardware guess, then eases down if frame time stays heavy.
+// Visual-first adaptive rendering.
+// gfxQuality controls how the pond LOOKS (fish detail, caustics, glow, bed).
+// When frames slip, prefer cheaper DPR / water grid / FX cadence before dropping looks.
+// High devicePixelRatio alone must not force "potato" visuals on retina laptops.
 let gfxQuality = 1;
 let gfxQualityCap = 1;
+let gfxQualityFloor = 1;
 let fpsEma = 55;
 let gfxAdaptCooldown = 0;
+let gfxDprBias = 0;   // 0..2 extra DPR cuts under load
+let gfxWaterBias = 0; // 0..2 coarser water grid under load
+let gfxFxLight = false; // skip / thin some per-frame FX while stressed
+let gfxFrameSerial = 0;
 
 function estimateGfxQualityCap() {
     const cores = navigator.hardwareConcurrency || 4;
@@ -161,21 +168,40 @@ function estimateGfxQualityCap() {
     const dpr = window.devicePixelRatio || 1;
     const area = (window.innerWidth || 1280) * (window.innerHeight || 720);
     const pixels = area * Math.min(dpr, 2);
-    if ((mem != null && mem <= 4) || cores <= 4 || pixels > 3.2e6 || dpr >= 2) return 0;
-    if (cores <= 8 || dpr > 1.5 || pixels > 2.2e6 || (mem != null && mem <= 8)) return 1;
+    // Only force low DETAIL on genuinely weak machines. Retina alone stays balanced+.
+    if ((mem != null && mem <= 2) || cores <= 2) return 0;
+    if ((mem != null && mem <= 4) || cores <= 4 || pixels > 4.8e6) return 1;
+    if (cores <= 8 || pixels > 3.2e6 || (mem != null && mem <= 8)) return 1;
     return 2;
 }
 
+function estimateGfxQualityFloor() {
+    // Keep at least balanced looks whenever the machine is not truly weak.
+    return estimateGfxQualityCap() <= 0 ? 0 : 1;
+}
+
 function waterCellScaleForQuality(q) {
-    return q <= 0 ? 9 : q === 1 ? 7 : 5;
+    const base = q <= 0 ? 9 : q === 1 ? 7 : 5;
+    return base + (gfxWaterBias | 0);
 }
 
 function dprCapForQuality(q) {
-    return q <= 0 ? 1 : q === 1 ? 1.25 : 1.5;
+    // Cap fill-rate hard; looks stay sharp enough well below native retina DPR.
+    const base = q <= 0 ? 1 : q === 1 ? 1.35 : 1.6;
+    const cut = gfxDprBias <= 0 ? 0 : gfxDprBias === 1 ? 0.2 : 0.4;
+    return Math.max(1, base - cut);
 }
 
 function applyGfxQuality(q) {
-    gfxQuality = Math.max(0, Math.min(gfxQualityCap, q | 0));
+    gfxQuality = Math.max(gfxQualityFloor, Math.min(gfxQualityCap, q | 0));
+}
+
+function rebindGfxCanvas() {
+    dpr = Math.min(window.devicePixelRatio || 1, dprCapForQuality(gfxQuality));
+    canvas.width = Math.floor(viewW * dpr);
+    canvas.height = Math.floor(viewH * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (water) water.resize();
 }
 
 function tickGfxQuality(dt) {
@@ -183,24 +209,65 @@ function tickGfxQuality(dt) {
     fpsEma = fpsEma * 0.9 + inst * 0.1;
     gfxAdaptCooldown = Math.max(0, gfxAdaptCooldown - dt);
     if (gfxAdaptCooldown > 0) return;
-    if (fpsEma < 32 && gfxQuality > 0) {
-        applyGfxQuality(gfxQuality - 1);
-        gfxAdaptCooldown = 2.8;
-        // Rebind canvas DPR + water grid only; avoid full scenery rebuild hitch.
-        dpr = Math.min(window.devicePixelRatio || 1, dprCapForQuality(gfxQuality));
-        canvas.width = Math.floor(viewW * dpr);
-        canvas.height = Math.floor(viewH * dpr);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        if (water) water.resize();
-    } else if (fpsEma > 54 && gfxQuality < gfxQualityCap) {
-        applyGfxQuality(gfxQuality + 1);
-        gfxAdaptCooldown = 3.5;
-        dpr = Math.min(window.devicePixelRatio || 1, dprCapForQuality(gfxQuality));
-        canvas.width = Math.floor(viewW * dpr);
-        canvas.height = Math.floor(viewH * dpr);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        if (water) water.resize();
+
+    if (fpsEma < 38) {
+        // Prefer perf knobs over visual quality.
+        if (gfxDprBias < 2) {
+            gfxDprBias++;
+            gfxAdaptCooldown = 2.0;
+            rebindGfxCanvas();
+            return;
+        }
+        if (gfxWaterBias < 2) {
+            gfxWaterBias++;
+            gfxAdaptCooldown = 2.0;
+            if (water) water.resize();
+            return;
+        }
+        if (!gfxFxLight) {
+            gfxFxLight = true;
+            gfxAdaptCooldown = 1.8;
+            return;
+        }
+        if (gfxQuality > gfxQualityFloor) {
+            applyGfxQuality(gfxQuality - 1);
+            gfxAdaptCooldown = 2.8;
+            rebindGfxCanvas();
+            return;
+        }
+        gfxAdaptCooldown = 1.6;
+    } else if (fpsEma > 52) {
+        // Recover looks first, then restore perf headroom.
+        if (gfxQuality < gfxQualityCap) {
+            applyGfxQuality(gfxQuality + 1);
+            gfxAdaptCooldown = 3.2;
+            rebindGfxCanvas();
+            return;
+        }
+        if (gfxFxLight) {
+            gfxFxLight = false;
+            gfxAdaptCooldown = 1.8;
+            return;
+        }
+        if (gfxWaterBias > 0) {
+            gfxWaterBias--;
+            gfxAdaptCooldown = 2.4;
+            if (water) water.resize();
+            return;
+        }
+        if (gfxDprBias > 0) {
+            gfxDprBias--;
+            gfxAdaptCooldown = 2.4;
+            rebindGfxCanvas();
+            return;
+        }
     }
+}
+
+/** Glow blur amount; zeroed under light FX or potato quality. */
+function gfxGlowBlur(amount) {
+    if (gfxQuality <= 0 || gfxFxLight) return 0;
+    return amount;
 }
 
 // Optional one-shot: next food drop is forced rainbow (keywords / pet streak / developer tools).
@@ -734,7 +801,9 @@ let vignette = null;
 
 function resize() {
     gfxQualityCap = estimateGfxQualityCap();
+    gfxQualityFloor = estimateGfxQualityFloor();
     if (gfxQuality > gfxQualityCap) gfxQuality = gfxQualityCap;
+    if (gfxQuality < gfxQualityFloor) gfxQuality = gfxQualityFloor;
     dpr = Math.min(window.devicePixelRatio || 1, dprCapForQuality(gfxQuality));
     viewW = window.innerWidth;
     viewH = window.innerHeight;
@@ -2171,7 +2240,8 @@ class WaterSim {
                 const s = sx * 0.55 + sy;
                 if (s > 5.0) spec = Math.min(88, (s - 5.0) * (s - 5.0) * (0.36 + sunClear * 0.14));
                 let caustic = 0;
-                if (sunOn && gfxQuality >= 1) {
+                // Skip per-cell water caustic math under FX light mode (DPR/water already cut).
+                if (sunOn && gfxQuality >= 1 && !gfxFxLight) {
                     const cx = x * 0.12 + causticPhase + y * 0.035;
                     const cy = y * 0.1 - causticPhase * 0.55 + x * 0.025;
                     const n = Math.sin(cx) * Math.sin(cy * 1.15)
@@ -4191,8 +4261,9 @@ function drawBedCaustics(ctx) {
     if (gfxQuality <= 0) return;
     ctx.save();
     ctx.globalCompositeOperation = "screen";
-    const poolN = gfxQuality >= 2 ? 26 : 14;
-    const ribbonN = gfxQuality >= 2 ? 16 : 8;
+    // Keep caustics visible on laptops; thin counts only when FX light mode is on.
+    const poolN = gfxQuality >= 2 ? (gfxFxLight ? 14 : 26) : (gfxFxLight ? 8 : 14);
+    const ribbonN = gfxQuality >= 2 ? (gfxFxLight ? 8 : 16) : (gfxFxLight ? 4 : 8);
     const crystal = !!crystalMode;
     // Slow living drift in daylight; crystal keeps a brighter prism shimmer.
     const t = crystal ? sunPhase : sunPhase * 0.26;
@@ -7184,7 +7255,7 @@ function drawFrogModel(ctx, frog, alpha) {
     ctx.globalAlpha = 0.62 * alpha;
     if (frog.isPink) {
         ctx.shadowColor = "rgba(255,140,190,0.65)";
-        ctx.shadowBlur = gfxQuality <= 0 ? 0 : 12;
+        ctx.shadowBlur = gfxGlowBlur(12);
     }
 
     // Hind legs: tucked along the body when kick~0, swept back when kick~1.
@@ -7333,7 +7404,7 @@ function drawFrogFishHybridModel(ctx, fish) {
     ctx.globalAlpha = 0.88;
     if (fish.isHero) {
         ctx.shadowColor = "rgba(60,140,210,0.45)";
-        ctx.shadowBlur = gfxQuality <= 0 ? 0 : 10;
+        ctx.shadowBlur = gfxGlowBlur(12);
     }
 
     // Hind kick legs (frog).
@@ -7450,7 +7521,7 @@ function pacifistGoldGradient(ctx, p, halfH) {
 function pacifistApplyGoldShadow(ctx, p) {
     if (!p || !p.golden) return false;
     ctx.shadowColor = "rgba(255,200,80,0.55)";
-    ctx.shadowBlur = gfxQuality <= 0 ? 0 : 12;
+    ctx.shadowBlur = gfxGlowBlur(12);
     return true;
 }
 
@@ -7493,13 +7564,13 @@ function drawPacifistAxolotlModel(ctx, p, alpha) {
     } else if (p.rainbowMood > 0) {
         const hue = (performance.now() * 0.18) % 360;
         ctx.shadowColor = `hsla(${hue}, 90%, 65%, 0.8)`;
-        ctx.shadowBlur = gfxQuality <= 0 ? 0 : 16;
+        ctx.shadowBlur = gfxGlowBlur(16);
     } else if (p.isPink) {
         ctx.shadowColor = "rgba(255,140,190,0.7)";
-        ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
+        ctx.shadowBlur = gfxGlowBlur(14);
     } else if (tamed) {
         ctx.shadowColor = "rgba(255,180,210,0.55)";
-        ctx.shadowBlur = gfxQuality <= 0 ? 0 : 12;
+        ctx.shadowBlur = gfxGlowBlur(12);
     }
 
     // Flat paddle tail (undulates opposite the limbs).
@@ -7696,7 +7767,7 @@ function drawPacifistOctopusHelper(ctx, p, alpha) {
     ctx.globalAlpha = alpha == null ? 0.94 : alpha;
     if (!pacifistApplyGoldShadow(ctx, p) && p.tamed) {
         ctx.shadowColor = crystal ? "rgba(180,140,255,0.7)" : "rgba(90,180,160,0.55)";
-        ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
+        ctx.shadowBlur = gfxGlowBlur(12);
     }
 
     let armFill = crystal
@@ -7801,7 +7872,7 @@ function drawPacifistBelugaHelper(ctx, p, alpha) {
     ctx.globalAlpha = alpha == null ? 0.94 : alpha;
     if (!pacifistApplyGoldShadow(ctx, p) && p.tamed) {
         ctx.shadowColor = "rgba(200,230,255,0.7)";
-        ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
+        ctx.shadowBlur = gfxGlowBlur(12);
     }
     const g = p.golden
         ? pacifistGoldGradient(ctx, p, W)
@@ -7871,7 +7942,7 @@ function drawPacifistWhaleHelper(ctx, p, alpha) {
     ctx.globalAlpha = alpha == null ? 0.94 : alpha;
     if (!pacifistApplyGoldShadow(ctx, p) && p.tamed) {
         ctx.shadowColor = "rgba(120,180,220,0.65)";
-        ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
+        ctx.shadowBlur = gfxGlowBlur(12);
     }
     const g = p.golden
         ? pacifistGoldGradient(ctx, p, W)
@@ -7950,7 +8021,7 @@ function drawPacifistTurtleHelper(ctx, p, alpha) {
     ctx.globalAlpha = alpha == null ? 0.94 : alpha;
     if (!pacifistApplyGoldShadow(ctx, p) && p.tamed) {
         ctx.shadowColor = crystal ? "rgba(160,200,255,0.65)" : "rgba(140,200,120,0.55)";
-        ctx.shadowBlur = gfxQuality <= 0 ? 0 : 12;
+        ctx.shadowBlur = gfxGlowBlur(12);
     }
     const g = p.golden
         ? pacifistGoldGradient(ctx, p, W)
@@ -8072,7 +8143,7 @@ function drawPacifistNurseHelper(ctx, p, alpha) {
     ctx.globalAlpha = alpha == null ? 0.94 : alpha;
     if (!pacifistApplyGoldShadow(ctx, p) && p.tamed) {
         ctx.shadowColor = crystal ? "rgba(180,140,255,0.65)" : "rgba(200,170,100,0.5)";
-        ctx.shadowBlur = gfxQuality <= 0 ? 0 : 12;
+        ctx.shadowBlur = gfxGlowBlur(12);
     }
     const g = p.golden
         ? pacifistGoldGradient(ctx, p, W)
@@ -8186,7 +8257,7 @@ function drawPacifistSailHelper(ctx, p, alpha) {
     ctx.globalAlpha = alpha == null ? 0.94 : alpha;
     if (!pacifistApplyGoldShadow(ctx, p) && (p.tamed || p.rainbowMood > 0)) {
         ctx.shadowColor = "rgba(100,200,255,0.7)";
-        ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
+        ctx.shadowBlur = gfxGlowBlur(12);
     }
     const g = p.golden
         ? pacifistGoldGradient(ctx, p, W)
@@ -13244,40 +13315,40 @@ class Fish {
 
         if (this.golden) {
             ctx.shadowColor = `rgba(255,215,90,${0.55 * (1 - sink * 0.7)})`;
-            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 10 * (1 - sink * 0.5);
+            ctx.shadowBlur = gfxGlowBlur(10 * (1 - sink * 0.5));
         } else if (this.isRainbow) {
             ctx.shadowColor = "rgba(255,100,255,0.85)";
-            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 18;
+            ctx.shadowBlur = gfxGlowBlur(18);
         } else if (this.isPink) {
             ctx.shadowColor = "rgba(255,130,190,0.7)";
-            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 12;
+            ctx.shadowBlur = gfxGlowBlur(12);
         } else if (this.isPlatinum) {
             const glow = 0.7 + 0.3 * Math.sin(this.age * 5.5);
             ctx.shadowColor = `rgba(220, 240, 255, ${0.85 + 0.15 * glow})`;
-            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 24 + 16 * glow;
+            ctx.shadowBlur = gfxGlowBlur(24 + 16 * glow);
         } else if (this.tamedMonster) {
             ctx.shadowColor = "rgba(180,220,255,0.85)";
-            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 16;
+            ctx.shadowBlur = gfxGlowBlur(16);
         } else if (this.isMonster) {
             ctx.shadowColor = "rgba(80,0,20,0.85)";
-            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 20;
+            ctx.shadowBlur = gfxGlowBlur(20);
         } else if (this.isHero) {
             const giantGlow = giantEnding && giantEnding.fish === this && giantEnding.kind === "peace";
             const remorseGlow = heroRemorseEnding && heroRemorseEnding.fish === this;
             if (giantGlow) {
                 // Warm ember glow for giant farewell (distinct from blue hero remorse).
                 ctx.shadowColor = "rgba(255,170,70,0.92)";
-                ctx.shadowBlur = gfxQuality <= 0 ? 0 : 24;
+                ctx.shadowBlur = gfxGlowBlur(24);
             } else if (remorseGlow) {
                 ctx.shadowColor = "rgba(160,220,255,0.95)";
-                ctx.shadowBlur = gfxQuality <= 0 ? 0 : 26;
+                ctx.shadowBlur = gfxGlowBlur(26);
             } else {
                 ctx.shadowColor = "rgba(70,160,220,0.8)";
-                ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
+                ctx.shadowBlur = gfxGlowBlur(12);
             }
         } else if (this.isPredator) {
             ctx.shadowColor = "rgba(160,20,30,0.75)";
-            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
+            ctx.shadowBlur = gfxGlowBlur(14);
         } else if (gfxQuality >= 2 && isKoi) {
             ctx.shadowColor = "rgba(40,70,90,0.45)";
             ctx.shadowBlur = 10;
@@ -22843,10 +22914,10 @@ class BiomeGuardian {
                 : this.kind === "vigil"
                     ? "rgba(140,180,230,0.7)"
                     : "rgba(255,200,100,0.7)";
-            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 16;
+            ctx.shadowBlur = gfxGlowBlur(16);
         } else if (this.prey) {
             ctx.shadowColor = "rgba(220,80,60,0.45)";
-            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 12;
+            ctx.shadowBlur = gfxGlowBlur(12);
         }
 
         const g = ctx.createLinearGradient(0, -W, 0, W);
@@ -23264,13 +23335,13 @@ class CrystalSerpent {
         ctx.globalAlpha = this.leaving ? 0.5 : 0.94;
         if (this.isPink) {
             ctx.shadowColor = "rgba(255,80,140,0.75)";
-            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 20;
+            ctx.shadowBlur = gfxGlowBlur(20);
         } else if (this.isHero) {
             ctx.shadowColor = "rgba(140,90,255,0.7)";
-            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 18;
+            ctx.shadowBlur = gfxGlowBlur(26);
         } else {
             ctx.shadowColor = "rgba(40,10,60,0.55)";
-            ctx.shadowBlur = gfxQuality <= 0 ? 0 : 14;
+            ctx.shadowBlur = gfxGlowBlur(12);
         }
 
         // Continuous coil: fat mid-body, taper tip, flared hooded head.
@@ -33164,6 +33235,7 @@ function frame(now) {
     const dt = Math.min(0.05, (now - lastFrame) / 1000);
     lastFrame = now;
     sceneryTime += dt;
+    gfxFrameSerial++;
     tickGfxQuality(dt);
     if (typeof updateRhythmStudio === "function") updateRhythmStudio(dt);
 
@@ -33171,12 +33243,15 @@ function frame(now) {
         sunPhase += dt;
         // One water step is enough on weaker devices; second step only when smooth.
         water.step();
-        if (gfxQuality >= 2 && dt < 0.028) water.step();
+        if (gfxQuality >= 2 && !gfxFxLight && dt < 0.028) water.step();
 
         // Floor first, caustics on the stones, then translucent water.
         drawPondBed(ctx);
-        drawBedCaustics(ctx);
-        if (typeof drawMoonBedCaustics === "function") drawMoonBedCaustics(ctx);
+        // Under load, draw bed caustics every other frame (cheaper than dropping quality).
+        if (!gfxFxLight || (gfxFrameSerial & 1)) {
+            drawBedCaustics(ctx);
+            if (typeof drawMoonBedCaustics === "function") drawMoonBedCaustics(ctx);
+        }
         if (typeof drawGiantCausticSpotlight === "function") drawGiantCausticSpotlight(ctx);
         if (typeof drawSiltClouds === "function") drawSiltClouds(ctx);
         if (typeof drawIcePatches === "function") drawIcePatches(ctx);
@@ -33187,7 +33262,11 @@ function frame(now) {
         // paints phantom silhouettes on top of frogs, fish, or debris.
         if (lightCastsFloorShadows()) {
             drawSunContactShadows(ctx);
-            drawSunCreatureShadows(ctx);
+            // Creature cast shadows are costly; under load keep contact blobs every frame
+            // and alternate the full silhouette pass so fish still look grounded.
+            if (!gfxFxLight || (gfxFrameSerial & 1)) {
+                drawSunCreatureShadows(ctx);
+            }
         }
 
         // Shore and bank scenery sit under the swimming life.
@@ -33394,9 +33473,13 @@ setInterval(() => {
 }, 500);
 
 gfxQualityCap = estimateGfxQualityCap();
-// Soft boot: start one step under the cap so first bed/water grids stay light,
-// then tickGfxQuality can step up once frames are stable.
-gfxQuality = Math.max(0, gfxQualityCap - (gfxQualityCap > 0 ? 1 : 0));
+gfxQualityFloor = estimateGfxQualityFloor();
+// Visual-first boot: keep detail at the floor/cap. On retina, start with a mild
+// DPR bias so fill-rate is lighter without muting fish, caustics, or shadows.
+gfxQuality = Math.max(gfxQualityFloor, gfxQualityCap);
+gfxDprBias = (window.devicePixelRatio || 1) >= 2 ? 1 : 0;
+gfxWaterBias = 0;
+gfxFxLight = false;
 resize();
 rebuildScenery();
 initFish();
