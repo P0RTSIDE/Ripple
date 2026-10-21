@@ -150,7 +150,7 @@ const RECIPE_STORM_COST = { rainbow: 1, grower: 1 }; // craft storm food
 
 // Visual-first adaptive rendering.
 // gfxQuality controls how the pond LOOKS (fish detail, caustics, glow, bed).
-// When frames slip, prefer cheaper DPR / water grid / FX cadence before dropping looks.
+// When frames slip, prefer cheaper DPR / water grid / thinner FX before dropping looks.
 // High devicePixelRatio alone must not force "potato" visuals on retina laptops.
 let gfxQuality = 1;
 let gfxQualityCap = 1;
@@ -159,8 +159,7 @@ let fpsEma = 55;
 let gfxAdaptCooldown = 0;
 let gfxDprBias = 0;   // 0..2 extra DPR cuts under load
 let gfxWaterBias = 0; // 0..2 coarser water grid under load
-let gfxFxLight = false; // skip / thin some per-frame FX while stressed
-let gfxFrameSerial = 0;
+let gfxFxLight = false; // thin FX complexity while stressed (never alternate on/off each frame)
 
 function estimateGfxQualityCap() {
     const cores = navigator.hardwareConcurrency || 4;
@@ -4306,7 +4305,7 @@ function drawBedCaustics(ctx) {
             ? (0.5 + 0.5 * Math.sin(t * 0.75 + n * 1.1))
             : (0.7 + 0.3 * Math.sin(t * 0.5 + n * 0.9));
         ctx.beginPath();
-        const steps = gfxQuality >= 2 ? 12 : 7;
+        const steps = gfxFxLight ? 5 : (gfxQuality >= 2 ? 12 : 7);
         for (let i = 0; i <= steps; i++) {
             const u = i / steps;
             const x = x0 + Math.cos(ang) * (u - 0.5) * len
@@ -30993,7 +30992,8 @@ function drawMoonBedCaustics(ctx) {
     ctx.save();
     ctx.globalCompositeOperation = "screen";
     const t = sunPhase;
-    const n = gfxQuality >= 2 ? 14 : 7;
+    // Always draw; under load use fewer soft pools instead of skipping frames.
+    const n = gfxFxLight ? 4 : (gfxQuality >= 2 ? 14 : 7);
     for (let i = 0; i < n; i++) {
         const x = ((i * 151.3 + Math.sin(t * 0.3 + i) * 60) % viewW + viewW) % viewW;
         const y = ((i * 97.7 + Math.cos(t * 0.26 + i * 1.2) * 50) % viewH + viewH) % viewH;
@@ -33235,7 +33235,6 @@ function frame(now) {
     const dt = Math.min(0.05, (now - lastFrame) / 1000);
     lastFrame = now;
     sceneryTime += dt;
-    gfxFrameSerial++;
     tickGfxQuality(dt);
     if (typeof updateRhythmStudio === "function") updateRhythmStudio(dt);
 
@@ -33247,11 +33246,9 @@ function frame(now) {
 
         // Floor first, caustics on the stones, then translucent water.
         drawPondBed(ctx);
-        // Under load, draw bed caustics every other frame (cheaper than dropping quality).
-        if (!gfxFxLight || (gfxFrameSerial & 1)) {
-            drawBedCaustics(ctx);
-            if (typeof drawMoonBedCaustics === "function") drawMoonBedCaustics(ctx);
-        }
+        // Always draw caustics; gfxFxLight thins pool/ribbon counts inside the drawers.
+        drawBedCaustics(ctx);
+        if (typeof drawMoonBedCaustics === "function") drawMoonBedCaustics(ctx);
         if (typeof drawGiantCausticSpotlight === "function") drawGiantCausticSpotlight(ctx);
         if (typeof drawSiltClouds === "function") drawSiltClouds(ctx);
         if (typeof drawIcePatches === "function") drawIcePatches(ctx);
@@ -33260,13 +33257,11 @@ function frame(now) {
         // Floor shadows stay on whenever sky light is casting, even on lower gfx.
         // Draw both contact and creature casts before entities so multiply never
         // paints phantom silhouettes on top of frogs, fish, or debris.
+        // Under load, DPR/water bias and thinner caustics carry the savings; do not
+        // skip shadow passes on alternate frames (that reads as flashing).
         if (lightCastsFloorShadows()) {
             drawSunContactShadows(ctx);
-            // Creature cast shadows are costly; under load keep contact blobs every frame
-            // and alternate the full silhouette pass so fish still look grounded.
-            if (!gfxFxLight || (gfxFrameSerial & 1)) {
-                drawSunCreatureShadows(ctx);
-            }
+            drawSunCreatureShadows(ctx);
         }
 
         // Shore and bank scenery sit under the swimming life.

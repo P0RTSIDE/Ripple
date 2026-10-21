@@ -14,7 +14,7 @@ Ripple is a single-page pond sim. Almost all gameplay lives in `main.js` with sh
 
 - `main.js` is deferred. `guide.js` loads only after the guide button is clicked.
 - The draw loop pauses while the tab is hidden; `watchdogFinaleSoftlocks` still runs on an interval so endings clear.
-- Graphics are visual-first: `gfxQuality` keeps fish/caustic/shadow detail; under load the adapter cuts DPR, coarsens the water grid, and thins FX before dropping looks (`gfxDprBias`, `gfxWaterBias`, `gfxFxLight`, `gfxQualityFloor`).
+- Graphics are visual-first: `gfxQuality` keeps fish/caustic/shadow detail; under load the adapter cuts DPR, coarsens the water grid, and thins FX complexity before dropping looks (`gfxDprBias`, `gfxWaterBias`, `gfxFxLight`, `gfxQualityFloor`). Do not alternate shadows/caustics on/off each frame.
 
 ## UI chrome corners
 
